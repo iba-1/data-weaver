@@ -145,10 +145,7 @@ function MappingRow({ mapping, unmappedTargetFields, onMappingChange }: MappingR
             {mapping.sourceColumn}
           </span>
           {mapping.isAutoMatched && mapping.targetField && (
-            <Badge variant="outline" className="shrink-0 text-xs">
-              <Sparkles className="mr-1 h-3 w-3" />
-              Auto
-            </Badge>
+            <Sparkles className="h-3 w-3 text-muted-foreground/60" />
           )}
         </div>
       </div>
