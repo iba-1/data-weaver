@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -9,9 +9,9 @@ import {
   Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { RowValidation, TargetField } from '@/lib/import-wizard/types';
+import type { RowValidation, TargetField, ArtworkRecord } from '@/lib/import-wizard/types';
 import { TARGET_FIELDS } from '@/lib/import-wizard/types';
-import { getValidationSummary } from '@/lib/import-wizard/validator';
+import { getValidationSummary, revalidateRow } from '@/lib/import-wizard/validator';
 import {
   Table,
   TableBody,
@@ -28,11 +28,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { EditableCell } from './EditableCell';
 
 interface DataValidatorProps {
   validatedRows: RowValidation[];
   onComplete: () => void;
   onBack: () => void;
+  onRowsChange?: (rows: RowValidation[]) => void;
+  requiredFields?: TargetField[];
   isLoading?: boolean;
   className?: string;
 }
@@ -43,15 +46,52 @@ export function DataValidator({
   validatedRows,
   onComplete,
   onBack,
+  onRowsChange,
+  requiredFields = ['title', 'artist'],
   isLoading = false,
   className,
 }: DataValidatorProps) {
+  const [localRows, setLocalRows] = useState<RowValidation[]>(validatedRows);
   const [currentPage, setCurrentPage] = useState(0);
   const [filter, setFilter] = useState<'all' | 'errors' | 'warnings'>('all');
 
-  const summary = getValidationSummary(validatedRows);
+  const summary = getValidationSummary(localRows);
 
-  const filteredRows = validatedRows.filter((row) => {
+  const handleCellEdit = useCallback(
+    (rowIndex: number, field: TargetField, newValue: string) => {
+      setLocalRows((prevRows) => {
+        const updatedRows = prevRows.map((row) => {
+          if (row.rowIndex !== rowIndex) return row;
+
+          // Update the data
+          const updatedData: ArtworkRecord = { ...row.data };
+          if (field === 'valueAmount') {
+            const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
+            const parsed = parseFloat(cleaned);
+            updatedData.valueAmount = isNaN(parsed) ? null : parsed;
+          } else {
+            updatedData[field] = newValue || null;
+          }
+
+          // Revalidate the row
+          const updatedRow = revalidateRow(
+            { ...row, data: updatedData },
+            requiredFields
+          );
+
+          return updatedRow;
+        });
+
+        // Notify parent of changes
+        onRowsChange?.(updatedRows);
+
+        return updatedRows;
+      });
+    },
+    [requiredFields, onRowsChange]
+  );
+
+  const filteredRows = localRows.filter((row) => {
     if (filter === 'all') return true;
     if (filter === 'errors') return !row.isValid;
     if (filter === 'warnings') return row.isValid && row.warnings.length > 0;
@@ -63,6 +103,11 @@ export function DataValidator({
     currentPage * ROWS_PER_PAGE,
     (currentPage + 1) * ROWS_PER_PAGE
   );
+
+  // Sync local rows with prop changes (when coming back from mapping)
+  React.useEffect(() => {
+    setLocalRows(validatedRows);
+  }, [validatedRows]);
 
   if (isLoading) {
     return (
@@ -162,7 +207,7 @@ export function DataValidator({
               </TableRow>
             ) : (
               paginatedRows.map((row) => (
-                <ValidationRow key={row.rowIndex} row={row} />
+                <ValidationRow key={row.rowIndex} row={row} onCellEdit={handleCellEdit} />
               ))
             )}
           </TableBody>
@@ -222,9 +267,10 @@ export function DataValidator({
 
 interface ValidationRowProps {
   row: RowValidation;
+  onCellEdit: (rowIndex: number, field: TargetField, newValue: string) => void;
 }
 
-function ValidationRow({ row }: ValidationRowProps) {
+function ValidationRow({ row, onCellEdit }: ValidationRowProps) {
   const getRowClass = () => {
     if (!row.isValid) return 'validation-row-error';
     if (row.warnings.length > 0) return 'validation-row-warning';
@@ -270,20 +316,13 @@ function ValidationRow({ row }: ValidationRowProps) {
         const warning = getFieldWarning(field.key);
 
         return (
-          <TableCell
-            key={field.key}
-            className={cn(
-              error && 'text-destructive',
-              warning && !error && 'text-warning'
-            )}
-          >
-            {value !== null && value !== undefined ? (
-              <span className="max-w-[200px] truncate block">
-                {String(value)}
-              </span>
-            ) : (
-              <span className="text-muted-foreground italic">—</span>
-            )}
+          <TableCell key={field.key}>
+            <EditableCell
+              value={value}
+              onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
+              hasError={!!error}
+              hasWarning={!!warning}
+            />
           </TableCell>
         );
       })}
