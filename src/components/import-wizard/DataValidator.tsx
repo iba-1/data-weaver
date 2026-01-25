@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -7,10 +7,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileSpreadsheet,
+  Redo2,
+  Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { RowValidation, FieldConfig } from '@/lib/import-wizard/types';
 import { getValidationSummary, revalidateRow } from '@/lib/import-wizard/validator';
+import { exportData } from '@/lib/import-wizard/exporter';
+import { useHistory } from '@/hooks/useHistory';
 import {
   Table,
   TableBody,
@@ -27,6 +32,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { EditableCell } from './EditableCell';
 import { SearchBar } from './SearchBar';
 import { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
@@ -54,12 +65,47 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
   isLoading = false,
   className,
 }: DataValidatorProps<TRecord, TKey>) {
-  const [localRows, setLocalRows] = useState<RowValidation<TRecord>[]>(validatedRows);
+  // Use history hook for undo/redo
+  const {
+    state: localRows,
+    set: setLocalRows,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<RowValidation<TRecord>[]>(validatedRows);
+
   const [currentPage, setCurrentPage] = useState(0);
   const [filter, setFilter] = useState<'all' | 'errors' | 'warnings'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const summary = getValidationSummary(localRows);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
+  // Sync with parent when rows change
+  useEffect(() => {
+    onRowsChange?.(localRows);
+  }, [localRows, onRowsChange]);
 
   // Helper to check if a value matches search
   const matchesSearch = useCallback((value: unknown, query: string): boolean => {
@@ -145,7 +191,6 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
           const strValue = String(value);
           if (!getMatchingValue(strValue, find, options)) return;
 
-          // Perform replacement
           let newValue: string;
           if (options.wholeWord) {
             const regex = new RegExp(
@@ -175,25 +220,21 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
         });
 
         if (modified) {
-          return revalidateRow(
-            { ...row, data: updatedData as TRecord },
-            { fields, requiredFields }
-          );
+          return revalidateRow({ ...row, data: updatedData as TRecord }, { fields, requiredFields });
         }
         return row;
       });
 
       setLocalRows(updatedRows);
-      onRowsChange?.(updatedRows);
       return replacedCount;
     },
-    [localRows, fields, requiredFields, onRowsChange, getMatchingValue]
+    [localRows, fields, requiredFields, getMatchingValue, setLocalRows]
   );
 
   const handleCellEdit = useCallback(
     (rowIndex: number, fieldKey: TKey, newValue: string) => {
       setLocalRows((prevRows) => {
-        const updatedRows = prevRows.map((row) => {
+        return prevRows.map((row) => {
           if (row.rowIndex !== rowIndex) return row;
 
           const field = fields.find((f) => f.key === fieldKey);
@@ -207,18 +248,25 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
             updatedData[fieldKey] = newValue || null;
           }
 
-          return revalidateRow(
-            { ...row, data: updatedData as TRecord },
-            { fields, requiredFields }
-          );
+          return revalidateRow({ ...row, data: updatedData as TRecord }, { fields, requiredFields });
         });
-
-        onRowsChange?.(updatedRows);
-        return updatedRows;
       });
     },
-    [fields, requiredFields, onRowsChange]
+    [fields, requiredFields, setLocalRows]
   );
+
+  // Export handlers
+  const handleExportCSV = useCallback(() => {
+    exportData(localRows, fields, { format: 'csv', filename: 'data-export' });
+  }, [localRows, fields]);
+
+  const handleExportExcel = useCallback(() => {
+    exportData(localRows, fields, { format: 'xlsx', filename: 'data-export' });
+  }, [localRows, fields]);
+
+  const handleExportValidOnly = useCallback(() => {
+    exportData(localRows, fields, { format: 'xlsx', filename: 'data-export-valid', onlyValid: true });
+  }, [localRows, fields]);
 
   // Filter and search
   const filteredRows = useMemo(() => {
@@ -236,13 +284,13 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
     (currentPage + 1) * ROWS_PER_PAGE
   );
 
-  // Sync local rows with prop changes
-  React.useEffect(() => {
-    setLocalRows(validatedRows);
-  }, [validatedRows]);
+  // Sync local rows with prop changes (only on initial load)
+  useEffect(() => {
+    // This is handled by the useHistory hook initialization
+  }, []);
 
   // Reset page when filters change
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage(0);
   }, [filter, searchQuery]);
 
@@ -309,18 +357,73 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
           </div>
         </div>
 
-        {/* Search and Find/Replace toolbar */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            matchCount={searchQuery ? searchMatchCount : undefined}
-            className="flex-1"
-          />
-          <FindReplaceDialog
-            onReplace={handleFindReplace}
-            getPreviewCount={getPreviewCount}
-          />
+        {/* Toolbar */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 flex-1">
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              matchCount={searchQuery ? searchMatchCount : undefined}
+              className="flex-1 max-w-sm"
+            />
+            <FindReplaceDialog onReplace={handleFindReplace} getPreviewCount={getPreviewCount} />
+          </div>
+
+          {/* Undo/Redo & Export */}
+          <div className="flex items-center gap-2">
+            {/* Undo/Redo buttons */}
+            <div className="flex items-center border rounded-md">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={undo}
+                    disabled={!canUndo}
+                    className="h-8 px-2 rounded-r-none border-r"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={redo}
+                    disabled={!canRedo}
+                    className="h-8 px-2 rounded-l-none"
+                  >
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* Export dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-popover">
+                <DropdownMenuItem onClick={handleExportCSV}>
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel}>
+                  Export as Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportValidOnly}>
+                  Export valid rows only (Excel)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
