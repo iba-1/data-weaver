@@ -25,4 +25,4 @@ export { TARGET_FIELDS } from '@/lib/import-wizard/types';
 // Re-export utilities for advanced usage
 export { parseFile, getFileTypeFromName, isValidFileType } from '@/lib/import-wizard/parser';
 export { autoMatchColumns, updateMapping, getUnmappedTargetFields } from '@/lib/import-wizard/matcher';
-export { validateRows, getValidationSummary } from '@/lib/import-wizard/validator';
+export { validateRows, revalidateRow, getValidationSummary } from '@/lib/import-wizard/validator';

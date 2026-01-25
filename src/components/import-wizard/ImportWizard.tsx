@@ -128,6 +128,10 @@ export function ImportWizard({
     setState((s) => ({ ...s, step: 'mapping' }));
   }, []);
 
+  const handleRowsChange = useCallback((updatedRows: typeof state.validatedRows) => {
+    setState((s) => ({ ...s, validatedRows: updatedRows }));
+  }, []);
+
   const handleComplete = useCallback(() => {
     const validRows = state.validatedRows
       .filter((r) => r.isValid)
@@ -166,6 +170,8 @@ export function ImportWizard({
             validatedRows={state.validatedRows}
             onComplete={handleComplete}
             onBack={handleBack}
+            onRowsChange={handleRowsChange}
+            requiredFields={requiredFields}
             isLoading={state.isLoading}
           />
         )}

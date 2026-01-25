@@ -15,6 +15,63 @@ export function validateRows(
   return rows.map((row, index) => validateRow(row, mappings, requiredFields, index));
 }
 
+export function revalidateRow(
+  row: RowValidation,
+  requiredFields: TargetField[] = ['title', 'artist']
+): RowValidation {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationWarning[] = [];
+  const data = row.data;
+
+  // Check required fields
+  for (const field of requiredFields) {
+    const value = data[field];
+    if (value === null || value === undefined || value === '') {
+      errors.push({
+        field,
+        message: `${getFieldLabel(field)} is required`,
+      });
+    }
+  }
+
+  // Check for potential issues (warnings)
+  if (data.valueAmount !== null && data.valueCurrency === null) {
+    warnings.push({
+      field: 'valueCurrency',
+      message: 'Value amount provided without currency',
+    });
+  }
+
+  if (data.valueCurrency !== null && data.valueAmount === null) {
+    warnings.push({
+      field: 'valueAmount',
+      message: 'Currency provided without value amount',
+    });
+  }
+
+  // Check for suspicious numeric values in text fields
+  if (data.title && /^\d+$/.test(data.title.toString())) {
+    warnings.push({
+      field: 'title',
+      message: 'Title appears to be numeric only',
+    });
+  }
+
+  if (data.artist && /^\d+$/.test(data.artist.toString())) {
+    warnings.push({
+      field: 'artist',
+      message: 'Artist appears to be numeric only',
+    });
+  }
+
+  return {
+    ...row,
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
 function validateRow(
   row: Record<string, unknown>,
   mappings: ColumnMapping[],
