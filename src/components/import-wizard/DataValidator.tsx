@@ -41,6 +41,7 @@ import {
 import { EditableCell } from './EditableCell';
 import { SearchBar } from './SearchBar';
 import { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
+import { AiEditChat } from './AiEditChat';
 
 interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   validatedRows: RowValidation<TRecord>[];
@@ -255,6 +256,37 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
     [fields, requiredFields, setLocalRows]
   );
 
+  // AI Edit handler
+  const handleAiEdits = useCallback(
+    (edits: Array<{ rowIndex: number; changes: Record<string, unknown> }>) => {
+      setLocalRows((prevRows) => {
+        const updatedRows = prevRows.map((row) => {
+          const edit = edits.find((e) => e.rowIndex === row.rowIndex);
+          if (!edit) return row;
+
+          const updatedData = { ...(row.data as Record<string, unknown>) };
+
+          // Apply each change
+          Object.entries(edit.changes).forEach(([key, value]) => {
+            const field = fields.find((f) => f.key === key);
+            if (field?.type === 'number' && typeof value === 'string') {
+              const cleaned = value.replace(/[,$€£¥\s]/g, '');
+              const parsed = parseFloat(cleaned);
+              updatedData[key] = isNaN(parsed) ? null : parsed;
+            } else {
+              updatedData[key] = value;
+            }
+          });
+
+          return revalidateRow({ ...row, data: updatedData as TRecord }, { fields, requiredFields });
+        });
+
+        return updatedRows;
+      });
+    },
+    [fields, requiredFields, setLocalRows]
+  );
+
   // Export handlers
   const handleExportCSV = useCallback(() => {
     exportData(localRows, fields, { format: 'csv', filename: 'data-export' });
@@ -358,7 +390,7 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
         </div>
 
         {/* Toolbar */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between relative">
           <div className="flex items-center gap-2 flex-1">
             <SearchBar
               value={searchQuery}
@@ -367,6 +399,11 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
               className="flex-1 max-w-sm"
             />
             <FindReplaceDialog onReplace={handleFindReplace} getPreviewCount={getPreviewCount} fields={fields} />
+            <AiEditChat
+              rows={localRows}
+              fields={fields}
+              onApplyEdits={handleAiEdits}
+            />
           </div>
 
           {/* Undo/Redo & Export */}

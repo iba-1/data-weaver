@@ -46,6 +46,9 @@ export { SearchBar } from './SearchBar';
 /** Find and replace dialog with options */
 export { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
 
+/** AI-powered inline chat for bulk data edits */
+export { AiEditChat } from './AiEditChat';
+
 /** Editable cell with keyboard support */
 export { EditableCell } from './EditableCell';
 
