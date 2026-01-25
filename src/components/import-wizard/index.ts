@@ -37,3 +37,4 @@ export { TARGET_FIELDS, ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types'
 export { parseFile, getFileTypeFromName, isValidFileType } from '@/lib/import-wizard/parser';
 export { autoMatchColumns, updateMapping, getUnmappedTargetFields } from '@/lib/import-wizard/matcher';
 export { validateRows, revalidateRow, getValidationSummary } from '@/lib/import-wizard/validator';
+export { exportData, exportToBlob, type ExportOptions } from '@/lib/import-wizard/exporter';
