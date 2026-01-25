@@ -16,7 +16,7 @@ import type {
   WizardStep,
 } from '@/lib/import-wizard/types';
 import { cn } from '@/lib/utils';
-import { Check, FileSpreadsheet, GitCompare, Table } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 const INITIAL_STATE: ImportWizardState = {
   step: 'upload',
@@ -185,40 +185,56 @@ interface StepIndicatorProps {
 }
 
 function StepIndicator({ currentStep }: StepIndicatorProps) {
-  const steps: Array<{ key: WizardStep; label: string; icon: React.ReactNode }> = [
-    { key: 'upload', label: 'Upload', icon: <FileSpreadsheet className="h-4 w-4" /> },
-    { key: 'mapping', label: 'Map Columns', icon: <GitCompare className="h-4 w-4" /> },
-    { key: 'validation', label: 'Validate', icon: <Table className="h-4 w-4" /> },
+  const steps: Array<{ key: WizardStep; label: string; number: number }> = [
+    { key: 'upload', label: 'Upload', number: 1 },
+    { key: 'mapping', label: 'Match columns', number: 2 },
+    { key: 'validation', label: 'Review and edit', number: 3 },
   ];
 
   const currentIndex = steps.findIndex((s) => s.key === currentStep);
 
   return (
-    <div className="flex items-center justify-center gap-2">
+    <div className="flex items-center justify-center gap-6">
       {steps.map((step, index) => {
         const isComplete = index < currentIndex;
         const isCurrent = index === currentIndex;
+        const isActive = isComplete || isCurrent;
 
         return (
           <React.Fragment key={step.key}>
             {index > 0 && (
               <div
                 className={cn(
-                  'h-0.5 w-12 transition-colors',
-                  isComplete ? 'bg-primary' : 'bg-border'
+                  'h-px w-8 transition-colors',
+                  isActive ? 'bg-[hsl(var(--step-active))]' : 'bg-border'
                 )}
               />
             )}
-            <div
-              className={cn(
-                'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all',
-                isCurrent && 'bg-primary text-primary-foreground',
-                isComplete && 'bg-primary/20 text-primary',
-                !isCurrent && !isComplete && 'bg-muted text-muted-foreground'
-              )}
-            >
-              {isComplete ? <Check className="h-4 w-4" /> : step.icon}
-              <span className="hidden sm:inline">{step.label}</span>
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold transition-all',
+                  isActive
+                    ? 'bg-[hsl(var(--step-active))] text-white'
+                    : 'bg-muted text-[hsl(var(--step-inactive))]'
+                )}
+              >
+                {isComplete ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  step.number
+                )}
+              </div>
+              <span
+                className={cn(
+                  'text-sm font-medium transition-colors',
+                  isActive
+                    ? 'text-[hsl(var(--step-active))]'
+                    : 'text-[hsl(var(--step-inactive))]'
+                )}
+              >
+                {step.label}
+              </span>
             </div>
           </React.Fragment>
         );
