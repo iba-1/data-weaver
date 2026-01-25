@@ -1,13 +1,16 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, FileSpreadsheet, FileText, AlertCircle } from 'lucide-react';
+import { Upload, AlertCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isValidFileType, getFileTypeFromName } from '@/lib/import-wizard/parser';
+import { isValidFileType } from '@/lib/import-wizard/parser';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { TARGET_FIELDS } from '@/lib/import-wizard/types';
 
 interface FileUploaderProps {
   onFileSelected: (file: File) => void;
   isLoading?: boolean;
   error?: string | null;
+  helpText?: string;
   className?: string;
 }
 
@@ -15,6 +18,7 @@ export function FileUploader({
   onFileSelected,
   isLoading = false,
   error = null,
+  helpText = 'Drag and drop the sample file. You can customize this help text. It even supports HTML so you can style it, embed videos, etc.',
   className,
 }: FileUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -78,11 +82,13 @@ export function FileUploader({
 
   if (isLoading) {
     return (
-      <div className={cn('p-8', className)}>
-        <div className="flex flex-col items-center gap-4">
-          <Skeleton className="h-16 w-16 rounded-full" />
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-64" />
+      <div className={cn('space-y-4', className)}>
+        <Skeleton className="h-12 w-full rounded-lg" />
+        <div className="rounded-xl border-2 border-dashed p-8">
+          <div className="flex flex-col items-center gap-4">
+            <Skeleton className="h-10 w-32 rounded-lg" />
+            <Skeleton className="h-4 w-48" />
+          </div>
         </div>
       </div>
     );
@@ -91,65 +97,97 @@ export function FileUploader({
   const displayError = error || dragError;
 
   return (
-    <div
-      className={cn(
-        'dropzone p-8 cursor-pointer',
-        isDragActive && 'active',
-        displayError && 'border-destructive',
-        className
-      )}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      onClick={() => document.getElementById('file-input')?.click()}
-    >
-      <input
-        id="file-input"
-        type="file"
-        accept=".csv,.xlsx,.xls,.pdf"
-        onChange={handleFileInput}
-        className="hidden"
-      />
+    <div className={cn('space-y-4', className)}>
+      {/* Info banner */}
+      <div className="flex items-start gap-3 rounded-lg bg-[hsl(var(--info-bg))] px-4 py-3 text-[hsl(var(--info-foreground))]">
+        <Info className="h-5 w-5 mt-0.5 flex-shrink-0" />
+        <p className="text-sm">{helpText}</p>
+      </div>
 
-      <div className="flex flex-col items-center gap-4 text-center">
-        <div
-          className={cn(
-            'flex h-16 w-16 items-center justify-center rounded-full transition-colors',
-            isDragActive
-              ? 'bg-primary/20 text-primary'
-              : 'bg-muted text-muted-foreground'
-          )}
-        >
-          <Upload className="h-8 w-8" />
-        </div>
-
-        <div className="space-y-1">
-          <h3 className="text-lg font-semibold text-foreground">
-            {isDragActive ? 'Drop your file here' : 'Upload your file'}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Drag and drop or click to browse
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <FileSpreadsheet className="h-4 w-4" />
-            CSV, Excel
-          </span>
-          <span className="flex items-center gap-1">
-            <FileText className="h-4 w-4" />
-            PDF
-          </span>
-        </div>
-
-        {displayError && (
-          <div className="flex items-center gap-2 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4" />
-            {displayError}
-          </div>
+      {/* Drop zone with skeleton table background */}
+      <div
+        className={cn(
+          'relative rounded-xl border-2 border-dashed transition-all duration-200 cursor-pointer overflow-hidden',
+          'bg-[hsl(var(--dropzone-bg))] border-[hsl(var(--dropzone-border))]',
+          isDragActive && 'bg-[hsl(var(--dropzone-active))] border-[hsl(var(--step-active))] scale-[1.01]',
+          !isDragActive && 'hover:bg-[hsl(var(--dropzone-hover))] hover:border-[hsl(var(--step-active))]',
+          displayError && 'border-destructive'
         )}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={() => document.getElementById('file-input')?.click()}
+      >
+        <input
+          id="file-input"
+          type="file"
+          accept=".csv,.xlsx,.xls,.pdf"
+          onChange={handleFileInput}
+          className="hidden"
+        />
+
+        {/* Skeleton table preview */}
+        <div className="pointer-events-none select-none px-6 pt-6 pb-2 opacity-40">
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  {TARGET_FIELDS.map((field) => (
+                    <th
+                      key={field.key}
+                      className="px-4 py-2 text-left font-medium text-muted-foreground"
+                    >
+                      {field.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[1, 2, 3].map((row) => (
+                  <tr key={row} className="border-b last:border-0">
+                    {TARGET_FIELDS.map((field) => (
+                      <td key={field.key} className="px-4 py-2">
+                        <Skeleton className="h-4 w-16" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Drop zone content */}
+        <div className="relative flex flex-col items-center gap-4 px-8 pb-10 pt-4 text-center">
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium text-foreground">
+              {isDragActive ? 'Drop your file here' : 'Drag and drop a file here'}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              You can upload: .csv, .tsv, .txt, .xls, .xlsx
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            size="lg"
+            className="bg-[hsl(var(--step-active))] hover:bg-[hsl(var(--step-active))]/90 text-white"
+            onClick={(e) => {
+              e.stopPropagation();
+              document.getElementById('file-input')?.click();
+            }}
+          >
+            Choose a file
+          </Button>
+
+          {displayError && (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {displayError}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

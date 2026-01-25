@@ -43,13 +43,20 @@
     --radius: 0.5rem;
 
     /* Import Wizard specific tokens */
-    --dropzone-bg: 220 14% 98%;
-    --dropzone-border: 220 13% 85%;
-    --dropzone-hover: 187 80% 95%;
-    --dropzone-active: 187 80% 90%;
+    --dropzone-bg: 210 40% 98%;
+    --dropzone-border: 210 30% 88%;
+    --dropzone-hover: 210 50% 96%;
+    --dropzone-active: 210 60% 94%;
+    
+    --info-bg: 210 100% 97%;
+    --info-border: 210 100% 85%;
+    --info-foreground: 210 100% 40%;
+    
+    --step-inactive: 220 10% 60%;
+    --step-active: 210 100% 45%;
     
     --mapping-source: 220 14% 96%;
-    --mapping-target: 187 30% 95%;
+    --mapping-target: 210 30% 95%;
     --mapping-matched: 142 50% 95%;
     
     --validation-valid: 142 76% 95%;
@@ -101,13 +108,20 @@
     --input: 220 20% 18%;
     --ring: 187 80% 50%;
 
-    --dropzone-bg: 220 20% 10%;
-    --dropzone-border: 220 20% 20%;
-    --dropzone-hover: 187 50% 15%;
-    --dropzone-active: 187 50% 20%;
+    --dropzone-bg: 220 20% 12%;
+    --dropzone-border: 220 20% 22%;
+    --dropzone-hover: 210 50% 18%;
+    --dropzone-active: 210 50% 22%;
+    
+    --info-bg: 210 50% 15%;
+    --info-border: 210 50% 30%;
+    --info-foreground: 210 100% 70%;
+    
+    --step-inactive: 220 10% 50%;
+    --step-active: 210 100% 60%;
     
     --mapping-source: 220 20% 15%;
-    --mapping-target: 187 30% 15%;
+    --mapping-target: 210 30% 18%;
     --mapping-matched: 142 30% 15%;
     
     --validation-valid: 142 40% 15%;
