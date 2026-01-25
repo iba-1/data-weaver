@@ -3,6 +3,9 @@ export { ImportWizard } from './ImportWizard';
 export { FileUploader } from './FileUploader';
 export { ColumnMapper } from './ColumnMapper';
 export { DataValidator } from './DataValidator';
+export { SearchBar } from './SearchBar';
+export { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
+export { EditableCell } from './EditableCell';
 
 // Re-export types
 export type {
