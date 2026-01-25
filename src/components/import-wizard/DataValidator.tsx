@@ -366,7 +366,7 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
               matchCount={searchQuery ? searchMatchCount : undefined}
               className="flex-1 max-w-sm"
             />
-            <FindReplaceDialog onReplace={handleFindReplace} getPreviewCount={getPreviewCount} />
+            <FindReplaceDialog onReplace={handleFindReplace} getPreviewCount={getPreviewCount} fields={fields} />
           </div>
 
           {/* Undo/Redo & Export */}

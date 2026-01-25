@@ -1,0 +1,194 @@
+/**
+ * React Import Wizard - Styles
+ * 
+ * Include this CSS file in your application or use it as a reference
+ * for the CSS custom properties the library expects.
+ */
+
+/* ============================================================
+   CSS Custom Properties (Design Tokens)
+   ============================================================
+   
+   The library uses semantic CSS custom properties for theming.
+   Override these values to match your application's design system.
+*/
+
+:root {
+  /* Core Colors */
+  --background: 0 0% 100%;
+  --foreground: 220 20% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 20% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 20% 10%;
+  
+  /* Primary (used for buttons, focus states) */
+  --primary: 187 80% 42%;
+  --primary-foreground: 0 0% 100%;
+  
+  /* Secondary (muted backgrounds) */
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 220 20% 10%;
+  
+  /* Muted (subtle text, backgrounds) */
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 10% 46%;
+  
+  /* Accent */
+  --accent: 220 14% 96%;
+  --accent-foreground: 220 20% 10%;
+  
+  /* Semantic Colors */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+  
+  /* Borders & Inputs */
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 187 80% 42%;
+  --radius: 0.5rem;
+  
+  /* ============================================================
+     Import Wizard Specific Tokens
+     ============================================================ */
+  
+  /* Dropzone (file upload area) */
+  --dropzone-bg: 210 40% 98%;
+  --dropzone-border: 210 30% 88%;
+  --dropzone-hover: 210 50% 96%;
+  --dropzone-active: 210 60% 94%;
+  
+  /* Info banner */
+  --info-bg: 210 100% 97%;
+  --info-border: 210 100% 85%;
+  --info-foreground: 210 100% 40%;
+  
+  /* Step indicator */
+  --step-inactive: 220 10% 60%;
+  --step-active: 210 100% 45%;
+  
+  /* Column mapping */
+  --mapping-source: 220 14% 96%;
+  --mapping-target: 210 30% 95%;
+  --mapping-matched: 142 50% 95%;
+  
+  /* Validation rows */
+  --validation-valid: 142 76% 95%;
+  --validation-warning: 38 92% 95%;
+  --validation-error: 0 72% 95%;
+}
+
+/* ============================================================
+   Dark Mode Support
+   ============================================================ */
+
+.dark {
+  --background: 220 20% 8%;
+  --foreground: 220 14% 96%;
+  --card: 220 20% 10%;
+  --card-foreground: 220 14% 96%;
+  --popover: 220 20% 10%;
+  --popover-foreground: 220 14% 96%;
+  
+  --primary: 187 80% 50%;
+  --primary-foreground: 220 20% 8%;
+  
+  --secondary: 220 20% 15%;
+  --secondary-foreground: 220 14% 96%;
+  
+  --muted: 220 20% 15%;
+  --muted-foreground: 220 10% 60%;
+  
+  --accent: 220 20% 15%;
+  --accent-foreground: 220 14% 96%;
+  
+  --destructive: 0 72% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 76% 40%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 45%;
+  --warning-foreground: 0 0% 0%;
+  
+  --border: 220 20% 18%;
+  --input: 220 20% 18%;
+  --ring: 187 80% 50%;
+  
+  /* Wizard tokens - dark */
+  --dropzone-bg: 220 20% 12%;
+  --dropzone-border: 220 20% 22%;
+  --dropzone-hover: 210 50% 18%;
+  --dropzone-active: 210 50% 22%;
+  
+  --info-bg: 210 50% 15%;
+  --info-border: 210 50% 30%;
+  --info-foreground: 210 100% 70%;
+  
+  --step-inactive: 220 10% 50%;
+  --step-active: 210 100% 60%;
+  
+  --mapping-source: 220 20% 15%;
+  --mapping-target: 210 30% 18%;
+  --mapping-matched: 142 30% 15%;
+  
+  --validation-valid: 142 40% 15%;
+  --validation-warning: 38 50% 15%;
+  --validation-error: 0 40% 15%;
+}
+
+/* ============================================================
+   Component Styles
+   ============================================================ */
+
+/* Dropzone */
+.dropzone {
+  background: hsl(var(--dropzone-bg));
+  border: 2px dashed hsl(var(--dropzone-border));
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.dropzone:hover {
+  background: hsl(var(--dropzone-hover));
+  border-color: hsl(var(--primary));
+}
+
+.dropzone.active {
+  background: hsl(var(--dropzone-active));
+  border-color: hsl(var(--primary));
+  transform: scale(1.02);
+}
+
+/* Mapping cards */
+.mapping-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.mapping-card:hover {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.mapping-matched {
+  background: hsl(var(--mapping-matched));
+  border-color: hsl(var(--success) / 0.3);
+}
+
+/* Validation rows */
+.validation-row-valid {
+  background: hsl(var(--validation-valid));
+}
+
+.validation-row-warning {
+  background: hsl(var(--validation-warning));
+}
+
+.validation-row-error {
+  background: hsl(var(--validation-error));
+}

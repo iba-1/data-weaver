@@ -1,9 +1,26 @@
+/**
+ * React Import Wizard - Type Definitions
+ * 
+ * @packageDocumentation
+ * @module react-import-wizard/types
+ */
+
 // ============================================================
 // CONFIGURABLE IMPORT WIZARD TYPES
 // ============================================================
 
 /**
- * Configuration for a single target field/column
+ * Configuration for a single target field/column.
+ * 
+ * @typeParam TKey - String literal type for field keys
+ * 
+ * @example
+ * ```typescript
+ * const fields: FieldConfig<'name' | 'email'>[] = [
+ *   { key: 'name', label: 'Full Name', type: 'string', required: true },
+ *   { key: 'email', label: 'Email Address', type: 'string' },
+ * ];
+ * ```
  */
 export interface FieldConfig<TKey extends string = string> {
   /** Unique identifier for this field */

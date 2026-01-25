@@ -21,26 +21,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { TARGET_FIELDS, type TargetField } from '@/lib/import-wizard/types';
-
-interface FindReplaceDialogProps {
-  onReplace: (find: string, replace: string, options: ReplaceOptions) => number;
-  getPreviewCount: (find: string, options: ReplaceOptions) => number;
-}
+import type { FieldConfig } from '@/lib/import-wizard/types';
 
 export interface ReplaceOptions {
   caseSensitive: boolean;
   wholeWord: boolean;
-  selectedColumn: TargetField | 'all';
+  selectedColumn: string;
 }
 
-export function FindReplaceDialog({ onReplace, getPreviewCount }: FindReplaceDialogProps) {
+interface FindReplaceDialogProps<TKey extends string = string> {
+  onReplace: (find: string, replace: string, options: ReplaceOptions) => number;
+  getPreviewCount: (find: string, options: ReplaceOptions) => number;
+  fields?: FieldConfig<TKey>[];
+}
+
+// Default fields for backwards compatibility
+const DEFAULT_FIELDS: FieldConfig[] = [
+  { key: 'title', label: 'Title', type: 'string' },
+  { key: 'artist', label: 'Artist', type: 'string' },
+  { key: 'period', label: 'Period', type: 'string' },
+  { key: 'technique', label: 'Technique', type: 'string' },
+  { key: 'valueAmount', label: 'Value Amount', type: 'number' },
+  { key: 'valueCurrency', label: 'Value Currency', type: 'string' },
+];
+
+export function FindReplaceDialog<TKey extends string = string>({ 
+  onReplace, 
+  getPreviewCount,
+  fields = DEFAULT_FIELDS as FieldConfig<TKey>[],
+}: FindReplaceDialogProps<TKey>) {
   const [open, setOpen] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
-  const [selectedColumn, setSelectedColumn] = useState<TargetField | 'all'>('all');
+  const [selectedColumn, setSelectedColumn] = useState<string>('all');
   const [lastReplaceCount, setLastReplaceCount] = useState<number | null>(null);
 
   const options: ReplaceOptions = {
@@ -123,13 +138,13 @@ export function FindReplaceDialog({ onReplace, getPreviewCount }: FindReplaceDia
           {/* Column filter */}
           <div className="space-y-2">
             <Label>In column</Label>
-            <Select value={selectedColumn} onValueChange={(v) => setSelectedColumn(v as TargetField | 'all')}>
+            <Select value={selectedColumn} onValueChange={setSelectedColumn}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All columns</SelectItem>
-                {TARGET_FIELDS.map((field) => (
+                {fields.map((field) => (
                   <SelectItem key={field.key} value={field.key}>
                     {field.label}
                   </SelectItem>
