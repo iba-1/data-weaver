@@ -9,6 +9,14 @@ export { EditableCell } from './EditableCell';
 
 // Re-export types
 export type {
+  // New configurable types
+  FieldConfig,
+  DataRecord,
+  ValidationResult,
+  RowParseEvent,
+  RowCompleteEvent,
+  
+  // Legacy types (backwards compatible)
   ArtworkRecord,
   TargetField,
   TargetFieldConfig,
@@ -23,7 +31,7 @@ export type {
   ImportWizardProps,
 } from '@/lib/import-wizard/types';
 
-export { TARGET_FIELDS } from '@/lib/import-wizard/types';
+export { TARGET_FIELDS, ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types';
 
 // Re-export utilities for advanced usage
 export { parseFile, getFileTypeFromName, isValidFileType } from '@/lib/import-wizard/parser';

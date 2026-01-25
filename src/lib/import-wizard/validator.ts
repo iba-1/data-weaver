@@ -1,69 +1,137 @@
 import type {
   ArtworkRecord,
   ColumnMapping,
+  FieldConfig,
   RowValidation,
   TargetField,
   ValidationError,
+  ValidationResult,
   ValidationWarning,
 } from './types';
+import { TARGET_FIELDS } from './types';
 
-export function validateRows(
+/**
+ * Validate all rows using the column mappings
+ */
+export function validateRows<TRecord = ArtworkRecord, TKey extends string = TargetField>(
   rows: Record<string, unknown>[],
-  mappings: ColumnMapping[],
-  requiredFields: TargetField[] = ['title', 'artist']
-): RowValidation[] {
-  return rows.map((row, index) => validateRow(row, mappings, requiredFields, index));
+  mappings: ColumnMapping<TKey>[],
+  options: {
+    fields?: FieldConfig<TKey>[];
+    requiredFields?: TKey[];
+    customValidator?: (data: TRecord, rowIndex: number) => ValidationResult[];
+    onRowParse?: (rowIndex: number, rawData: Record<string, unknown>, parsedData: TRecord) => TRecord | void;
+  } = {}
+): RowValidation<TRecord>[] {
+  const { fields, requiredFields, customValidator, onRowParse } = options;
+  
+  return rows.map((row, index) => {
+    const result = validateRow<TRecord, TKey>(row, mappings, {
+      fields,
+      requiredFields,
+      customValidator,
+      rowIndex: index,
+    });
+    
+    // Allow transformation via onRowParse
+    if (onRowParse) {
+      const transformed = onRowParse(index, row, result.data);
+      if (transformed) {
+        result.data = transformed;
+      }
+    }
+    
+    return result;
+  });
 }
 
-export function revalidateRow(
-  row: RowValidation,
-  requiredFields: TargetField[] = ['title', 'artist']
-): RowValidation {
+/**
+ * Revalidate a single row (after editing)
+ */
+export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = TargetField>(
+  row: RowValidation<TRecord>,
+  options: {
+    fields?: FieldConfig<TKey>[];
+    requiredFields?: TKey[];
+    customValidator?: (data: TRecord, rowIndex: number) => ValidationResult[];
+  } = {}
+): RowValidation<TRecord> {
+  const { fields, requiredFields = ['title', 'artist'] as TKey[], customValidator } = options;
+  
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
-  const data = row.data;
-
+  const data = row.data as Record<string, unknown>;
+  
+  // Use provided fields or infer from data
+  const fieldKeys = fields?.map((f) => f.key) || Object.keys(data);
+  
   // Check required fields
-  for (const field of requiredFields) {
-    const value = data[field];
+  for (const fieldKey of requiredFields) {
+    const value = data[fieldKey];
     if (value === null || value === undefined || value === '') {
+      const fieldConfig = fields?.find((f) => f.key === fieldKey);
       errors.push({
-        field,
-        message: `${getFieldLabel(field)} is required`,
+        field: fieldKey,
+        message: `${fieldConfig?.label || fieldKey} is required`,
       });
     }
   }
-
-  // Check for potential issues (warnings)
-  if (data.valueAmount !== null && data.valueCurrency === null) {
-    warnings.push({
-      field: 'valueCurrency',
-      message: 'Value amount provided without currency',
-    });
+  
+  // Run field-level validators
+  if (fields) {
+    for (const field of fields) {
+      if (field.validate) {
+        const result = field.validate(data[field.key], data);
+        if (result) {
+          if (result.type === 'error') {
+            errors.push({ field: field.key, message: result.message });
+          } else {
+            warnings.push({ field: field.key, message: result.message });
+          }
+        }
+      }
+    }
+  } else {
+    // Legacy artwork-specific warnings
+    const artworkData = data as unknown as ArtworkRecord;
+    if (artworkData.valueAmount !== null && artworkData.valueCurrency === null) {
+      warnings.push({
+        field: 'valueCurrency',
+        message: 'Value amount provided without currency',
+      });
+    }
+    if (artworkData.valueCurrency !== null && artworkData.valueAmount === null) {
+      warnings.push({
+        field: 'valueAmount',
+        message: 'Currency provided without value amount',
+      });
+    }
+    if (artworkData.title && /^\d+$/.test(String(artworkData.title))) {
+      warnings.push({
+        field: 'title',
+        message: 'Title appears to be numeric only',
+      });
+    }
+    if (artworkData.artist && /^\d+$/.test(String(artworkData.artist))) {
+      warnings.push({
+        field: 'artist',
+        message: 'Artist appears to be numeric only',
+      });
+    }
   }
-
-  if (data.valueCurrency !== null && data.valueAmount === null) {
-    warnings.push({
-      field: 'valueAmount',
-      message: 'Currency provided without value amount',
-    });
+  
+  // Run custom row validator
+  if (customValidator) {
+    const customResults = customValidator(row.data, row.rowIndex);
+    for (const result of customResults) {
+      if (result.type === 'error') {
+        errors.push({ field: '', message: result.message });
+      } else {
+        warnings.push({ field: '', message: result.message });
+      }
+    }
   }
-
-  // Check for suspicious numeric values in text fields
-  if (data.title && /^\d+$/.test(data.title.toString())) {
-    warnings.push({
-      field: 'title',
-      message: 'Title appears to be numeric only',
-    });
-  }
-
-  if (data.artist && /^\d+$/.test(data.artist.toString())) {
-    warnings.push({
-      field: 'artist',
-      message: 'Artist appears to be numeric only',
-    });
-  }
-
+  
   return {
     ...row,
     isValid: errors.length === 0,
@@ -72,82 +140,122 @@ export function revalidateRow(
   };
 }
 
-function validateRow(
+function validateRow<TRecord, TKey extends string>(
   row: Record<string, unknown>,
-  mappings: ColumnMapping[],
-  requiredFields: TargetField[],
-  rowIndex: number
-): RowValidation {
+  mappings: ColumnMapping<TKey>[],
+  options: {
+    fields?: FieldConfig<TKey>[];
+    requiredFields?: TKey[];
+    customValidator?: (data: TRecord, rowIndex: number) => ValidationResult[];
+    rowIndex: number;
+  }
+): RowValidation<TRecord> {
+  const { fields, requiredFields = ['title', 'artist'] as TKey[], customValidator, rowIndex } = options;
+  
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
   
-  // Build the artwork record from mappings
-  const data: ArtworkRecord = {
-    title: null,
-    artist: null,
-    period: null,
-    technique: null,
-    valueAmount: null,
-    valueCurrency: null,
-  };
+  // Build the record from mappings
+  const data: Record<string, unknown> = {};
   
+  // Initialize all fields with null
+  if (fields) {
+    for (const field of fields) {
+      data[field.key] = null;
+    }
+  } else {
+    // Legacy artwork record
+    data.title = null;
+    data.artist = null;
+    data.period = null;
+    data.technique = null;
+    data.valueAmount = null;
+    data.valueCurrency = null;
+  }
+  
+  // Map values from source columns
   for (const mapping of mappings) {
     if (mapping.targetField) {
       const rawValue = row[mapping.sourceColumn];
-      const value = processValue(rawValue, mapping.targetField);
+      const field = fields?.find((f) => f.key === mapping.targetField);
+      const value = processValue(rawValue, field);
       
-      if (mapping.targetField === 'valueAmount') {
-        data.valueAmount = value as number | null;
-      } else {
-        data[mapping.targetField] = value as string | null;
-      }
+      // Apply transform if defined
+      data[mapping.targetField] = field?.transform ? field.transform(value) : value;
     }
   }
   
   // Check required fields
-  for (const field of requiredFields) {
-    const value = data[field];
+  for (const fieldKey of requiredFields) {
+    const value = data[fieldKey];
     if (value === null || value === undefined || value === '') {
+      const fieldConfig = fields?.find((f) => f.key === fieldKey);
+      const legacyField = TARGET_FIELDS.find((f) => f.key === fieldKey);
       errors.push({
-        field,
-        message: `${getFieldLabel(field)} is required`,
+        field: fieldKey,
+        message: `${fieldConfig?.label || legacyField?.label || fieldKey} is required`,
       });
     }
   }
   
-  // Check for potential issues (warnings)
-  if (data.valueAmount !== null && data.valueCurrency === null) {
-    warnings.push({
-      field: 'valueCurrency',
-      message: 'Value amount provided without currency',
-    });
+  // Run field-level validators
+  if (fields) {
+    for (const field of fields) {
+      if (field.validate) {
+        const result = field.validate(data[field.key], data);
+        if (result) {
+          if (result.type === 'error') {
+            errors.push({ field: field.key, message: result.message });
+          } else {
+            warnings.push({ field: field.key, message: result.message });
+          }
+        }
+      }
+    }
+  } else {
+    // Legacy artwork-specific warnings
+    const artworkData = data as unknown as ArtworkRecord;
+    if (artworkData.valueAmount !== null && artworkData.valueCurrency === null) {
+      warnings.push({
+        field: 'valueCurrency',
+        message: 'Value amount provided without currency',
+      });
+    }
+    if (artworkData.valueCurrency !== null && artworkData.valueAmount === null) {
+      warnings.push({
+        field: 'valueAmount',
+        message: 'Currency provided without value amount',
+      });
+    }
+    if (artworkData.title && /^\d+$/.test(String(artworkData.title))) {
+      warnings.push({
+        field: 'title',
+        message: 'Title appears to be numeric only',
+      });
+    }
+    if (artworkData.artist && /^\d+$/.test(String(artworkData.artist))) {
+      warnings.push({
+        field: 'artist',
+        message: 'Artist appears to be numeric only',
+      });
+    }
   }
   
-  if (data.valueCurrency !== null && data.valueAmount === null) {
-    warnings.push({
-      field: 'valueAmount',
-      message: 'Currency provided without value amount',
-    });
-  }
-  
-  // Check for suspicious numeric values in text fields
-  if (data.title && /^\d+$/.test(data.title.toString())) {
-    warnings.push({
-      field: 'title',
-      message: 'Title appears to be numeric only',
-    });
-  }
-  
-  if (data.artist && /^\d+$/.test(data.artist.toString())) {
-    warnings.push({
-      field: 'artist',
-      message: 'Artist appears to be numeric only',
-    });
+  // Run custom row validator
+  if (customValidator) {
+    const customResults = customValidator(data as TRecord, rowIndex);
+    for (const result of customResults) {
+      if (result.type === 'error') {
+        errors.push({ field: '', message: result.message });
+      } else {
+        warnings.push({ field: '', message: result.message });
+      }
+    }
   }
   
   return {
     rowIndex,
-    data,
+    data: data as TRecord,
     originalData: row,
     isValid: errors.length === 0,
     errors,
@@ -157,37 +265,41 @@ function validateRow(
 
 function processValue(
   value: unknown,
-  targetField: TargetField
-): string | number | null {
+  field?: FieldConfig
+): unknown {
   if (value === null || value === undefined || value === '') {
     return null;
   }
   
   const stringValue = String(value).trim();
   
-  if (targetField === 'valueAmount') {
-    // Parse as number, removing common formatting
-    const cleaned = stringValue.replace(/[,$€£¥\s]/g, '');
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? null : parsed;
-  }
+  const type = field?.type || 'string';
   
-  return stringValue;
+  switch (type) {
+    case 'number': {
+      const cleaned = stringValue.replace(/[,$€£¥\s]/g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? null : parsed;
+    }
+    case 'boolean': {
+      const lower = stringValue.toLowerCase();
+      if (['true', 'yes', '1', 'on'].includes(lower)) return true;
+      if (['false', 'no', '0', 'off'].includes(lower)) return false;
+      return null;
+    }
+    case 'date': {
+      const date = new Date(stringValue);
+      return isNaN(date.getTime()) ? null : date;
+    }
+    default:
+      return stringValue;
+  }
 }
 
-function getFieldLabel(field: TargetField): string {
-  const labels: Record<TargetField, string> = {
-    title: 'Title',
-    artist: 'Artist',
-    period: 'Period',
-    technique: 'Technique',
-    valueAmount: 'Value Amount',
-    valueCurrency: 'Value Currency',
-  };
-  return labels[field];
-}
-
-export function getValidationSummary(validations: RowValidation[]): {
+/**
+ * Get validation summary statistics
+ */
+export function getValidationSummary<TRecord>(validations: RowValidation<TRecord>[]): {
   total: number;
   valid: number;
   withErrors: number;

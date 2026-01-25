@@ -9,8 +9,7 @@ import {
   Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { RowValidation, TargetField, ArtworkRecord } from '@/lib/import-wizard/types';
-import { TARGET_FIELDS } from '@/lib/import-wizard/types';
+import type { RowValidation, FieldConfig } from '@/lib/import-wizard/types';
 import { getValidationSummary, revalidateRow } from '@/lib/import-wizard/validator';
 import {
   Table,
@@ -32,28 +31,30 @@ import { EditableCell } from './EditableCell';
 import { SearchBar } from './SearchBar';
 import { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
 
-interface DataValidatorProps {
-  validatedRows: RowValidation[];
+interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends string = string> {
+  validatedRows: RowValidation<TRecord>[];
+  fields: FieldConfig<TKey>[];
+  requiredFields?: TKey[];
   onComplete: () => void;
   onBack: () => void;
-  onRowsChange?: (rows: RowValidation[]) => void;
-  requiredFields?: TargetField[];
+  onRowsChange?: (rows: RowValidation<TRecord>[]) => void;
   isLoading?: boolean;
   className?: string;
 }
 
 const ROWS_PER_PAGE = 10;
 
-export function DataValidator({
+export function DataValidator<TRecord = Record<string, unknown>, TKey extends string = string>({
   validatedRows,
+  fields,
+  requiredFields = [],
   onComplete,
   onBack,
   onRowsChange,
-  requiredFields = ['title', 'artist'],
   isLoading = false,
   className,
-}: DataValidatorProps) {
-  const [localRows, setLocalRows] = useState<RowValidation[]>(validatedRows);
+}: DataValidatorProps<TRecord, TKey>) {
+  const [localRows, setLocalRows] = useState<RowValidation<TRecord>[]>(validatedRows);
   const [currentPage, setCurrentPage] = useState(0);
   const [filter, setFilter] = useState<'all' | 'errors' | 'warnings'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,28 +62,33 @@ export function DataValidator({
   const summary = getValidationSummary(localRows);
 
   // Helper to check if a value matches search
-  const matchesSearch = useCallback((value: string | number | null, query: string): boolean => {
+  const matchesSearch = useCallback((value: unknown, query: string): boolean => {
     if (!query || value === null || value === undefined) return false;
     return String(value).toLowerCase().includes(query.toLowerCase());
   }, []);
 
   // Helper to check if a row has any matching cell
-  const rowMatchesSearch = useCallback((row: RowValidation, query: string): boolean => {
-    if (!query) return true;
-    return TARGET_FIELDS.some((field) => matchesSearch(row.data[field.key], query));
-  }, [matchesSearch]);
+  const rowMatchesSearch = useCallback(
+    (row: RowValidation<TRecord>, query: string): boolean => {
+      if (!query) return true;
+      const data = row.data as Record<string, unknown>;
+      return fields.some((field) => matchesSearch(data[field.key], query));
+    },
+    [matchesSearch, fields]
+  );
 
   // Count search matches
   const searchMatchCount = useMemo(() => {
     if (!searchQuery) return 0;
     let count = 0;
     localRows.forEach((row) => {
-      TARGET_FIELDS.forEach((field) => {
-        if (matchesSearch(row.data[field.key], searchQuery)) count++;
+      const data = row.data as Record<string, unknown>;
+      fields.forEach((field) => {
+        if (matchesSearch(data[field.key], searchQuery)) count++;
       });
     });
     return count;
-  }, [localRows, searchQuery, matchesSearch]);
+  }, [localRows, searchQuery, matchesSearch, fields]);
 
   // Find and replace helpers
   const getMatchingValue = useCallback(
@@ -92,7 +98,10 @@ export function DataValidator({
       const searchFor = options.caseSensitive ? find : find.toLowerCase();
 
       if (options.wholeWord) {
-        const regex = new RegExp(`\\b${searchFor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, options.caseSensitive ? '' : 'i');
+        const regex = new RegExp(
+          `\\b${searchFor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+          options.caseSensitive ? '' : 'i'
+        );
         return regex.test(value);
       }
 
@@ -105,9 +114,10 @@ export function DataValidator({
     (find: string, options: ReplaceOptions): number => {
       let count = 0;
       localRows.forEach((row) => {
-        TARGET_FIELDS.forEach((field) => {
+        const data = row.data as Record<string, unknown>;
+        fields.forEach((field) => {
           if (options.selectedColumn !== 'all' && options.selectedColumn !== field.key) return;
-          const value = row.data[field.key];
+          const value = data[field.key];
           if (value !== null && value !== undefined && getMatchingValue(String(value), find, options)) {
             count++;
           }
@@ -115,7 +125,7 @@ export function DataValidator({
       });
       return count;
     },
-    [localRows, getMatchingValue]
+    [localRows, getMatchingValue, fields]
   );
 
   const handleFindReplace = useCallback(
@@ -124,14 +134,14 @@ export function DataValidator({
 
       const updatedRows = localRows.map((row) => {
         let modified = false;
-        const updatedData: ArtworkRecord = { ...row.data };
+        const updatedData = { ...(row.data as Record<string, unknown>) };
 
-        TARGET_FIELDS.forEach((field) => {
+        fields.forEach((field) => {
           if (options.selectedColumn !== 'all' && options.selectedColumn !== field.key) return;
-          
-          const value = row.data[field.key];
+
+          const value = updatedData[field.key];
           if (value === null || value === undefined) return;
-          
+
           const strValue = String(value);
           if (!getMatchingValue(strValue, find, options)) return;
 
@@ -152,14 +162,12 @@ export function DataValidator({
           }
 
           if (newValue !== strValue) {
-            if (field.key === 'valueAmount') {
+            if (field.type === 'number') {
               const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
               const parsed = parseFloat(cleaned);
-              updatedData.valueAmount = isNaN(parsed) ? null : parsed;
+              updatedData[field.key] = isNaN(parsed) ? null : parsed;
             } else {
-              // Type-safe assignment for string fields
-              const key = field.key as Exclude<TargetField, 'valueAmount'>;
-              updatedData[key] = newValue || null;
+              updatedData[field.key] = newValue || null;
             }
             modified = true;
             replacedCount++;
@@ -167,7 +175,10 @@ export function DataValidator({
         });
 
         if (modified) {
-          return revalidateRow({ ...row, data: updatedData }, requiredFields);
+          return revalidateRow(
+            { ...row, data: updatedData as TRecord },
+            { fields, requiredFields }
+          );
         }
         return row;
       });
@@ -176,44 +187,45 @@ export function DataValidator({
       onRowsChange?.(updatedRows);
       return replacedCount;
     },
-    [localRows, requiredFields, onRowsChange, getMatchingValue]
+    [localRows, fields, requiredFields, onRowsChange, getMatchingValue]
   );
 
   const handleCellEdit = useCallback(
-    (rowIndex: number, field: TargetField, newValue: string) => {
+    (rowIndex: number, fieldKey: TKey, newValue: string) => {
       setLocalRows((prevRows) => {
         const updatedRows = prevRows.map((row) => {
           if (row.rowIndex !== rowIndex) return row;
 
-          const updatedData: ArtworkRecord = { ...row.data };
-          if (field === 'valueAmount') {
+          const field = fields.find((f) => f.key === fieldKey);
+          const updatedData = { ...(row.data as Record<string, unknown>) };
+
+          if (field?.type === 'number') {
             const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
             const parsed = parseFloat(cleaned);
-            updatedData.valueAmount = isNaN(parsed) ? null : parsed;
+            updatedData[fieldKey] = isNaN(parsed) ? null : parsed;
           } else {
-            updatedData[field] = newValue || null;
+            updatedData[fieldKey] = newValue || null;
           }
 
-          return revalidateRow({ ...row, data: updatedData }, requiredFields);
+          return revalidateRow(
+            { ...row, data: updatedData as TRecord },
+            { fields, requiredFields }
+          );
         });
 
         onRowsChange?.(updatedRows);
         return updatedRows;
       });
     },
-    [requiredFields, onRowsChange]
+    [fields, requiredFields, onRowsChange]
   );
 
   // Filter and search
   const filteredRows = useMemo(() => {
     return localRows.filter((row) => {
-      // Status filter
       if (filter === 'errors' && row.isValid) return false;
       if (filter === 'warnings' && (!row.isValid || row.warnings.length === 0)) return false;
-      
-      // Search filter
       if (searchQuery && !rowMatchesSearch(row, searchQuery)) return false;
-      
       return true;
     });
   }, [localRows, filter, searchQuery, rowMatchesSearch]);
@@ -319,7 +331,7 @@ export function DataValidator({
             <TableRow>
               <TableHead className="w-12">#</TableHead>
               <TableHead className="w-12">Status</TableHead>
-              {TARGET_FIELDS.map((field) => (
+              {fields.map((field) => (
                 <TableHead key={field.key} className="min-w-[140px]">
                   {field.label}
                   {field.required && <span className="text-destructive ml-1">*</span>}
@@ -331,7 +343,7 @@ export function DataValidator({
             {paginatedRows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={TARGET_FIELDS.length + 2}
+                  colSpan={fields.length + 2}
                   className="text-center text-muted-foreground py-8"
                 >
                   {searchQuery ? 'No rows match your search' : 'No rows match the current filter'}
@@ -342,6 +354,7 @@ export function DataValidator({
                 <ValidationRow
                   key={row.rowIndex}
                   row={row}
+                  fields={fields}
                   onCellEdit={handleCellEdit}
                   searchQuery={searchQuery}
                 />
@@ -390,11 +403,7 @@ export function DataValidator({
             <ChevronLeft className="mr-2 h-4 w-4" />
             Back to Mapping
           </Button>
-          <Button
-            onClick={onComplete}
-            disabled={summary.withErrors > 0}
-            size="lg"
-          >
+          <Button onClick={onComplete} disabled={summary.withErrors > 0} size="lg">
             <Download className="mr-2 h-4 w-4" />
             Complete Import ({summary.valid + summary.withWarnings} rows)
           </Button>
@@ -404,59 +413,59 @@ export function DataValidator({
   );
 }
 
-interface ValidationRowProps {
-  row: RowValidation;
-  onCellEdit: (rowIndex: number, field: TargetField, newValue: string) => void;
+interface ValidationRowProps<TRecord, TKey extends string> {
+  row: RowValidation<TRecord>;
+  fields: FieldConfig<TKey>[];
+  onCellEdit: (rowIndex: number, fieldKey: TKey, newValue: string) => void;
   searchQuery: string;
 }
 
-function ValidationRow({ row, onCellEdit, searchQuery }: ValidationRowProps) {
+function ValidationRow<TRecord, TKey extends string>({
+  row,
+  fields,
+  onCellEdit,
+  searchQuery,
+}: ValidationRowProps<TRecord, TKey>) {
   const getRowClass = () => {
     if (!row.isValid) return 'validation-row-error';
     if (row.warnings.length > 0) return 'validation-row-warning';
     return '';
   };
 
-  const getFieldError = (field: TargetField) =>
-    row.errors.find((e) => e.field === field);
-  const getFieldWarning = (field: TargetField) =>
-    row.warnings.find((w) => w.field === field);
+  const getFieldError = (fieldKey: string) => row.errors.find((e) => e.field === fieldKey);
+  const getFieldWarning = (fieldKey: string) => row.warnings.find((w) => w.field === fieldKey);
 
-  const isHighlighted = (value: string | number | null): boolean => {
+  const isHighlighted = (value: unknown): boolean => {
     if (!searchQuery || value === null || value === undefined) return false;
     return String(value).toLowerCase().includes(searchQuery.toLowerCase());
   };
 
+  const data = row.data as Record<string, unknown>;
+
   return (
     <TableRow className={getRowClass()}>
-      <TableCell className="font-mono text-xs text-muted-foreground">
-        {row.rowIndex + 1}
-      </TableCell>
+      <TableCell className="font-mono text-xs text-muted-foreground">{row.rowIndex + 1}</TableCell>
       <TableCell>
         {!row.isValid ? (
           <Tooltip>
             <TooltipTrigger>
               <AlertCircle className="h-4 w-4 text-destructive" />
             </TooltipTrigger>
-            <TooltipContent>
-              {row.errors.map((e) => e.message).join(', ')}
-            </TooltipContent>
+            <TooltipContent>{row.errors.map((e) => e.message).join(', ')}</TooltipContent>
           </Tooltip>
         ) : row.warnings.length > 0 ? (
           <Tooltip>
             <TooltipTrigger>
               <AlertTriangle className="h-4 w-4 text-warning" />
             </TooltipTrigger>
-            <TooltipContent>
-              {row.warnings.map((w) => w.message).join(', ')}
-            </TooltipContent>
+            <TooltipContent>{row.warnings.map((w) => w.message).join(', ')}</TooltipContent>
           </Tooltip>
         ) : (
           <Check className="h-4 w-4 text-success" />
         )}
       </TableCell>
-      {TARGET_FIELDS.map((field) => {
-        const value = row.data[field.key];
+      {fields.map((field) => {
+        const value = data[field.key];
         const error = getFieldError(field.key);
         const warning = getFieldWarning(field.key);
         const highlighted = isHighlighted(value);
@@ -464,7 +473,7 @@ function ValidationRow({ row, onCellEdit, searchQuery }: ValidationRowProps) {
         return (
           <TableCell key={field.key}>
             <EditableCell
-              value={value}
+              value={value as string | number | null}
               onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
               hasError={!!error}
               hasWarning={!!warning}
