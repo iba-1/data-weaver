@@ -246,20 +246,22 @@ export function DataValidator({
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center justify-between pt-4 border-t">
-        <Button variant="outline" onClick={onBack}>
-          <ChevronLeft className="mr-2 h-4 w-4" />
-          Back to Mapping
-        </Button>
-        <Button
-          onClick={onComplete}
-          disabled={summary.withErrors > 0}
-          size="lg"
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Complete Import ({summary.valid + summary.withWarnings} rows)
-        </Button>
+      {/* Sticky Actions */}
+      <div className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t pt-4 pb-2 -mx-1 px-1 z-10">
+        <div className="flex items-center justify-between">
+          <Button variant="outline" onClick={onBack}>
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Back to Mapping
+          </Button>
+          <Button
+            onClick={onComplete}
+            disabled={summary.withErrors > 0}
+            size="lg"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Complete Import ({summary.valid + summary.withWarnings} rows)
+          </Button>
+        </div>
       </div>
     </div>
   );
