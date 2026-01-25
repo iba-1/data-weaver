@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -29,6 +29,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { EditableCell } from './EditableCell';
+import { SearchBar } from './SearchBar';
+import { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
 
 interface DataValidatorProps {
   validatedRows: RowValidation[];
@@ -54,8 +56,128 @@ export function DataValidator({
   const [localRows, setLocalRows] = useState<RowValidation[]>(validatedRows);
   const [currentPage, setCurrentPage] = useState(0);
   const [filter, setFilter] = useState<'all' | 'errors' | 'warnings'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const summary = getValidationSummary(localRows);
+
+  // Helper to check if a value matches search
+  const matchesSearch = useCallback((value: string | number | null, query: string): boolean => {
+    if (!query || value === null || value === undefined) return false;
+    return String(value).toLowerCase().includes(query.toLowerCase());
+  }, []);
+
+  // Helper to check if a row has any matching cell
+  const rowMatchesSearch = useCallback((row: RowValidation, query: string): boolean => {
+    if (!query) return true;
+    return TARGET_FIELDS.some((field) => matchesSearch(row.data[field.key], query));
+  }, [matchesSearch]);
+
+  // Count search matches
+  const searchMatchCount = useMemo(() => {
+    if (!searchQuery) return 0;
+    let count = 0;
+    localRows.forEach((row) => {
+      TARGET_FIELDS.forEach((field) => {
+        if (matchesSearch(row.data[field.key], searchQuery)) count++;
+      });
+    });
+    return count;
+  }, [localRows, searchQuery, matchesSearch]);
+
+  // Find and replace helpers
+  const getMatchingValue = useCallback(
+    (value: string, find: string, options: ReplaceOptions): boolean => {
+      if (!value || !find) return false;
+      const searchIn = options.caseSensitive ? value : value.toLowerCase();
+      const searchFor = options.caseSensitive ? find : find.toLowerCase();
+
+      if (options.wholeWord) {
+        const regex = new RegExp(`\\b${searchFor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, options.caseSensitive ? '' : 'i');
+        return regex.test(value);
+      }
+
+      return searchIn.includes(searchFor);
+    },
+    []
+  );
+
+  const getPreviewCount = useCallback(
+    (find: string, options: ReplaceOptions): number => {
+      let count = 0;
+      localRows.forEach((row) => {
+        TARGET_FIELDS.forEach((field) => {
+          if (options.selectedColumn !== 'all' && options.selectedColumn !== field.key) return;
+          const value = row.data[field.key];
+          if (value !== null && value !== undefined && getMatchingValue(String(value), find, options)) {
+            count++;
+          }
+        });
+      });
+      return count;
+    },
+    [localRows, getMatchingValue]
+  );
+
+  const handleFindReplace = useCallback(
+    (find: string, replace: string, options: ReplaceOptions): number => {
+      let replacedCount = 0;
+
+      const updatedRows = localRows.map((row) => {
+        let modified = false;
+        const updatedData: ArtworkRecord = { ...row.data };
+
+        TARGET_FIELDS.forEach((field) => {
+          if (options.selectedColumn !== 'all' && options.selectedColumn !== field.key) return;
+          
+          const value = row.data[field.key];
+          if (value === null || value === undefined) return;
+          
+          const strValue = String(value);
+          if (!getMatchingValue(strValue, find, options)) return;
+
+          // Perform replacement
+          let newValue: string;
+          if (options.wholeWord) {
+            const regex = new RegExp(
+              `\\b${find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+              options.caseSensitive ? 'g' : 'gi'
+            );
+            newValue = strValue.replace(regex, replace);
+          } else {
+            const regex = new RegExp(
+              find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+              options.caseSensitive ? 'g' : 'gi'
+            );
+            newValue = strValue.replace(regex, replace);
+          }
+
+          if (newValue !== strValue) {
+            if (field.key === 'valueAmount') {
+              const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
+              const parsed = parseFloat(cleaned);
+              updatedData.valueAmount = isNaN(parsed) ? null : parsed;
+            } else {
+              // Type-safe assignment for string fields
+              const key = field.key as Exclude<TargetField, 'valueAmount'>;
+              updatedData[key] = newValue || null;
+            }
+            modified = true;
+            replacedCount++;
+          }
+        });
+
+        if (modified) {
+          return revalidateRow({ ...row, data: updatedData }, requiredFields);
+        }
+        return row;
+      });
+
+      setLocalRows(updatedRows);
+      onRowsChange?.(updatedRows);
+      return replacedCount;
+    },
+    [localRows, requiredFields, onRowsChange, getMatchingValue]
+  );
 
   const handleCellEdit = useCallback(
     (rowIndex: number, field: TargetField, newValue: string) => {
@@ -63,7 +185,6 @@ export function DataValidator({
         const updatedRows = prevRows.map((row) => {
           if (row.rowIndex !== rowIndex) return row;
 
-          // Update the data
           const updatedData: ArtworkRecord = { ...row.data };
           if (field === 'valueAmount') {
             const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
@@ -73,30 +194,29 @@ export function DataValidator({
             updatedData[field] = newValue || null;
           }
 
-          // Revalidate the row
-          const updatedRow = revalidateRow(
-            { ...row, data: updatedData },
-            requiredFields
-          );
-
-          return updatedRow;
+          return revalidateRow({ ...row, data: updatedData }, requiredFields);
         });
 
-        // Notify parent of changes
         onRowsChange?.(updatedRows);
-
         return updatedRows;
       });
     },
     [requiredFields, onRowsChange]
   );
 
-  const filteredRows = localRows.filter((row) => {
-    if (filter === 'all') return true;
-    if (filter === 'errors') return !row.isValid;
-    if (filter === 'warnings') return row.isValid && row.warnings.length > 0;
-    return true;
-  });
+  // Filter and search
+  const filteredRows = useMemo(() => {
+    return localRows.filter((row) => {
+      // Status filter
+      if (filter === 'errors' && row.isValid) return false;
+      if (filter === 'warnings' && (!row.isValid || row.warnings.length === 0)) return false;
+      
+      // Search filter
+      if (searchQuery && !rowMatchesSearch(row, searchQuery)) return false;
+      
+      return true;
+    });
+  }, [localRows, filter, searchQuery, rowMatchesSearch]);
 
   const totalPages = Math.ceil(filteredRows.length / ROWS_PER_PAGE);
   const paginatedRows = filteredRows.slice(
@@ -104,10 +224,15 @@ export function DataValidator({
     (currentPage + 1) * ROWS_PER_PAGE
   );
 
-  // Sync local rows with prop changes (when coming back from mapping)
+  // Sync local rows with prop changes
   React.useEffect(() => {
     setLocalRows(validatedRows);
   }, [validatedRows]);
+
+  // Reset page when filters change
+  React.useEffect(() => {
+    setCurrentPage(0);
+  }, [filter, searchQuery]);
 
   if (isLoading) {
     return (
@@ -126,69 +251,76 @@ export function DataValidator({
   }
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn('space-y-4', className)}>
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Validate Data</h3>
-          <p className="text-sm text-muted-foreground">
-            Review your data before importing
-          </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Validate Data</h3>
+            <p className="text-sm text-muted-foreground">
+              Review, search, and fix data before importing
+            </p>
+          </div>
+
+          {/* Summary badges */}
+          <div className="flex flex-wrap gap-2">
+            <Badge
+              variant={filter === 'all' ? 'default' : 'outline'}
+              className="cursor-pointer"
+              onClick={() => setFilter('all')}
+            >
+              <CheckCircle className="mr-1 h-3 w-3" />
+              {summary.valid} Valid
+            </Badge>
+            <Badge
+              variant={filter === 'warnings' ? 'default' : 'outline'}
+              className={cn(
+                'cursor-pointer',
+                summary.withWarnings > 0 && filter !== 'warnings' && 'border-warning text-warning'
+              )}
+              onClick={() => setFilter('warnings')}
+            >
+              <AlertTriangle className="mr-1 h-3 w-3" />
+              {summary.withWarnings} Warnings
+            </Badge>
+            <Badge
+              variant={filter === 'errors' ? 'default' : 'outline'}
+              className={cn(
+                'cursor-pointer',
+                summary.withErrors > 0 && filter !== 'errors' && 'border-destructive text-destructive'
+              )}
+              onClick={() => setFilter('errors')}
+            >
+              <AlertCircle className="mr-1 h-3 w-3" />
+              {summary.withErrors} Errors
+            </Badge>
+          </div>
         </div>
 
-        {/* Summary badges */}
-        <div className="flex flex-wrap gap-2">
-          <Badge
-            variant={filter === 'all' ? 'default' : 'outline'}
-            className="cursor-pointer"
-            onClick={() => {
-              setFilter('all');
-              setCurrentPage(0);
-            }}
-          >
-            <CheckCircle className="mr-1 h-3 w-3" />
-            {summary.valid} Valid
-          </Badge>
-          <Badge
-            variant={filter === 'warnings' ? 'default' : 'outline'}
-            className={cn(
-              'cursor-pointer',
-              summary.withWarnings > 0 && filter !== 'warnings' && 'border-warning text-warning'
-            )}
-            onClick={() => {
-              setFilter('warnings');
-              setCurrentPage(0);
-            }}
-          >
-            <AlertTriangle className="mr-1 h-3 w-3" />
-            {summary.withWarnings} Warnings
-          </Badge>
-          <Badge
-            variant={filter === 'errors' ? 'default' : 'outline'}
-            className={cn(
-              'cursor-pointer',
-              summary.withErrors > 0 && filter !== 'errors' && 'border-destructive text-destructive'
-            )}
-            onClick={() => {
-              setFilter('errors');
-              setCurrentPage(0);
-            }}
-          >
-            <AlertCircle className="mr-1 h-3 w-3" />
-            {summary.withErrors} Errors
-          </Badge>
+        {/* Search and Find/Replace toolbar */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            matchCount={searchQuery ? searchMatchCount : undefined}
+            className="flex-1"
+          />
+          <FindReplaceDialog
+            onReplace={handleFindReplace}
+            getPreviewCount={getPreviewCount}
+          />
         </div>
       </div>
 
       {/* Data table */}
-      <div className="rounded-lg border overflow-x-auto">
+      <div className="rounded-lg border overflow-x-auto max-h-[400px] overflow-y-auto">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 bg-background z-10">
             <TableRow>
-              <TableHead className="w-16">#</TableHead>
-              <TableHead className="w-16">Status</TableHead>
+              <TableHead className="w-12">#</TableHead>
+              <TableHead className="w-12">Status</TableHead>
               {TARGET_FIELDS.map((field) => (
-                <TableHead key={field.key}>
+                <TableHead key={field.key} className="min-w-[140px]">
                   {field.label}
                   {field.required && <span className="text-destructive ml-1">*</span>}
                 </TableHead>
@@ -202,12 +334,17 @@ export function DataValidator({
                   colSpan={TARGET_FIELDS.length + 2}
                   className="text-center text-muted-foreground py-8"
                 >
-                  No rows match the current filter
+                  {searchQuery ? 'No rows match your search' : 'No rows match the current filter'}
                 </TableCell>
               </TableRow>
             ) : (
               paginatedRows.map((row) => (
-                <ValidationRow key={row.rowIndex} row={row} onCellEdit={handleCellEdit} />
+                <ValidationRow
+                  key={row.rowIndex}
+                  row={row}
+                  onCellEdit={handleCellEdit}
+                  searchQuery={searchQuery}
+                />
               ))
             )}
           </TableBody>
@@ -270,9 +407,10 @@ export function DataValidator({
 interface ValidationRowProps {
   row: RowValidation;
   onCellEdit: (rowIndex: number, field: TargetField, newValue: string) => void;
+  searchQuery: string;
 }
 
-function ValidationRow({ row, onCellEdit }: ValidationRowProps) {
+function ValidationRow({ row, onCellEdit, searchQuery }: ValidationRowProps) {
   const getRowClass = () => {
     if (!row.isValid) return 'validation-row-error';
     if (row.warnings.length > 0) return 'validation-row-warning';
@@ -283,6 +421,11 @@ function ValidationRow({ row, onCellEdit }: ValidationRowProps) {
     row.errors.find((e) => e.field === field);
   const getFieldWarning = (field: TargetField) =>
     row.warnings.find((w) => w.field === field);
+
+  const isHighlighted = (value: string | number | null): boolean => {
+    if (!searchQuery || value === null || value === undefined) return false;
+    return String(value).toLowerCase().includes(searchQuery.toLowerCase());
+  };
 
   return (
     <TableRow className={getRowClass()}>
@@ -316,6 +459,7 @@ function ValidationRow({ row, onCellEdit }: ValidationRowProps) {
         const value = row.data[field.key];
         const error = getFieldError(field.key);
         const warning = getFieldWarning(field.key);
+        const highlighted = isHighlighted(value);
 
         return (
           <TableCell key={field.key}>
@@ -324,6 +468,7 @@ function ValidationRow({ row, onCellEdit }: ValidationRowProps) {
               onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
               hasError={!!error}
               hasWarning={!!warning}
+              isHighlighted={highlighted}
             />
           </TableCell>
         );
