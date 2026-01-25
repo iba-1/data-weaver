@@ -1,7 +1,7 @@
-import type { ColumnMapping, TargetField, TARGET_FIELDS } from './types';
+import type { ColumnMapping, FieldConfig, TargetField } from './types';
 
-// Fuzzy matching keywords for each target field
-const FIELD_KEYWORDS: Record<TargetField, string[]> = {
+// Default keywords for backwards compatibility
+const DEFAULT_FIELD_KEYWORDS: Record<TargetField, string[]> = {
   title: ['title', 'name', 'artwork', 'piece', 'work', 'obra', 'titulo', 'nombre'],
   artist: ['artist', 'author', 'creator', 'painter', 'sculptor', 'artista', 'autor'],
   period: ['period', 'era', 'year', 'date', 'century', 'time', 'epoca', 'periodo', 'año', 'fecha'],
@@ -39,7 +39,6 @@ function calculateSimilarity(source: string, keywords: string[]): number {
   for (const keyword of keywords) {
     const normalizedKeyword = normalizeString(keyword);
     if (normalized.length >= 3 && normalizedKeyword.length >= 3) {
-      // Check if first 3 chars match
       if (normalized.substring(0, 3) === normalizedKeyword.substring(0, 3)) {
         return 0.6;
       }
@@ -49,24 +48,40 @@ function calculateSimilarity(source: string, keywords: string[]): number {
   return 0;
 }
 
-export function autoMatchColumns(sourceColumns: string[]): ColumnMapping[] {
-  const mappings: ColumnMapping[] = [];
-  const usedTargetFields: Set<TargetField> = new Set();
+/**
+ * Auto-match source columns to target fields using fuzzy matching
+ */
+export function autoMatchColumns<TKey extends string>(
+  sourceColumns: string[],
+  fields?: FieldConfig<TKey>[]
+): ColumnMapping<TKey>[] {
+  const mappings: ColumnMapping<TKey>[] = [];
+  const usedTargetFields = new Set<TKey>();
   
-  // First pass: find best matches with high confidence
+  // Build keyword map from fields or use defaults
+  const fieldKeywords: Record<string, string[]> = {};
+  if (fields) {
+    for (const field of fields) {
+      fieldKeywords[field.key] = field.matchKeywords || [field.key, field.label.toLowerCase()];
+    }
+  } else {
+    Object.assign(fieldKeywords, DEFAULT_FIELD_KEYWORDS);
+  }
+  
+  // Calculate scores for all source/target combinations
   const columnScores: Array<{
     sourceColumn: string;
-    targetField: TargetField;
+    targetField: TKey;
     confidence: number;
   }> = [];
   
   for (const sourceColumn of sourceColumns) {
-    for (const [field, keywords] of Object.entries(FIELD_KEYWORDS)) {
+    for (const [field, keywords] of Object.entries(fieldKeywords)) {
       const confidence = calculateSimilarity(sourceColumn, keywords);
       if (confidence > 0.5) {
         columnScores.push({
           sourceColumn,
-          targetField: field as TargetField,
+          targetField: field as TKey,
           confidence,
         });
       }
@@ -77,7 +92,7 @@ export function autoMatchColumns(sourceColumns: string[]): ColumnMapping[] {
   columnScores.sort((a, b) => b.confidence - a.confidence);
   
   // Assign best matches, avoiding duplicates
-  const usedSourceColumns: Set<string> = new Set();
+  const usedSourceColumns = new Set<string>();
   
   for (const score of columnScores) {
     if (!usedSourceColumns.has(score.sourceColumn) && !usedTargetFields.has(score.targetField)) {
@@ -107,19 +122,25 @@ export function autoMatchColumns(sourceColumns: string[]): ColumnMapping[] {
   return mappings;
 }
 
-export function getUnmappedTargetFields(
-  mappings: ColumnMapping[],
-  targetFields: typeof TARGET_FIELDS
-): typeof TARGET_FIELDS {
+/**
+ * Get fields that haven't been mapped yet
+ */
+export function getUnmappedTargetFields<TKey extends string>(
+  mappings: ColumnMapping<TKey>[],
+  fields: FieldConfig<TKey>[]
+): FieldConfig<TKey>[] {
   const mappedFields = new Set(mappings.map((m) => m.targetField).filter(Boolean));
-  return targetFields.filter((field) => !mappedFields.has(field.key));
+  return fields.filter((field) => !mappedFields.has(field.key));
 }
 
-export function updateMapping(
-  mappings: ColumnMapping[],
+/**
+ * Update a column mapping, ensuring no duplicate target assignments
+ */
+export function updateMapping<TKey extends string>(
+  mappings: ColumnMapping<TKey>[],
   sourceColumn: string,
-  targetField: TargetField | null
-): ColumnMapping[] {
+  targetField: TKey | null
+): ColumnMapping<TKey>[] {
   // Remove the target field from any existing mapping
   const updatedMappings = mappings.map((m) => {
     if (m.targetField === targetField && m.sourceColumn !== sourceColumn) {

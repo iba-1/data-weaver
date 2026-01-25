@@ -8,13 +8,16 @@ import { validateRows } from '@/lib/import-wizard/validator';
 import type {
   ArtworkRecord,
   ColumnMapping,
+  FieldConfig,
   ImportWizardEvent,
   ImportWizardProps,
   ImportWizardState,
   ParsedFileData,
+  RowValidation,
   TargetField,
   WizardStep,
 } from '@/lib/import-wizard/types';
+import { ARTWORK_FIELD_CONFIGS, TARGET_FIELDS } from '@/lib/import-wizard/types';
 import { cn } from '@/lib/utils';
 import { Check } from 'lucide-react';
 
@@ -28,16 +31,28 @@ const INITIAL_STATE: ImportWizardState = {
   error: null,
 };
 
-export function ImportWizard({
+export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = TargetField>({
+  fields,
+  requiredFields,
   onComplete,
   onEvent,
-  requiredFields = ['title', 'artist'],
+  onRowParse,
+  onRowComplete,
+  validateRow: customValidator,
+  title = 'Import Data',
+  description,
+  acceptedFileTypes = ['.csv', '.xlsx', '.xls'],
+  maxFileSize = 10485760,
   className,
-}: ImportWizardProps) {
-  const [state, setState] = useState<ImportWizardState>(INITIAL_STATE);
+}: ImportWizardProps<TRecord, TKey>) {
+  const [state, setState] = useState<ImportWizardState<TRecord>>(INITIAL_STATE as ImportWizardState<TRecord>);
+
+  // Use provided fields or default to artwork fields
+  const fieldConfigs = (fields || ARTWORK_FIELD_CONFIGS) as FieldConfig<TKey>[];
+  const requiredFieldKeys = requiredFields || (['title', 'artist'] as TKey[]);
 
   const emit = useCallback(
-    (event: ImportWizardEvent) => {
+    (event: ImportWizardEvent<TRecord>) => {
       onEvent?.(event);
     },
     [onEvent]
@@ -51,7 +66,6 @@ export function ImportWizard({
         const parsedData = await parseFile(file);
 
         if (parsedData.fileType === 'pdf') {
-          // PDF needs special handling - for now show message
           setState((s) => ({
             ...s,
             isLoading: false,
@@ -69,7 +83,7 @@ export function ImportWizard({
           return;
         }
 
-        const columnMappings = autoMatchColumns(parsedData.headers);
+        const columnMappings = autoMatchColumns<TKey>(parsedData.headers, fieldConfigs);
 
         setState((s) => ({
           ...s,
@@ -81,17 +95,16 @@ export function ImportWizard({
 
         emit({ type: 'FILE_PARSED', data: parsedData });
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Failed to parse file';
+        const message = error instanceof Error ? error.message : 'Failed to parse file';
         setState((s) => ({ ...s, isLoading: false, error: message }));
         emit({ type: 'ERROR', error: message });
       }
     },
-    [emit]
+    [emit, fieldConfigs]
   );
 
   const handleMappingChange = useCallback(
-    (sourceColumn: string, targetField: TargetField | null) => {
+    (sourceColumn: string, targetField: TKey | null) => {
       setState((s) => ({
         ...s,
         columnMappings: updateMapping(s.columnMappings, sourceColumn, targetField),
@@ -107,11 +120,37 @@ export function ImportWizard({
     setState((s) => ({ ...s, isLoading: true }));
 
     // Validate rows with the current mappings
-    const validatedRows = validateRows(
+    const validatedRows = validateRows<TRecord, TKey>(
       parsedData.rows,
-      columnMappings,
-      requiredFields
+      columnMappings as ColumnMapping<TKey>[],
+      {
+        fields: fieldConfigs,
+        requiredFields: requiredFieldKeys,
+        customValidator,
+        onRowParse: onRowParse
+          ? (rowIndex, rawData, parsedData) => {
+              const event = { rowIndex, rawData, parsedData };
+              emit({ type: 'ROW_PARSED', event });
+              return onRowParse(event);
+            }
+          : undefined,
+      }
     );
+
+    // Emit row complete events
+    if (onRowComplete) {
+      for (const row of validatedRows) {
+        const event = {
+          rowIndex: row.rowIndex,
+          data: row.data,
+          isValid: row.isValid,
+          errors: row.errors,
+          warnings: row.warnings,
+        };
+        emit({ type: 'ROW_COMPLETE', event });
+        onRowComplete(event);
+      }
+    }
 
     setState((s) => ({
       ...s,
@@ -122,20 +161,36 @@ export function ImportWizard({
 
     emit({ type: 'COLUMNS_MAPPED', mappings: columnMappings });
     emit({ type: 'DATA_VALIDATED', rows: validatedRows });
-  }, [state, requiredFields, emit]);
+  }, [state, fieldConfigs, requiredFieldKeys, customValidator, onRowParse, onRowComplete, emit]);
 
   const handleBack = useCallback(() => {
     setState((s) => ({ ...s, step: 'mapping' }));
   }, []);
 
-  const handleRowsChange = useCallback((updatedRows: typeof state.validatedRows) => {
-    setState((s) => ({ ...s, validatedRows: updatedRows }));
-  }, []);
+  const handleRowsChange = useCallback(
+    (updatedRows: RowValidation<TRecord>[]) => {
+      setState((s) => ({ ...s, validatedRows: updatedRows }));
+
+      // Emit row complete events for changed rows
+      if (onRowComplete) {
+        for (const row of updatedRows) {
+          const event = {
+            rowIndex: row.rowIndex,
+            data: row.data,
+            isValid: row.isValid,
+            errors: row.errors,
+            warnings: row.warnings,
+          };
+          emit({ type: 'ROW_COMPLETE', event });
+          onRowComplete(event);
+        }
+      }
+    },
+    [onRowComplete, emit]
+  );
 
   const handleComplete = useCallback(() => {
-    const validRows = state.validatedRows
-      .filter((r) => r.isValid)
-      .map((r) => r.data);
+    const validRows = state.validatedRows.filter((r) => r.isValid).map((r) => r.data);
 
     emit({ type: 'IMPORT_COMPLETED', data: validRows });
     onComplete?.(validRows);
@@ -159,6 +214,7 @@ export function ImportWizard({
         {state.step === 'mapping' && (
           <ColumnMapper
             mappings={state.columnMappings}
+            fields={fieldConfigs}
             onMappingChange={handleMappingChange}
             onConfirm={handleConfirmMapping}
             isLoading={state.isLoading}
@@ -168,10 +224,11 @@ export function ImportWizard({
         {state.step === 'validation' && (
           <DataValidator
             validatedRows={state.validatedRows}
+            fields={fieldConfigs}
+            requiredFields={requiredFieldKeys}
             onComplete={handleComplete}
             onBack={handleBack}
             onRowsChange={handleRowsChange}
-            requiredFields={requiredFields}
             isLoading={state.isLoading}
           />
         )}
@@ -219,11 +276,7 @@ function StepIndicator({ currentStep }: StepIndicatorProps) {
                     : 'bg-muted text-[hsl(var(--step-inactive))]'
                 )}
               >
-                {isComplete ? (
-                  <Check className="h-3.5 w-3.5" />
-                ) : (
-                  step.number
-                )}
+                {isComplete ? <Check className="h-3.5 w-3.5" /> : step.number}
               </div>
               <span
                 className={cn(
