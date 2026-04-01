@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**React Import Wizard** — a reusable React component library for CSV/Excel data import with a 3-step wizard flow: file upload → column mapping → data validation/editing. The demo app is an artwork data importer. Originally scaffolded with Lovable.
+**React Import Wizard** — a reusable React component library for CSV/Excel data import with a 3-step wizard flow: file upload → column mapping → data validation/editing. The demo app is an artwork data importer.
 
 ## Commands
 
