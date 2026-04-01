@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Download,
   FileSpreadsheet,
+  ListChecks,
   Redo2,
   Undo2,
 } from 'lucide-react';
@@ -300,6 +301,36 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
     exportData(localRows, fields, { format: 'xlsx', filename: 'data-export-valid', onlyValid: true });
   }, [localRows, fields]);
 
+  // Fill empty required fields with placeholder values
+  const handleFillEmptyRequired = useCallback(() => {
+    const updatedRows = localRows.map((row) => {
+      if (row.isValid) return row;
+
+      const data = { ...(row.data as Record<string, unknown>) };
+      let modified = false;
+
+      for (const fieldKey of requiredFields) {
+        const value = data[fieldKey];
+        if (value === null || value === undefined || value === '') {
+          const field = fields.find((f) => f.key === fieldKey);
+          if (field?.type === 'number') {
+            data[fieldKey] = field.placeholder ? parseFloat(field.placeholder) || 0 : 0;
+          } else {
+            data[fieldKey] = field?.placeholder || 'N/A';
+          }
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        return revalidateRow({ ...row, data: data as TRecord }, { fields, requiredFields });
+      }
+      return row;
+    });
+
+    setLocalRows(updatedRows);
+  }, [localRows, fields, requiredFields, setLocalRows]);
+
   // Filter and search
   const filteredRows = useMemo(() => {
     return localRows.filter((row) => {
@@ -406,8 +437,25 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
             />
           </div>
 
-          {/* Undo/Redo & Export */}
+          {/* Undo/Redo, Fill & Export */}
           <div className="flex items-center gap-2">
+            {/* Fill empty required fields */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleFillEmptyRequired}
+                  disabled={summary.withErrors === 0}
+                  className="gap-1.5"
+                >
+                  <ListChecks className="h-4 w-4" />
+                  Fill Required
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Fill empty required fields with placeholder values</TooltipContent>
+            </Tooltip>
+
             {/* Undo/Redo buttons */}
             <div className="flex items-center border rounded-md">
               <Tooltip>
