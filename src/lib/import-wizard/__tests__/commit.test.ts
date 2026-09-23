@@ -142,6 +142,21 @@ describe('settleBatch: checking the Host App’s answer', () => {
 });
 
 describe('commitRows', () => {
+  it('sends no further batch once its signal is aborted', async () => {
+    const host = createFakeHostApp<Rec>();
+    const abort = new AbortController();
+
+    const outcome = await commitRows(rows(250), {
+      saveBatch: host.adapter.saveBatch,
+      signal: abort.signal,
+      onBatchSettled: () => abort.abort(),
+    });
+
+    expect(host.calls).toHaveLength(1);
+    expect(outcome.created).toHaveLength(100);
+    expect(outcome.rejected).toHaveLength(0);
+  });
+
   it('sends 250 rows as 3 batches of at most 100, one at a time, in file order', async () => {
     const host = createFakeHostApp<Rec>();
     const progress: CommitProgress[] = [];

@@ -168,6 +168,8 @@ export interface CommitOptions<TRecord> {
   messages?: ResolvedMessages;
   /** Called after each batch has its outcome, before the next one is sent */
   onBatchSettled?: (result: BatchResult<TRecord>, progress: CommitProgress) => void;
+  /** Once aborted, no further batch is sent (a batch already sent still settles) */
+  signal?: AbortSignal;
 }
 
 /** Every row committed, each either created or rejected, in the order sent */
@@ -180,17 +182,20 @@ export interface CommitOutcome<TRecord> {
  * Send rows to `saveBatch` in batches, one at a time: the next batch is sent
  * only once the previous one has its outcome. A batch whose promise rejects
  * (or whose call throws) is not retried: its rows become Rejected Rows
- * (`notSent`) and the Commit carries on with the next batch.
+ * (`notSent`) and the Commit carries on with the next batch. When `signal`
+ * is aborted, the Commit stops before sending another batch; rows not sent
+ * are in neither list.
  */
 export async function commitRows<TRecord>(
   rows: ImportRow<TRecord>[],
-  { saveBatch, batchSize, messages = ENGLISH_MESSAGES, onBatchSettled }: CommitOptions<TRecord>
+  { saveBatch, batchSize, messages = ENGLISH_MESSAGES, onBatchSettled, signal }: CommitOptions<TRecord>
 ): Promise<CommitOutcome<TRecord>> {
   const batches = toBatches(rows, normaliseBatchSize(batchSize));
   const outcome: CommitOutcome<TRecord> = { created: [], rejected: [] };
   let done = 0;
 
   for (const [index, batch] of batches.entries()) {
+    if (signal?.aborted) break;
     let result: BatchResult<TRecord>;
     try {
       result = settleBatch(batch, await saveBatch(batch), messages);

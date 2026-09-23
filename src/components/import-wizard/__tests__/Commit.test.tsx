@@ -361,4 +361,49 @@ describe('Commit through the Host App adapter', () => {
       ['key-2', 2, 'Opera terza'],
     ]);
   });
+
+  it('still finishes and shows the Import Report when a Host App callback throws', async () => {
+    mockArtworks(150);
+    const host = createFakeHostApp<Rec>();
+    const onImportFinished = vi.fn();
+    const hostBug = new Error('host analytics crashed');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderWizard(host, {
+      batchSize: 100,
+      onEvent: (event) => {
+        if (event.type === 'BATCH_SETTLED') throw hostBug;
+      },
+      onImportFinished,
+    });
+    await goToReview();
+
+    await importRows();
+
+    expect(screen.getByText('150 imported')).toBeInTheDocument();
+    expect(host.calls).toHaveLength(2);
+    expect(onImportFinished).toHaveBeenCalledTimes(1);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('[data-weaver]'), hostBug);
+  });
+
+  it('stops sending batches once the wizard is unmounted mid-Commit', async () => {
+    mockArtworks(250);
+    const host = createFakeHostApp<Rec>();
+    const first = host.hold(1);
+    const onImportFinished = vi.fn();
+    const { unmount } = renderWizard(host, { onImportFinished });
+    await goToReview();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
+      await first.reached;
+    });
+    unmount();
+    await act(async () => first.release());
+    // Give a would-be next batch every chance to be sent
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(host.calls).toHaveLength(1);
+    expect(onImportFinished).not.toHaveBeenCalled();
+  });
 });
+

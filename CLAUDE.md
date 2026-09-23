@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Data Weaver** — a reusable React component library for CSV/Excel data import with a 3-step wizard flow: file upload → column mapping → data validation/editing. SpeakArt is the first Host App; the demo app (GitHub Pages) is an artwork data importer. Purpose, scope and vocabulary: `docs/product/`, `CONTEXT.md`, `docs/adr/`.
+**Data Weaver** — a reusable React component library for CSV/Excel data import with a wizard flow: file upload → column mapping → review (validate, edit, exclude) → Commit through the Host App's adapter → Import Report. SpeakArt is the first Host App; the demo app (GitHub Pages) is an artwork data importer. Purpose, scope and vocabulary: `docs/product/`, `CONTEXT.md`, `docs/adr/`.
 
 ## Commands
 
@@ -42,7 +42,7 @@ The import wizard is split into pure logic and React components, both barrel-exp
   - `types.ts` — All type definitions and the legacy `ArtworkRecord` defaults
 
 - **`src/components/import-wizard/`** — React components consuming the logic layer:
-  - `ImportWizard.tsx` — Main orchestrator (3-step state machine: upload → mapping → validation)
+  - `ImportWizard.tsx` — Main orchestrator (upload → mapping → review → commit → report); Commit calls the Host App's `adapter.saveBatch` (see ADR-0002)
   - `FileUploader.tsx` — Drag-and-drop with file validation
   - `ColumnMapper.tsx` — Visual mapping UI with auto-match confidence indicators
   - `DataValidator.tsx` — Data table with inline editing, search, find/replace, export

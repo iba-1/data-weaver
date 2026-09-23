@@ -482,6 +482,10 @@ interface RejectedRow<TRecord> extends ImportRow<TRecord> {
 
 Every row of the file is in exactly one list, in file order. The report is not kept after the Importer leaves.
 
+**If the wizard is unmounted during Commit** (the Importer navigates away), no further batch is sent and `onImportFinished` is not called. A batch already sent may have been saved; its rows keep their Import Keys, so importing the same file again cannot duplicate them.
+
+**Your callbacks cannot break an import.** If `onEvent`, `onRowComplete` or `onImportFinished` throws, the error is logged with `console.error` (prefixed `[data-weaver]`) and the wizard carries on.
+
 ### Events
 
 ```typescript

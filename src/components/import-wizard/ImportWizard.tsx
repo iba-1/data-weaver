@@ -52,6 +52,19 @@ const INITIAL_STATE: ImportWizardState = {
   error: null,
 };
 
+/**
+ * Call one of the Host App's callbacks. A callback that throws is the Host
+ * App's bug: it is logged, and the import carries on rather than leaving the
+ * Importer stuck (e.g. on the Commit progress screen).
+ */
+function callHost(name: string, callback: () => void): void {
+  try {
+    callback();
+  } catch (error) {
+    console.error(`[data-weaver] The Host App's ${name} threw; the import carries on.`, error);
+  }
+}
+
 export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = TargetField>({
   fields,
   requiredFields,
@@ -82,6 +95,9 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   const [commitProgress, setCommitProgress] = useState({ done: 0, total: 0 });
   const [report, setReport] = useState<ImportReport<TRecord> | null>(null);
   const committingRef = useRef(false);
+  // Aborted on unmount: no more batches are sent once nobody can see the Import Report
+  const commitAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => commitAbortRef.current?.abort(), []);
 
   // Use provided fields or default to artwork fields. `requiredFields` is
   // folded into the fields so every step reads one source of truth.
@@ -92,7 +108,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
   const emit = useCallback(
     (event: ImportWizardEvent<TRecord>) => {
-      onEvent?.(event);
+      callHost('onEvent', () => onEvent?.(event));
     },
     [onEvent]
   );
@@ -115,7 +131,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
         warnings: row.warnings,
       };
       emit({ type: 'ROW_COMPLETE', event });
-      onRowCompleteRef.current?.(event);
+      callHost('onRowComplete', () => onRowCompleteRef.current?.(event));
     },
     [emit]
   );
@@ -282,7 +298,10 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       excluded: excluded.length,
     });
 
+    const abort = new AbortController();
+    commitAbortRef.current = abort;
     const outcome = await commitRows(included, {
+      signal: abort.signal,
       // Called on the adapter, so a Host App's class instance keeps its `this`
       saveBatch: (batch) => adapter.saveBatch(batch),
       batchSize,
@@ -294,11 +313,12 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       },
     });
 
+    if (abort.signal.aborted) return;
     const finished: ImportReport<TRecord> = { ...outcome, excluded };
     setReport(finished);
     setState((s) => ({ ...s, step: 'report' }));
     emit({ type: 'IMPORT_FINISHED', report: finished });
-    onImportFinishedRef.current?.(finished);
+    callHost('onImportFinished', () => onImportFinishedRef.current?.(finished));
   }, [review.status, state.validatedRows, importKeys, adapter, batchSize, m, emit]);
 
   return (
