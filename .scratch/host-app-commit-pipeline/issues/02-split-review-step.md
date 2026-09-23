@@ -8,8 +8,8 @@
 
 Spec: `../spec.md`
 
-- [ ] The review step behaves exactly as before: all existing wizard and core tests pass unchanged
-- [ ] Number/empty-value coercion has a single implementation in core, used by cell edits, find/replace and AI Edit
-- [ ] Find/replace matching (case, whole word, column) lives in core with its own tests
-- [ ] One shared row-edit type is used by AI Edit and the review step
-- [ ] No review-step part exceeds a size a reader can hold in their head (the former single component is gone)
+- [x] The review step behaves exactly as before: all existing wizard and core tests pass unchanged
+- [x] Number/empty-value coercion has a single implementation in core, used by cell edits, find/replace and AI Edit
+- [x] Find/replace matching (case, whole word, column) lives in core with its own tests
+- [x] One shared row-edit type is used by AI Edit and the review step
+- [x] No review-step part exceeds a size a reader can hold in their head (the former single component is gone)
