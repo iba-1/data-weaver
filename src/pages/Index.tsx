@@ -1,9 +1,22 @@
 import { useState } from 'react';
-import { ImportWizard, type ArtworkRecord, type ImportReport, type ImportWizardEvent } from '@/components/import-wizard';
+import {
+  ARTWORK_FIELD_CONFIGS,
+  ImportWizard,
+  type ArtworkRecord,
+  type FieldConfig,
+  type ImportReport,
+  type ImportWizardEvent,
+  type TargetField,
+} from '@/components/import-wizard';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
 import { createDemoHostApp } from './demoHostApp';
+
+/** The artwork fields, with the artist as a Relationship Field pointing to the demo's artist registry */
+const FIELDS: FieldConfig<TargetField>[] = ARTWORK_FIELD_CONFIGS.map((field) =>
+  field.key === 'artist' ? { ...field, relationship: { kind: 'registry' } } : field
+);
 
 const Index = () => {
   const { toast } = useToast();
@@ -48,6 +61,7 @@ const Index = () => {
 
         <ImportWizard
           key={importRun}
+          fields={FIELDS}
           adapter={adapter}
           onImportFinished={handleImportFinished}
           onEvent={handleEvent}
