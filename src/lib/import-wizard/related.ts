@@ -9,11 +9,14 @@ import type { CreateRelated, FieldConfig, ImportRow, RejectedRow, RelatedRecordI
 import { ENGLISH_MESSAGES, type ResolvedMessages } from './messages';
 import { normaliseForMatch } from './normalise';
 import {
+  collectRelatedValues,
   decisionForRow,
   decisionsInEffect,
+  isValueDecided,
   relatedValueKey,
   relatedValueOf,
   relationshipKinds,
+  type RelatedDecision,
   type ResolvedValue,
 } from './resolution';
 
@@ -28,9 +31,6 @@ export interface RelatedCreation {
 
 /** A creation and its outcome: the new record's ID, or why it was not created */
 export type CreatedRelated = RelatedCreation & ({ id: RelatedRecordId } | { reason: string });
-
-/** Identifies a planned creation: new records of a kind are told apart by their name's Normalised Match */
-const creationKey = (kind: string, name: string) => relatedValueKey(kind, normaliseForMatch(name));
 
 /**
  * The new Related Records a Commit creates: one per value with rows decided
@@ -57,6 +57,139 @@ export function planRelatedCreations(resolved: ResolvedValue[]): RelatedCreation
     }
   }
   return [...plan.values()];
+}
+
+/**
+ * A new Related Record's identity: its kind and the Normalised Match of its
+ * name. Two creations with the same identity are the same record.
+ */
+export function creationKey(kind: string, name: string): string {
+  return relatedValueKey(kind, normaliseForMatch(name));
+}
+
+/** The Related Records a Commit created, by `creationKey`, with their IDs; failures are left out */
+export function createdRelatedIds(created: CreatedRelated[]): Map<string, RelatedRecordId> {
+  const ids = new Map<string, RelatedRecordId>();
+  for (const creation of created) if ('id' in creation) ids.set(creationKey(creation.kind, creation.name), creation.id);
+  return ids;
+}
+
+/**
+ * For Fix & Retry: decisions to create a record an earlier Commit already
+ * created (see `createdRelatedIds`) link to it instead, whether they are a
+ * value's or a row's own (Homonyms), so a Related Record is never created
+ * twice. Records that could not be created stay `create`, to be tried again.
+ */
+export function linkAlreadyCreated(
+  resolved: ResolvedValue[],
+  createdIds: ReadonlyMap<string, RelatedRecordId>
+): ResolvedValue[] {
+  const linked = (kind: string, decision: RelatedDecision): RelatedDecision => {
+    if (decision.action !== 'create') return decision;
+    const id = createdIds.get(creationKey(kind, decision.name));
+    return id === undefined ? decision : { action: 'link', id, name: decision.name };
+  };
+  return resolved.map((value) => ({
+    ...value,
+    decision: value.decision && linked(value.kind, value.decision),
+    rowDecisions: new Map([...value.rowDecisions].map(([rowIndex, decision]) => [rowIndex, linked(value.kind, decision)])),
+  }));
+}
+
+/**
+ * For Fix & Retry: one value's decisions from two sources, `first` winning.
+ * The value's decision is `first`'s, else `second`'s; each row keeps its own
+ * decision from either, `first`'s when both have one. The value covers the
+ * rows of both; everything else is `first`'s.
+ */
+export function combineDecisions(first: ResolvedValue, second: ResolvedValue | undefined): ResolvedValue {
+  if (!second) return first;
+  return {
+    ...first,
+    rows: [...new Set([...first.rows, ...second.rows])].sort((a, b) => a - b),
+    decision: first.decision ?? second.decision,
+    rowDecisions: new Map([...second.rowDecisions, ...first.rowDecisions]),
+  };
+}
+
+/**
+ * For Fix & Retry: what each Relationship Field value was committed with, by
+ * `relatedValueKey`, after a Commit of `resolved` (with the records it
+ * created linked: `linkAlreadyCreated`). A value committed before keeps the
+ * decisions of rows not in this Commit, e.g. a Homonym's rows chosen
+ * individually and already imported.
+ */
+export function rememberCommitted(
+  before: ReadonlyMap<string, ResolvedValue>,
+  resolved: ResolvedValue[]
+): Map<string, ResolvedValue> {
+  const next = new Map(before);
+  for (const value of resolved) {
+    const key = relatedValueKey(value.kind, value.value);
+    next.set(key, combineDecisions(value, before.get(key)));
+  }
+  return next;
+}
+
+type RetryRow = { rowIndex: number; data: unknown; excluded?: boolean };
+
+/**
+ * For Fix & Retry: the rows with only the Relationship Field values that
+ * have no committed decision for that row (`committed`: see
+ * `rememberCommitted`), the others emptied. These are the values new or
+ * changed since, or a Homonym decided only for other rows: the only ones
+ * Resolution needs to see. The rows given are not changed.
+ */
+export function undecidedValuesOnly<R extends RetryRow>(
+  rows: R[],
+  fields: Pick<FieldConfig, 'key' | 'relationship'>[],
+  committed: ReadonlyMap<string, ResolvedValue>
+): R[] {
+  const relationshipFields = relationshipKinds(fields).flatMap(({ kind, fields: kindFields }) =>
+    kindFields.map((field) => ({ kind, key: field.key }))
+  );
+  return rows.map((row) => {
+    const data = { ...(row.data as Record<string, unknown>) };
+    for (const field of relationshipFields) {
+      const value = committed.get(relatedValueKey(field.kind, relatedValueOf(data[field.key])));
+      if (value && decisionForRow(value, row.rowIndex) !== null) data[field.key] = '';
+    }
+    return { ...row, data };
+  });
+}
+
+/**
+ * For Fix & Retry: what Commit does for the Relationship Field values of the
+ * rows sent again. Each row keeps the decision its value was committed with
+ * for it (`committed`: the row's own, e.g. a Homonym's, else the value's,
+ * which also carries a merge); a row without one takes the decision made in
+ * Resolution since (`fresh`, which saw only such rows: `undecidedValuesOnly`).
+ * Each value covers only these rows. Null while some row is undecided.
+ */
+export function retryDecisions(
+  rows: RetryRow[],
+  fields: Pick<FieldConfig, 'key' | 'relationship'>[],
+  committed: ReadonlyMap<string, ResolvedValue>,
+  fresh: ResolvedValue[]
+): ResolvedValue[] | null {
+  const freshOf = new Map(fresh.map((value) => [relatedValueKey(value.kind, value.value), value]));
+  const resolved: ResolvedValue[] = [];
+  for (const value of collectRelatedValues(rows, fields)) {
+    const key = relatedValueKey(value.kind, value.value);
+    const earlier = committed.get(key);
+    const known = earlier ? combineDecisions(earlier, freshOf.get(key)) : freshOf.get(key);
+    if (!known) return null;
+    const current: ResolvedValue = {
+      ...known,
+      spellings: value.spellings,
+      rows: value.rows,
+      fields: value.fields,
+      rowDecisions: new Map([...known.rowDecisions].filter(([rowIndex]) => value.rows.includes(rowIndex))),
+    };
+    if (!isValueDecided(current)) return null;
+    resolved.push(current);
+  }
+  return resolved;
 }
 
 const isValidId = (id: unknown): id is RelatedRecordId =>

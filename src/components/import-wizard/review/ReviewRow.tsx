@@ -1,7 +1,7 @@
 import { memo } from 'react';
-import { AlertCircle, AlertTriangle, Ban, Check, Link2, Plus, RotateCcw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Ban, Check, Link2, Plus, RotateCcw, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { FieldConfig, RowValidation } from '@/lib/import-wizard/types';
+import type { FieldConfig, RowRejection, RowValidation } from '@/lib/import-wizard/types';
 import { matchesSearch } from '@/lib/import-wizard/search';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,8 @@ interface ReviewRowProps<TRecord, TKey extends string> {
   searchQuery: string;
   /** Relationship Field values as last resolved, by relatedValueKey: their cells show a badge */
   relatedValues?: ReadonlyMap<string, ResolvedValue>;
+  /** Fix & Retry: why the Host App refused this row, pinned to its field's cell (or the whole row) */
+  rejection?: RowRejection;
 }
 
 /** Every grid row is this tall (px); the virtualised grid positions rows with it */
@@ -31,9 +33,9 @@ export const REVIEW_ROW_HEIGHT = 45;
 /** Compact cells keep every row exactly REVIEW_ROW_HEIGHT tall */
 const CELL = 'px-3 py-2';
 
-function rowClassName<TRecord>(row: RowValidation<TRecord>): string {
+function rowClassName<TRecord>(row: RowValidation<TRecord>, rejected: boolean): string {
   if (row.excluded) return 'opacity-50';
-  if (!row.isValid) return 'validation-row-error';
+  if (!row.isValid || rejected) return 'validation-row-error';
   if (row.warnings.length > 0) return 'validation-row-warning';
   return '';
 }
@@ -53,14 +55,18 @@ function ReviewRowView<TRecord, TKey extends string>({
   onToggleExcluded,
   searchQuery,
   relatedValues,
+  rejection,
 }: ReviewRowProps<TRecord, TKey>) {
   const m = useMessages();
   const data = row.data as Record<string, unknown>;
   const rowNumber = row.rowIndex + 1;
+  const rejectionText = rejection && m.fix.rejected({ reason: rejection.reason });
+  // A field the grid doesn't show can't hold the error: it goes to the whole row
+  const rejectedField = fields.some((f) => f.key === rejection?.field) ? rejection?.field : undefined;
 
   return (
     <TableRow
-      className={rowClassName(row)}
+      className={rowClassName(row, !!rejection)}
       style={{ height: REVIEW_ROW_HEIGHT }}
       aria-rowindex={ariaRowIndex}
     >
@@ -86,13 +92,15 @@ function ReviewRowView<TRecord, TKey extends string>({
         </div>
       </TableCell>
       <TableCell className={CELL}>
-        <RowStatus row={row} />
+        <RowStatus row={row} rejection={rejectionText} />
       </TableCell>
       {fields.map((field) => {
         const value = data[field.key];
         const error = row.errors.find((e) => e.field === field.key);
         const warning = row.warnings.find((w) => w.field === field.key);
         const issue = error ?? warning;
+        const rejected = rejectedField === field.key;
+        const message = issue ? issueText(m, issue) : rejected ? rejectionText : undefined;
 
         // Every kind of cell sits in the same compact TableCell, so rows stay REVIEW_ROW_HEIGHT tall
         return (
@@ -103,9 +111,9 @@ function ReviewRowView<TRecord, TKey extends string>({
                 options={choiceOptions(field) ?? []}
                 onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
                 aria-label={m.review.cellLabel({ field: field.label, row: rowNumber })}
-                hasError={!!error && !row.excluded}
+                hasError={(!!error || rejected) && !row.excluded}
                 hasWarning={!!warning && !row.excluded}
-                message={issue && issueText(m, issue)}
+                message={message}
                 isHighlighted={matchesSearch(value, searchQuery)}
                 className={cn(row.excluded && 'line-through')}
               />
@@ -114,8 +122,9 @@ function ReviewRowView<TRecord, TKey extends string>({
                 <EditableCell
                   value={value as string | number | null}
                   onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
-                  hasError={!!error && !row.excluded}
+                  hasError={(!!error || rejected) && !row.excluded}
                   hasWarning={!!warning && !row.excluded}
+                  message={message}
                   isHighlighted={matchesSearch(value, searchQuery)}
                   className={cn('min-w-0 flex-1', row.excluded && 'line-through')}
                 />
@@ -165,10 +174,21 @@ function RelatedBadge({ resolved, rowIndex }: { resolved: ResolvedValue | undefi
   );
 }
 
-function RowStatus<TRecord>({ row }: { row: RowValidation<TRecord> }) {
+/** `rejection` is why the Host App refused the row (Fix & Retry), as shown to the Importer */
+function RowStatus<TRecord>({ row, rejection }: { row: RowValidation<TRecord>; rejection?: string }) {
   const m = useMessages();
   if (row.excluded) {
     return <Ban className="h-4 w-4 text-muted-foreground" aria-label={m.review.excludedStatus()} />;
+  }
+  if (rejection) {
+    return (
+      <Tooltip>
+        <TooltipTrigger aria-label={rejection}>
+          <XCircle className="h-4 w-4 text-destructive" aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent>{[rejection, ...row.errors.map((e) => issueText(m, e))].join(', ')}</TooltipContent>
+      </Tooltip>
+    );
   }
   if (!row.isValid) {
     return (

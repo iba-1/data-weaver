@@ -56,6 +56,7 @@ export type {
   ImportRow,
   RowOutcome,
   RejectedRow,
+  RowRejection,
   RejectionCause,
   CommitProgress,
   RetryOptions,

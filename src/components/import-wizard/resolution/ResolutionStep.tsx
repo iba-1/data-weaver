@@ -41,6 +41,8 @@ interface ResolutionStepProps {
   canCommit: boolean;
   /** Rows that will be imported (included rows) */
   rowCount: number;
+  /** Fix & Retry: the rows are imported again, and the import button says so */
+  retrying?: boolean;
   /** A row's text that identifies it at a glance (its first field), by rowIndex */
   describeRow: (rowIndex: number) => string;
   onNameChange: (key: string, name: string) => void;
@@ -69,6 +71,7 @@ export function ResolutionStep({
   blockers,
   canCommit,
   rowCount,
+  retrying = false,
   describeRow,
   onNameChange,
   onChoose,
@@ -278,7 +281,7 @@ export function ResolutionStep({
             )}
             <Button onClick={onComplete} disabled={!canCommit} size="lg">
               <Download className="mr-2 h-4 w-4" />
-              {m.resolution.complete({ count: rowCount })}
+              {retrying ? m.fix.retry({ count: rowCount }) : m.resolution.complete({ count: rowCount })}
             </Button>
           </div>
         </div>

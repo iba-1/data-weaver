@@ -67,7 +67,7 @@ The account shown after a Commit: how many rows were imported, every Rejected Ro
 _Avoid_: summary, result page, import log
 
 **Fix & Retry**:
-The view where the Importer corrects only the Rejected Rows and commits them again. Rows already imported are locked and hidden.
+The view where the Importer corrects only the Rejected Rows and commits them again. Rows already imported are locked and hidden; Excluded Rows stay excluded. Only the Rejected Rows are sent again, with their original Import Keys, and the Import Report then covers every outcome so far.
 _Avoid_: retry view, error view
 
 ### Capabilities

@@ -44,6 +44,7 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 - The Importer sees the progress while rows are saved, including when a batch is being retried; the review can't be changed meanwhile.
 - Afterwards, the **Import Report** shows how many rows were imported, rejected and excluded, each Rejected Row with its row number, your reason and the field, and the Excluded Rows as a separate list. Your app receives the same report through `onImportFinished`.
 - The Importer can download the Rejected Rows as a spreadsheet (the file's own columns plus an error column) to fix and import again. The report is not kept, so leaving while it shows Rejected Rows asks for confirmation. See [Leaving with Rejected Rows](#leaving-with-rejected-rows).
+- **Fix & Retry:** from the report, the Importer opens the review grid with only the Rejected Rows, each reason pinned to the field at fault (or to the whole row). They fix or exclude those rows and import them again: only those rows are sent, with their original Import Keys. Rows already imported are locked and hidden. The report then covers every outcome so far. See [Fix & Retry](#fix--retry).
 
 ### Language
 - Every piece of text the Importer sees comes from a message catalogue. English is built in. Your app passes its own entries for the Importer's language, and anything it leaves out falls back to English. See [Messages and translation](#messages-and-translation).
@@ -300,7 +301,7 @@ A rejected promise's `Error` message is shown to the Importer. Your endpoint is 
 
 ### `<ImportWizard />`
 
-The complete flow: upload, column matching, review, Commit and the Import Report.
+The complete flow: upload, column matching, review, Commit, the Import Report and Fix & Retry.
 
 | Prop                | Type                                              | Default                     | Description |
 | ------------------- | ------------------------------------------------- | --------------------------- | ----------- |
@@ -309,8 +310,8 @@ The complete flow: upload, column matching, review, Commit and the Import Report
 | `adapter`           | `HostAppAdapter<TRecord>`                         | Required                    | How rows are saved: `{ saveBatch }`, plus `findRelated` and `createRelated` when `fields` has Relationship Fields. See [The Host App adapter](#the-host-app-adapter). The import can't start while an included row is invalid. |
 | `batchSize`         | `number`                                          | `100`                       | Most rows per `saveBatch` call. Values below 1 fall back to the default; fractions are rounded down. |
 | `retry`             | `{ attempts?, baseDelayMs?, maxDelayMs? }`        | `{ attempts: 3, baseDelayMs: 1000, maxDelayMs: 8000 }` | How a batch whose `saveBatch` promise rejects is sent again. `attempts` counts the first one (`1` turns retrying off). See [Retries](#retries). |
-| `onImportFinished`  | `(report: ImportReport<TRecord>) => void`         | -                           | Called once when Commit is over, with the Import Report. |
-| `onLeaveWarningChange` | `(warn: boolean) => void`                      | -                           | `true` while leaving should be confirmed (the Import Report shows Rejected Rows), `false` after. Guard your router with it. See [Leaving with Rejected Rows](#leaving-with-rejected-rows). |
+| `onImportFinished`  | `(report: ImportReport<TRecord>) => void`         | -                           | Called when Commit is over, with the Import Report, and again after each Fix & Retry with the report of every outcome so far. Each call replaces the previous one. |
+| `onLeaveWarningChange` | `(warn: boolean) => void`                      | -                           | `true` while leaving should be confirmed (Rejected Rows not yet fixed, in the Import Report or in Fix & Retry), `false` after. Guard your router with it. See [Leaving with Rejected Rows](#leaving-with-rejected-rows). |
 | `onEvent`           | `(event: ImportWizardEvent) => void`              | -                           | Called for every lifecycle event. |
 | `onRowParse`        | `(event: RowParseEvent) => TRecord \| void`       | -                           | Called for each row as it is converted to a record. Return a record to replace it. |
 | `onRowComplete`     | `(event: RowCompleteEvent) => void`               | -                           | Called for each row when the review step opens, then for each edited row. |
@@ -568,6 +569,17 @@ interface RejectedRow<TRecord> extends ImportRow<TRecord> {
 
 Every row of the file is in exactly one list, in file order. The report is not kept after the Importer leaves. `created` rows, and rows you rejected, are as sent to `saveBatch` (with Related Record IDs); rows rejected because a Related Record could not be created were never sent and keep the names the Importer reviewed.
 
+#### Fix & Retry
+
+When there are Rejected Rows, the report also offers **Fix and retry**. It opens the review grid with only the Rejected Rows:
+
+- **Errors on the cells.** Your reason is pinned to the cell of the `field` you gave, and shown on the row's status (*"Not imported: Title already used"*). Without a `field`, or with a key that isn't in the Output Shape, it is on the whole row. These reasons don't block the retry: your app decides again. Edits are validated as in the review, so a row made invalid must be fixed or excluded first.
+- **Imported rows are locked and hidden:** they are never shown or sent again. Rows the Importer excluded before stay excluded and are not shown; there is no way to bring them back in Fix & Retry (they can be imported later from the downloaded file).
+- **Excluding.** The Importer can give up on a Rejected Row by excluding it; it joins the Excluded Rows.
+- **Retry import** sends only those rows, as fixed, **with their original Import Keys**. A row that was in fact saved by a batch whose answer was lost is answered `created` by your app ([ADR-0002](docs/adr/0002-host-apps-must-honour-import-keys.md)), so nothing is duplicated. **Back to the report** keeps the edits without sending anything.
+- **Relationship Fields.** Each row keeps the decision it was committed with: a Homonym's row chosen individually keeps its own record (row 2 stays *Mario Rossi (b. 1950)*, row 5 *Mario Rossi (b. 1987)*), and a value merged with another value or an existing record keeps pointing to that record. A Related Record created by an earlier Commit is reused (its ID), never created again, nor looked up again; a record that could not be created is tried again, once for all the values merged into it. A value new or changed in Fix & Retry (or a Homonym now used by a row it was not decided for) goes through Resolution first, alone: the Importer sees only those values, with the same choices for Homonyms and Possible Matches, and `findRelated` receives only values not looked up before. The import button there says **Retry import** too. Choices, names and merges made in Resolution are kept for the rest of the import.
+- **The report updates** to cover every outcome so far: the rows created on any Commit, the rows still rejected, and the rows excluded before and during Fix & Retry. `onImportFinished` (and `IMPORT_FINISHED`) is called again with that cumulative report, so the latest call is always the whole import. The Importer can open Fix & Retry again while rows remain rejected.
+
 #### Downloading the Rejected Rows
 
 When there are Rejected Rows, the report offers **Download rejected rows**: a spreadsheet the Importer can fix in Excel (or hand to a colleague) and upload again.
@@ -580,7 +592,7 @@ When there are Rejected Rows, the report offers **Download rejected rows**: a sp
 
 #### Leaving with Rejected Rows
 
-Because the report is not kept, leaving the wizard while it shows Rejected Rows asks the Importer to confirm. No confirmation is asked when there are none.
+Because the report is not kept, leaving the wizard while there are Rejected Rows (in the report, in Fix & Retry or while they are sent again) asks the Importer to confirm. No confirmation is asked when there are none, including once Fix & Retry has imported or excluded them all.
 
 - **Closing or reloading the tab** is guarded by the wizard itself, with the browser's own `beforeunload` prompt (browsers show their own text).
 - **Navigation inside your app** can't be blocked by Data Weaver, since it doesn't own your router. The wizard calls `onLeaveWarningChange(true)` when leaving should be confirmed and `onLeaveWarningChange(false)` when that is over, including when it unmounts. Guard your router with it. With React Router's `useBlocker` (it needs a data router, e.g. `createBrowserRouter`):
@@ -658,6 +670,8 @@ With Relationship Fields, `COMMIT_STARTED` is emitted once the new Related Recor
 
 `BATCH_RETRY` is emitted each time a batch failed in transit and is about to be sent again, before the wait; log its `error` to see what went wrong. `BATCH_SETTLED` is emitted once per batch, after any retries, whether your app answered or the batch could not be sent; `created` and `rejected` are that batch's rows. `IMPORT_FINISHED` carries the report `onImportFinished` receives.
 
+Fix & Retry emits the same events again: `COMMIT_STARTED` counts only the rows being retried (and `excluded` only the rows excluded in Fix & Retry), while `IMPORT_FINISHED` carries the cumulative report.
+
 **Breaking change (before 1.0):** `onComplete` and the `IMPORT_COMPLETED` event are gone. The wizard no longer hands the records over for your app to save: pass an `adapter` and read the outcome from `onImportFinished`.
 
 Validation errors and warnings raised by Data Weaver itself also carry a `messageRef` (their catalogue key and parameters); see [Messages and translation](#messages-and-translation).
@@ -729,6 +743,9 @@ Use these to build your own flow. Each step component brings its own `WizardRoot
 | `onComplete`     | `() => void`                             | Required | Called on "Complete Import". In `<ImportWizard />` this starts Commit. |
 | `onBack`         | `() => void`                             | Required | Called on "Back". |
 | `onRowsChange`   | `(rows: RowValidation[]) => void`        | -        | Called after each change to the rows (not on mount). |
+| `relatedValues`  | `ReadonlyMap<string, ResolvedValue>`     | -        | Relationship Field values as resolved, by `relatedValueKey`: their cells show a badge naming the Related Record. |
+| `rejections`     | `ReadonlyMap<number, RowRejection>`      | -        | Fix & Retry: the rows are Rejected Rows, and this is why each was refused (`{ reason, field? }`, by `rowIndex`), pinned to the field's cell or the whole row. The step's heading and buttons become Fix & Retry's. |
+| `continuesToResolution` | `boolean`                         | whether `fields` has Relationship Fields | Whether the main button leads to Resolution rather than the import. |
 | `isLoading`      | `boolean`                                | `false`  | Show a loading skeleton. |
 | `className`      | `string`                                 | -        | Extra CSS class. |
 
@@ -1101,6 +1118,12 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `report.downloadErrorHeader` | - | `Error` |
 | `report.downloadError` | reason | `{reason}` |
 | `report.downloadFieldError` | reason, field | `{field}: {reason}` |
+| `fix.open` | count | `Fix and retry (1 row)`, `Fix and retry (2 rows)` |
+| `fix.title` | - | `Fix and retry` |
+| `fix.description` | - | `Only the rows that were not imported are shown, each with the reason. Fix or exclude them, then import them again. Rows already imported are locked.` |
+| `fix.rejected` | reason | `Not imported: {reason}` |
+| `fix.back` | - | `Back to the report` |
+| `fix.retry` | count | `Retry import (1 row)`, `Retry import (2 rows)` (also in Resolution when Fix & Retry goes through it) |
 | `cell.empty` | - | `empty` |
 | `cell.clear` | - | `Clear` |
 | `cell.save` | - | `Save` |
@@ -1207,10 +1230,6 @@ npm run build:lib   # package build into dist-lib/
 ```
 
 The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a simulated, in-memory Host App (`src/pages/demoHostApp.ts`): it honours Import Keys and rejects an artwork whose title and artist are already in the collection, so importing the same file twice shows Rejected Rows. The artist is a Relationship Field: the demo's registry starts with Lucio Fontana, Piero Manzoni and Alberto Burri, and other artists are created when the import starts. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
-
-## Planned
-
-From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): choosing for Possible Matches in Resolution, and Fix & Retry.
 
 ## License
 

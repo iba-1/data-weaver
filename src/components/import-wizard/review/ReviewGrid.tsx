@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { FieldConfig, RowValidation } from '@/lib/import-wizard/types';
+import type { FieldConfig, RowRejection, RowValidation } from '@/lib/import-wizard/types';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { REVIEW_ROW_HEIGHT, ReviewRow } from './ReviewRow';
 import { useMessages } from '../messages';
@@ -21,6 +21,8 @@ interface ReviewGridProps<TRecord, TKey extends string> {
   onToggleExcluded: (rowIndex: number, excluded: boolean) => void;
   /** Relationship Field values as last resolved: their cells show a badge naming the Related Record */
   relatedValues?: ReadonlyMap<string, ResolvedValue>;
+  /** Fix & Retry: why the Host App refused each row, by rowIndex */
+  rejections?: ReadonlyMap<number, RowRejection>;
 }
 
 /**
@@ -37,6 +39,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
   onCellEdit,
   onToggleExcluded,
   relatedValues,
+  rejections,
 }: ReviewGridProps<TRecord, TKey>) {
   const m = useMessages();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -101,6 +104,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
                     onToggleExcluded={onToggleExcluded}
                     searchQuery={searchQuery}
                     relatedValues={relatedValues}
+                    rejection={rejections?.get(row.rowIndex)}
                   />
                 );
               })}

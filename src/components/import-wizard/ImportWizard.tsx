@@ -9,14 +9,26 @@ import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator'
 import { hasOptionLoaders, loadChoiceOptions, OptionsLoadError } from '@/lib/import-wizard/choices';
 import { resolveMessages } from '@/lib/import-wizard/messages';
 import { cellText } from '@/lib/import-wizard/values';
-import { commitRows, createImportKeys, normaliseBatchSize, toBatches } from '@/lib/import-wizard/commit';
+import { commitRows, createImportKeys, importReport, normaliseBatchSize, toBatches } from '@/lib/import-wizard/commit';
 import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptionsStatus';
 import { CommitProgress } from './commit/CommitProgress';
 import { ImportReportView } from './commit/ImportReportView';
 import { RejectedRowsDownload } from './commit/RejectedRowsDownload';
 import { ResolutionStep } from './resolution/ResolutionStep';
 import { useResolution } from './resolution/useResolution';
-import { createRelatedRecords, planRelatedCreations, substituteRelatedIds } from '@/lib/import-wizard/related';
+import {
+  combineDecisions,
+  createdRelatedIds,
+  createRelatedRecords,
+  linkAlreadyCreated,
+  planRelatedCreations,
+  rememberCommitted,
+  retryDecisions,
+  substituteRelatedIds,
+  undecidedValuesOnly,
+} from '@/lib/import-wizard/related';
+import { collectRelatedValues, type ResolvedValue } from '@/lib/import-wizard/resolution';
+import { Button } from '@/components/ui/button';
 import { MessagesContext, useMessages } from './messages';
 import type {
   ArtworkRecord,
@@ -29,14 +41,16 @@ import type {
   ImportRow,
   ParsedFileData,
   RejectedRow,
+  RelatedRecordId,
   RowCompleteEvent,
+  RowRejection,
   RowValidation,
   TargetField,
   WizardStep,
 } from '@/lib/import-wizard/types';
 import { ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types';
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
+import { Check, Wrench } from 'lucide-react';
 
 /**
  * The review step before its rows can be shown: choice options loading, failed
@@ -119,10 +133,42 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     [fields, requiredFields]
   );
 
+  // Fix & Retry: the Rejected Rows of the last Commit, by rowIndex, with why
+  // each was refused. Imported rows are not among them: they are never shown
+  // or sent again, and neither are the rows excluded before.
+  const rejections = useMemo(
+    () => new Map<number, RowRejection>((report?.rejected ?? []).map((row) => [row.rowIndex, { reason: row.reason, field: row.field }])),
+    [report]
+  );
+  const fixRows = useMemo(
+    () => state.validatedRows.filter((row) => rejections.has(row.rowIndex)),
+    [state.validatedRows, rejections]
+  );
+
+  // Each Relationship Field value a Commit was made with, by relatedValueKey,
+  // with its decision and its rows' own (Homonyms). A new record once created
+  // is linked to from then on, so Fix & Retry never creates a Related Record twice.
+  const [committedValues, setCommittedValues] = useState<ReadonlyMap<string, ResolvedValue>>(() => new Map());
+  // The Related Records created so far, by creationKey
+  const createdIdsRef = useRef(new Map<string, RelatedRecordId>());
+
+  // What Resolution works on: the file's rows before the first Commit; in Fix
+  // & Retry, the Rejected Rows with only the values that have no committed
+  // decision for their row (new or changed in Fix & Retry), so earlier
+  // decisions are kept, not asked again
+  const resolutionRows = useMemo(
+    () => (report ? undecidedValuesOnly(fixRows, fieldConfigs, committedValues) : state.validatedRows),
+    [report, fixRows, fieldConfigs, committedValues, state.validatedRows]
+  );
+  const fixNeedsResolution = useMemo(
+    () => report !== null && collectRelatedValues(resolutionRows, fieldConfigs).length > 0,
+    [report, resolutionRows, fieldConfigs]
+  );
+
   // With Relationship Fields, Resolution sits between review and Commit
   const resolution = useResolution<TRecord, TKey>({
     fields: fieldConfigs,
-    rows: state.validatedRows,
+    rows: resolutionRows,
     adapter,
     messages: m,
     active: state.step === 'resolution',
@@ -158,10 +204,11 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     onLeaveWarningChangeRef.current = onLeaveWarningChange;
   });
 
-  // The Import Report is not kept: while it shows Rejected Rows, leaving asks
-  // to confirm. The wizard guards closing or reloading the tab; the Host App
-  // is told so it can guard its own router's navigation.
-  const warnOnLeave = state.step === 'report' && (report?.rejected.length ?? 0) > 0;
+  // The Import Report is not kept: while it has Rejected Rows (in the report,
+  // Fix & Retry, or while they are sent again), leaving asks to confirm. The
+  // wizard guards closing or reloading the tab; the Host App is told so it can
+  // guard its own router's navigation.
+  const warnOnLeave = (report?.rejected.length ?? 0) > 0;
   useEffect(() => {
     if (!warnOnLeave) return;
     const confirmLeaving = (event: BeforeUnloadEvent) => {
@@ -318,11 +365,17 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     setState((s) => ({ ...s, step: 'mapping' }));
   }, []);
 
+  /**
+   * Rows changed in the grid: every row in the review, only the Rejected Rows
+   * in Fix & Retry. They replace the file's rows with the same rowIndex.
+   */
   const handleRowsChange = useCallback(
     (updatedRows: RowValidation<TRecord>[]) => {
       const previous = new Map(reportedRowsRef.current.map((row) => [row.rowIndex, row]));
-      reportedRowsRef.current = updatedRows;
-      setState((s) => ({ ...s, validatedRows: updatedRows }));
+      const updated = new Map(updatedRows.map((row) => [row.rowIndex, row]));
+      const next = reportedRowsRef.current.map((row) => updated.get(row.rowIndex) ?? row);
+      reportedRowsRef.current = next;
+      setState((s) => ({ ...s, validatedRows: next }));
 
       // Edits replace a row object; untouched rows keep their identity
       for (const row of updatedRows) {
@@ -339,107 +392,152 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     if (failure) emit({ type: 'ERROR', error: failure });
   }, [startLookup, emit]);
 
-  /** Back from Resolution to the review; the grid then shows what each value resolved to */
+  /** Back from Resolution to the review (or Fix & Retry); the grid then shows what each value resolved to */
   const handleBackToReview = useCallback(() => {
     leaveResolution();
-    setState((s) => ({ ...s, step: 'validation' }));
-  }, [leaveResolution]);
+    setState((s) => ({ ...s, step: report ? 'fix' : 'validation' }));
+  }, [leaveResolution, report]);
+
+  const handleOpenFix = useCallback(() => setState((s) => ({ ...s, step: 'fix' })), []);
+  const handleBackToReport = useCallback(() => setState((s) => ({ ...s, step: 'report' })), []);
 
   /**
-   * Commit: create the new Related Records chosen in Resolution (if any),
-   * save every included row through the Host App's adapter, then show the
-   * Import Report
+   * Commit `rows`: create the new Related Records `resolved` decides (if
+   * any), save every included row through the Host App's adapter, then show
+   * the Import Report. After Fix & Retry, `previous` is the report the retry
+   * started from, and the new report covers every outcome so far.
    */
+  const commit = useCallback(
+    async (rows: RowValidation<TRecord>[], resolved: ResolvedValue[], previous: ImportReport<TRecord> | null) => {
+      committingRef.current = true;
+
+      // Each row keeps the Import Key it got when the file was parsed, on every Commit (ADR-0002)
+      const toImportRow = (row: RowValidation<TRecord>): ImportRow<TRecord> => ({
+        importKey: importKeys[row.rowIndex],
+        rowIndex: row.rowIndex,
+        record: row.data,
+      });
+      const included = rows.filter((r) => !r.excluded).map(toImportRow);
+      const excluded = rows.filter((r) => r.excluded).map(toImportRow);
+
+      setCommitProgress({ done: 0, total: included.length, retry: null });
+      setState((s) => ({ ...s, step: 'commit' }));
+
+      const abort = new AbortController();
+      commitAbortRef.current = abort;
+
+      // First the new Related Records, once each and one at a time, then IDs in place of names (ADR-0001)
+      let toSave = included;
+      let notCreated: RejectedRow<TRecord>[] = [];
+      if (withResolution) {
+        const created = await createRelatedRecords(planRelatedCreations(resolved), {
+          // Called on the adapter, so a Host App's class instance keeps its `this`
+          createRelated: (kind, name) => adapter.createRelated!(kind, name),
+          messages: m,
+          signal: abort.signal,
+        });
+        if (abort.signal.aborted) return;
+        ({ ready: toSave, rejected: notCreated } = substituteRelatedIds(included, fieldConfigs, resolved, created, m));
+        setCommitProgress({ done: notCreated.length, total: included.length, retry: null });
+
+        // Kept for Fix & Retry: what each value and row was committed with, linking to the records now created
+        for (const [key, id] of createdRelatedIds(created)) createdIdsRef.current.set(key, id);
+        const committed = linkAlreadyCreated(resolved, createdIdsRef.current);
+        setCommittedValues((before) => rememberCommitted(before, committed));
+      }
+
+      emit({
+        type: 'COMMIT_STARTED',
+        rows: toSave.length,
+        batches: toBatches(toSave, normaliseBatchSize(batchSize)).length,
+        excluded: excluded.length,
+      });
+
+      const outcome = await commitRows(toSave, {
+        signal: abort.signal,
+        // Called on the adapter, so a Host App's class instance keeps its `this`
+        saveBatch: (batch) => adapter.saveBatch(batch),
+        batchSize,
+        retry,
+        messages: m,
+        onBatchRetry: (batchRetry) => {
+          setCommitProgress((p) => ({ ...p, retry: { attempt: batchRetry.attempt, attempts: batchRetry.attempts } }));
+          emit({ type: 'BATCH_RETRY', retry: batchRetry });
+        },
+        onBatchSettled: (result, progress) => {
+          for (const problem of result.problems) console.error(`[data-weaver] ${problem}`);
+          setCommitProgress({ done: notCreated.length + progress.done, total: included.length, retry: null });
+          emit({ type: 'BATCH_SETTLED', progress, created: result.created, rejected: result.rejected });
+        },
+      });
+
+      if (abort.signal.aborted) return;
+      // Rejected whether the Host App refused them or their Related Record was not created
+      const finished = importReport(
+        { created: outcome.created, rejected: [...notCreated, ...outcome.rejected], excluded },
+        previous
+      );
+      committingRef.current = false;
+      setReport(finished);
+      setState((s) => ({ ...s, step: 'report' }));
+      emit({ type: 'IMPORT_FINISHED', report: finished });
+      callHost('onImportFinished', () => onImportFinishedRef.current?.(finished));
+    },
+    [importKeys, withResolution, adapter, fieldConfigs, batchSize, retry, m, emit]
+  );
+
+  /** The first Commit: every row of the file, as reviewed (and resolved) */
   const handleCommit = useCallback(async () => {
     // Rows are only checked against choice options once the options have loaded
-    if (review.status !== 'ready' || committingRef.current) return;
+    if (review.status !== 'ready' || committingRef.current || report) return;
     const rows = state.validatedRows;
     // Never drop a row silently: every row is either valid or excluded
     if (rows.some((r) => !r.excluded && !r.isValid)) return;
     // Every Relationship Field value must be looked up, decided and named
     if (withResolution && !resolution.canCommit) return;
-    const resolved = resolution.resolved;
-    committingRef.current = true;
+    await commit(rows, resolution.resolved, null);
+  }, [review.status, report, state.validatedRows, withResolution, resolution.canCommit, resolution.resolved, commit]);
 
-    const toImportRow = (row: RowValidation<TRecord>): ImportRow<TRecord> => ({
-      importKey: importKeys[row.rowIndex],
-      rowIndex: row.rowIndex,
-      record: row.data,
-    });
-    const included = rows.filter((r) => !r.excluded).map(toImportRow);
-    const excluded = rows.filter((r) => r.excluded).map(toImportRow);
+  /**
+   * Fix & Retry: commit the Rejected Rows again, as fixed (or excluded) by
+   * the Importer, with their original Import Keys. Each row's Relationship
+   * Field values keep the decisions they were committed with for that row
+   * (a Homonym's row its own, a merged value its merge); values new or
+   * changed since are decided in Resolution first.
+   */
+  const handleRetry = useCallback(async () => {
+    if (!report || committingRef.current) return;
+    const rows = fixRows;
+    if (rows.some((r) => !r.excluded && !r.isValid)) return;
 
-    setCommitProgress({ done: 0, total: included.length, retry: null });
-    setState((s) => ({ ...s, step: 'commit' }));
-
-    const abort = new AbortController();
-    commitAbortRef.current = abort;
-
-    // First the new Related Records, once each and one at a time, then IDs in place of names (ADR-0001)
-    let toSave = included;
-    let notCreated: RejectedRow<TRecord>[] = [];
+    let resolved: ResolvedValue[] = [];
     if (withResolution) {
-      const created = await createRelatedRecords(planRelatedCreations(resolved), {
-        // Called on the adapter, so a Host App's class instance keeps its `this`
-        createRelated: (kind, name) => adapter.createRelated!(kind, name),
-        messages: m,
-        signal: abort.signal,
-      });
-      if (abort.signal.aborted) return;
-      ({ ready: toSave, rejected: notCreated } = substituteRelatedIds(included, fieldConfigs, resolved, created, m));
-      setCommitProgress({ done: notCreated.length, total: included.length, retry: null });
+      if (state.step === 'resolution' && !resolution.canCommit) return;
+      // Resolution's decisions are for the rows it was shown (none unless it is open)
+      const decided = retryDecisions(rows, fieldConfigs, committedValues, resolution.resolved);
+      if (!decided) return;
+      // A new record named like one created before is that record
+      resolved = linkAlreadyCreated(decided, createdIdsRef.current);
     }
-
-    emit({
-      type: 'COMMIT_STARTED',
-      rows: toSave.length,
-      batches: toBatches(toSave, normaliseBatchSize(batchSize)).length,
-      excluded: excluded.length,
-    });
-
-    const outcome = await commitRows(toSave, {
-      signal: abort.signal,
-      // Called on the adapter, so a Host App's class instance keeps its `this`
-      saveBatch: (batch) => adapter.saveBatch(batch),
-      batchSize,
-      retry,
-      messages: m,
-      onBatchRetry: (batchRetry) => {
-        setCommitProgress((p) => ({ ...p, retry: { attempt: batchRetry.attempt, attempts: batchRetry.attempts } }));
-        emit({ type: 'BATCH_RETRY', retry: batchRetry });
-      },
-      onBatchSettled: (result, progress) => {
-        for (const problem of result.problems) console.error(`[data-weaver] ${problem}`);
-        setCommitProgress({ done: notCreated.length + progress.done, total: included.length, retry: null });
-        emit({ type: 'BATCH_SETTLED', progress, created: result.created, rejected: result.rejected });
-      },
-    });
-
-    if (abort.signal.aborted) return;
-    const finished: ImportReport<TRecord> = {
-      created: outcome.created,
-      // In file order, whether the Host App refused them or their Related Record was not created
-      rejected: [...notCreated, ...outcome.rejected].sort((a, b) => a.rowIndex - b.rowIndex),
-      excluded,
-    };
-    setReport(finished);
-    setState((s) => ({ ...s, step: 'report' }));
-    emit({ type: 'IMPORT_FINISHED', report: finished });
-    callHost('onImportFinished', () => onImportFinishedRef.current?.(finished));
+    await commit(rows, resolved, report);
   }, [
-    review.status,
-    state.validatedRows,
+    report,
+    fixRows,
     withResolution,
+    state.step,
     resolution.canCommit,
     resolution.resolved,
-    importKeys,
-    adapter,
+    committedValues,
     fieldConfigs,
-    batchSize,
-    retry,
-    m,
-    emit,
+    commit,
   ]);
+
+  // Fix & Retry's badges: what each value (and row) was committed with, or resolved to since
+  const fixBadges = useMemo(() => {
+    const badges = new Map<string, ResolvedValue>(resolution.badges);
+    for (const [key, value] of committedValues) badges.set(key, combineDecisions(value, resolution.badges.get(key)));
+    return badges;
+  }, [resolution.badges, committedValues]);
 
   // The report as the Importer sees and downloads it: each row's record as
   // reviewed, i.e. with their own text where Relationship Fields were sent to
@@ -525,7 +623,8 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             names={resolution.names}
             blockers={resolution.blockers}
             canCommit={resolution.canCommit}
-            rowCount={state.validatedRows.filter((r) => !r.excluded).length}
+            rowCount={(report ? fixRows : state.validatedRows).filter((r) => !r.excluded).length}
+            retrying={report !== null}
             describeRow={describeRow}
             onNameChange={resolution.setName}
             onChoose={resolution.choose}
@@ -533,7 +632,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             onMergeChange={resolution.setMerge}
             onRetry={startResolution}
             onBack={handleBackToReview}
-            onComplete={handleCommit}
+            onComplete={report ? handleRetry : handleCommit}
           />
         )}
 
@@ -546,18 +645,42 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             report={importerReport}
             fields={fieldConfigs}
             actions={
-              importerReport.rejected.length > 0 &&
-              state.parsedData && (
-                <RejectedRowsDownload
-                  file={state.parsedData}
-                  mappings={state.columnMappings}
-                  fields={fieldConfigs}
-                  rejected={importerReport.rejected}
-                  unedited={uneditedRecords}
-                  acceptedFileTypes={acceptedFileTypes}
-                />
+              importerReport.rejected.length > 0 && (
+                <div className="space-y-3">
+                  {state.parsedData && (
+                    <RejectedRowsDownload
+                      file={state.parsedData}
+                      mappings={state.columnMappings}
+                      fields={fieldConfigs}
+                      rejected={importerReport.rejected}
+                      unedited={uneditedRecords}
+                      acceptedFileTypes={acceptedFileTypes}
+                    />
+                  )}
+                  <div className="flex justify-end">
+                    <Button size="lg" className="gap-2" onClick={handleOpenFix}>
+                      <Wrench className="h-4 w-4" aria-hidden="true" />
+                      {m.fix.open({ count: importerReport.rejected.length })}
+                    </Button>
+                  </div>
+                </div>
               )
             }
+          />
+        )}
+
+        {state.step === 'fix' && review.status === 'ready' && (
+          <DataValidator
+            validatedRows={fixRows}
+            fields={review.fields}
+            validateRow={customValidator}
+            aiEdit={aiEdit}
+            onComplete={fixNeedsResolution ? startResolution : handleRetry}
+            onBack={handleBackToReport}
+            onRowsChange={handleRowsChange}
+            relatedValues={withResolution ? fixBadges : undefined}
+            rejections={rejections}
+            continuesToResolution={fixNeedsResolution}
           />
         )}
       </div>
@@ -586,8 +709,10 @@ function StepIndicator({ currentStep, withResolution }: StepIndicatorProps) {
     { key: 'commit' as const, label: m.steps.import() },
   ].map((step, index) => ({ ...step, number: index + 1 }));
 
-  // Commit and the Import Report are both the import step
-  const currentIndex = steps.findIndex((s) => s.key === (currentStep === 'report' ? 'commit' : currentStep));
+  // Commit, the Import Report and Fix & Retry are all the import step
+  const currentIndex = steps.findIndex(
+    (s) => s.key === (currentStep === 'report' || currentStep === 'fix' ? 'commit' : currentStep)
+  );
 
   return (
     <div className="flex items-center justify-center gap-6">

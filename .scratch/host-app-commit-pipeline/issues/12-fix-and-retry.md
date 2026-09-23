@@ -8,9 +8,9 @@
 
 Spec: `../spec.md`
 
-- [ ] Fix & Retry shows only the Rejected Rows, with errors on the offending cells
-- [ ] Imported rows cannot be edited or re-sent
-- [ ] Rejected Rows can be excluded in Fix & Retry
-- [ ] Re-committing sends only the fixed rows, with their original Import Keys
-- [ ] The Import Report updates to reflect the new outcomes
-- [ ] Tests use the fake Host App adapter to reject rows on the first Commit and accept them on the retry
+- [x] Fix & Retry shows only the Rejected Rows, with errors on the offending cells
+- [x] Imported rows cannot be edited or re-sent
+- [x] Rejected Rows can be excluded in Fix & Retry
+- [x] Re-committing sends only the fixed rows, with their original Import Keys
+- [x] The Import Report updates to reflect the new outcomes
+- [x] Tests use the fake Host App adapter to reject rows on the first Commit and accept them on the retry

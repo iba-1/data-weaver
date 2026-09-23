@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import type { AiEditHandler, FieldConfig, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
+import type { AiEditHandler, FieldConfig, RowRejection, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
 import { getValidationSummary } from '@/lib/import-wizard/validator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WizardRoot } from './WizardRoot';
@@ -32,6 +32,18 @@ interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends str
    * cells show a badge naming the Related Record they resolved to
    */
   relatedValues?: ReadonlyMap<string, ResolvedValue>;
+  /**
+   * Fix & Retry: the rows are a Commit's Rejected Rows, and this is why the
+   * Host App refused each (by rowIndex). Each reason is pinned to its field's
+   * cell, or to the whole row without a field; it doesn't block completing,
+   * since the Host App decides again. The step's text becomes Fix & Retry's.
+   */
+  rejections?: ReadonlyMap<number, RowRejection>;
+  /**
+   * Whether completing goes to Resolution first. By default, whether `fields`
+   * has Relationship Fields.
+   */
+  continuesToResolution?: boolean;
   isLoading?: boolean;
   className?: string;
 }
@@ -57,6 +69,8 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   onBack,
   onRowsChange,
   relatedValues,
+  rejections,
+  continuesToResolution = hasRelationshipFields(fields),
   isLoading = false,
   className,
 }: DataValidatorProps<TRecord, TKey>) {
@@ -85,8 +99,8 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">{m.review.title()}</h3>
-            <p className="text-sm text-muted-foreground">{m.review.description()}</p>
+            <h3 className="text-lg font-semibold text-foreground">{rejections ? m.fix.title() : m.review.title()}</h3>
+            <p className="text-sm text-muted-foreground">{rejections ? m.fix.description() : m.review.description()}</p>
           </div>
           <ReviewSummary summary={summary} filter={view.filter} onFilterChange={view.setFilter} />
         </div>
@@ -126,6 +140,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           onCellEdit={review.editCell}
           onToggleExcluded={review.toggleExcluded}
           relatedValues={relatedValues}
+          rejections={rejections}
         />
       </div>
 
@@ -133,7 +148,8 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
         summary={summary}
         onBack={onBack}
         onComplete={onComplete}
-        continuesToResolution={hasRelationshipFields(fields)}
+        continuesToResolution={continuesToResolution}
+        retrying={!!rejections}
       />
     </div>
   );

@@ -12,6 +12,8 @@ interface EditableCellProps {
   hasError?: boolean;
   hasWarning?: boolean;
   isHighlighted?: boolean;
+  /** The error or warning to show on the cell (as its tooltip) */
+  message?: string;
   className?: string;
 }
 
@@ -21,6 +23,7 @@ export function EditableCell({
   hasError = false,
   hasWarning = false,
   isHighlighted = false,
+  message,
   className,
 }: EditableCellProps) {
   const m = useMessages();
@@ -157,6 +160,8 @@ export function EditableCell({
       }}
       tabIndex={0}
       role="gridcell"
+      aria-invalid={hasError || undefined}
+      title={message}
     >
       {value !== null && value !== undefined ? (
         <span className="max-w-[180px] truncate block text-sm">{cellText(value)}</span>
