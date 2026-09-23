@@ -198,6 +198,7 @@ export {
   type ResolveOptions,
   type PossibleMatch,
   type MergeTarget,
+  type CommittedValue,
 } from './resolution';
 
 export { findPossibleMatches, isPossibleMatch, matchWords, type PossiblePair } from './possible';

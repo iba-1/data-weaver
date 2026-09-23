@@ -5,6 +5,7 @@ import {
   relatedValueKey,
   resolveValues,
   type LookupResults,
+  type MergeTarget,
   type RelatedDecision,
 } from '../resolution';
 import {
@@ -196,6 +197,142 @@ describe('Fix & Retry with Homonyms and merges', () => {
       { action: 'link', id: 'rossi-1987', name: 'Mario Rossi' },
       { action: 'link', id: 'reg-new-rossi', name: 'Mario Rossi' },
       { action: 'link', id: 'rossi-1950', name: 'Mario Rossi' },
+    ]);
+  });
+});
+
+describe('Possible Matches with the names committed earlier', () => {
+  // The first Commit: Anna Bianchi was created (reg-anna), Piero Manzoni could not be created,
+  // and Mario Rossi (Homonyms) went to b. 1950 except in row 3, which went to b. 1987
+  const firstRows = [
+    row(0, { author: 'Anna Bianchi' }),
+    row(1, { author: 'Piero Manzoni' }),
+    row(2, { author: 'Mario Rossi' }),
+    row(3, { author: 'Mario Rossi' }),
+    row(4, { author: 'Lucio Fontana' }),
+  ];
+  const firstLookups: LookupResults = new Map([
+    [
+      'registry',
+      new Map([
+        ['anna bianchi', []],
+        ['piero manzoni', []],
+        [
+          'mario rossi',
+          [
+            { id: 'rossi-1950', name: 'Mario Rossi', match: 'normalised' as const },
+            { id: 'rossi-1987', name: 'Mario Rossi', match: 'normalised' as const },
+          ],
+        ],
+        ['lucio fontana', [{ id: 'reg-fontana', name: 'Lucio Fontana', match: 'normalised' as const }]],
+      ]),
+    ],
+  ]);
+  const rossi = relatedValueKey('registry', 'mario rossi');
+  const firstResolved = resolveValues(collectRelatedValues(firstRows, FIELDS), firstLookups, {
+    decisions: new Map([[rossi, { action: 'link', id: 'rossi-1950', name: 'Mario Rossi' }]]),
+    rowDecisions: new Map([[rossi, new Map<number, RelatedDecision>([[3, { action: 'link', id: 'rossi-1987', name: 'Mario Rossi' }]])]]),
+  });
+  const createdIds = createdRelatedIds([
+    { kind: 'registry', name: 'Anna Bianchi', keys: [], id: 'reg-anna' },
+    { kind: 'registry', name: 'Piero Manzoni', keys: [], reason: 'Registry unavailable' },
+  ]);
+  const committed = rememberCommitted(new Map(), linkAlreadyCreated(firstResolved, createdIds));
+  const earlier = [...committed.values()];
+
+  // Fix & Retry: names typed for the first time
+  const retryRows = [
+    row(5, { author: 'A. Bianchi' }),
+    row(6, { author: 'Manzoni, Piero' }),
+    row(7, { author: 'M. Rossi', lender: 'Fontana, Lucio' }),
+    row(8, { author: 'Bianchi, A.' }),
+    row(9, { author: 'A. Bianchi' }),
+  ];
+  const freshValues = collectRelatedValues(retryRows, FIELDS);
+  const freshLookups: LookupResults = new Map([
+    [
+      'registry',
+      new Map([
+        ['a. bianchi', []],
+        ['manzoni, piero', []],
+        ['m. rossi', []],
+        // The lookup already flags Lucio Fontana's record for Fontana, Lucio
+        ['fontana, lucio', [{ id: 'reg-fontana', name: 'Lucio Fontana', match: 'possible' as const }]],
+        ['bianchi, a.', []],
+      ]),
+    ],
+  ]);
+  const committedMatch = (value: string, name: string) => ({ source: 'committed' as const, value, name });
+  const byValue = (resolved: ReturnType<typeof resolveValues>) => Object.fromEntries(resolved.map((v) => [v.value, v]));
+  const toCommitted = (value: string) => ({ source: 'committed' as const, value });
+
+  it('offers a name new in Fix & Retry the names committed earlier it might be, keeping it separate by default', () => {
+    const resolved = byValue(resolveValues(freshValues, freshLookups, { committed: earlier }));
+
+    expect(resolved['a. bianchi'].possibleMatches).toEqual([committedMatch('anna bianchi', 'Anna Bianchi')]);
+    expect(resolved['a. bianchi']).toMatchObject({ merge: null, decision: { action: 'create', name: 'A. Bianchi' } });
+    // Also a name whose record could not be created
+    expect(resolved['manzoni, piero'].possibleMatches).toEqual([committedMatch('piero manzoni', 'Piero Manzoni')]);
+    expect(resolved['manzoni, piero'].decision).toEqual({ action: 'create', name: 'Manzoni, Piero' });
+    // After the lookup's and the file's own Possible Matches
+    expect(resolved['bianchi, a.'].possibleMatches).toEqual([
+      { source: 'file', value: 'a. bianchi', name: 'A. Bianchi' },
+      committedMatch('anna bianchi', 'Anna Bianchi'),
+    ]);
+    // The committed values are offered, never decided again
+    expect(Object.keys(resolved)).toEqual(['a. bianchi', 'manzoni, piero', 'm. rossi', 'fontana, lucio', 'bianchi, a.']);
+  });
+
+  it('offers a committed name only one way, and only when its rows all point to one record not already offered', () => {
+    const resolved = byValue(resolveValues(freshValues, freshLookups, { committed: earlier }));
+
+    // Mario Rossi was committed to two different records: merging with it would be ambiguous
+    expect(resolved['m. rossi'].possibleMatches).toEqual([]);
+    // Lucio Fontana was linked to the record the lookup already offers
+    expect(resolved['fontana, lucio'].possibleMatches).toEqual([
+      { source: 'host', candidate: { id: 'reg-fontana', name: 'Lucio Fontana', match: 'possible' } },
+    ]);
+    // A merge with a committed value not offered is ignored
+    const ignored = byValue(
+      resolveValues(freshValues, freshLookups, {
+        committed: earlier,
+        merges: new Map([[relatedValueKey('registry', 'm. rossi'), toCommitted('anna bianchi')]]),
+      })
+    );
+    expect(ignored['m. rossi']).toMatchObject({ merge: null, decision: { action: 'create', name: 'M. Rossi' } });
+  });
+
+  it('links a name merged with a committed name to the record it was committed with, creating nothing', () => {
+    const fresh = resolveValues(freshValues, freshLookups, {
+      committed: earlier,
+      merges: new Map<string, MergeTarget>([
+        [relatedValueKey('registry', 'a. bianchi'), toCommitted('anna bianchi')],
+        // Merged into A. Bianchi, so it follows it to Anna Bianchi's record
+        [relatedValueKey('registry', 'bianchi, a.'), { source: 'file' as const, value: 'a. bianchi' }],
+      ]),
+    });
+    expect(byValue(fresh)['a. bianchi'].decision).toEqual({ action: 'link', id: 'reg-anna', name: 'Anna Bianchi' });
+    expect(byValue(fresh)['bianchi, a.'].decision).toEqual({ action: 'link', id: 'reg-anna', name: 'Anna Bianchi' });
+
+    const resolved = retryDecisions([retryRows[0], retryRows[3], retryRows[4]], FIELDS, committed, fresh);
+    expect(planRelatedCreations(resolved!)).toEqual([]);
+  });
+
+  it('makes a name merged with a committed name whose record could not be created share its one creation', () => {
+    const fresh = resolveValues(freshValues, freshLookups, {
+      committed: earlier,
+      merges: new Map([[relatedValueKey('registry', 'manzoni, piero'), toCommitted('piero manzoni')]]),
+    });
+    expect(byValue(fresh)['manzoni, piero'].decision).toEqual({ action: 'create', name: 'Piero Manzoni' });
+
+    // Row 1 (Piero Manzoni, not created) is sent again with row 6
+    const resolved = retryDecisions([firstRows[1], retryRows[1]], FIELDS, committed, fresh);
+    expect(planRelatedCreations(resolved!)).toEqual([
+      {
+        kind: 'registry',
+        name: 'Piero Manzoni',
+        keys: [relatedValueKey('registry', 'piero manzoni'), relatedValueKey('registry', 'manzoni, piero')],
+      },
     ]);
   });
 });

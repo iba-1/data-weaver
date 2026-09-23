@@ -326,17 +326,57 @@ export function isValueDecided(value: ResolvedValue): boolean {
 /**
  * Something a value might be the same Related Record as (a Possible Match):
  * another value of the file (`name` is its stored-name default, for showing),
- * or an existing record the Host App's lookup flagged as `possible`.
+ * an existing record the Host App's lookup flagged as `possible`, or (in Fix &
+ * Retry) a value committed earlier (`name` is its stored-name default).
  */
 export type PossibleMatch =
   | { source: 'file'; value: string; name: string }
-  | { source: 'host'; candidate: RelatedCandidate };
+  | { source: 'host'; candidate: RelatedCandidate }
+  | { source: 'committed'; value: string; name: string };
 
 /**
  * The Importer's choice to merge a value with one of its Possible Matches:
- * another value of the file (of the same kind), or an existing record by ID.
+ * another value of the file (of the same kind), an existing record by ID, or
+ * a value committed earlier (of the same kind).
  */
-export type MergeTarget = { source: 'file'; value: string } | { source: 'host'; id: RelatedRecordId };
+export type MergeTarget =
+  | { source: 'file'; value: string }
+  | { source: 'host'; id: RelatedRecordId }
+  | { source: 'committed'; value: string };
+
+/** What merging with a Possible Match records */
+export function targetOf(match: PossibleMatch): MergeTarget {
+  return match.source === 'host' ? { source: 'host', id: match.candidate.id } : { source: match.source, value: match.value };
+}
+
+/** Whether two merges (null: kept separate) are with the same thing */
+export function sameTarget(a: MergeTarget | null, b: MergeTarget | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.source === 'host') return b.source === 'host' && a.id === b.id;
+  return b.source === a.source && a.value === b.value;
+}
+
+/**
+ * A value an earlier Commit was made with (Fix & Retry), with the decisions
+ * it was committed with; a record created then is linked to by its ID (see
+ * `rememberCommitted`).
+ */
+export type CommittedValue = Pick<ResolvedValue, 'kind' | 'value' | 'defaultName' | 'decision' | 'rowDecisions'>;
+
+const sameDecision = (a: RelatedDecision, b: RelatedDecision) =>
+  a.action === 'link'
+    ? b.action === 'link' && a.id === b.id
+    : b.action === 'create' && normaliseForMatch(a.name) === normaliseForMatch(b.name);
+
+/**
+ * Whether a committed value can be merged with: every row it was committed
+ * for points to the one record of its decision. A Homonym committed to
+ * different records for different rows cannot, as merging would be ambiguous.
+ */
+function canMergeWithCommitted(value: CommittedValue): boolean {
+  const { decision } = value;
+  return decision !== null && [...value.rowDecisions.values()].every((rowDecision) => sameDecision(rowDecision, decision));
+}
 
 /** The group a value falls in, from its lookup candidates (undefined: not looked up) */
 export function classifyCandidates(candidates: RelatedCandidate[] | undefined): ResolutionGroup {
@@ -360,7 +400,17 @@ export interface ResolveOptions {
   rowDecisions?: ReadonlyMap<string, ReadonlyMap<number, RelatedDecision>>;
   /** Values the Importer merged with one of their Possible Matches, by `relatedValueKey` */
   merges?: ReadonlyMap<string, MergeTarget>;
-  /** The file's Possible Matches, `findPossibleMatches(values)`: found here when not given */
+  /**
+   * Fix & Retry: the values committed earlier (see `rememberCommitted`). A
+   * value without a Normalised Match is offered those of its kind it might
+   * be, to merge with and take the decision they were committed with. They
+   * are only merged into: never decided again, nor offered anything.
+   */
+  committed?: ReadonlyArray<CommittedValue>;
+  /**
+   * The Possible Matches: `findPossibleMatches(values)`, or with `committed`
+   * `findPossibleMatches([...values, ...committed])`. Found here when not given.
+   */
   possibleMatches?: PossiblePair[];
 }
 
@@ -381,8 +431,11 @@ const trimName = (decision: RelatedDecision): RelatedDecision =>
  * A value merged (`merges`) with an existing record links to it. A value
  * merged with another value of the file takes that value's decision, so
  * merged values to be created make one record, whose default name is the
- * preferred spelling across all of them (`preferredSpelling`). A merge with
- * something no longer offered (see `possibleMatches`) is ignored.
+ * preferred spelling across all of them (`preferredSpelling`). A value merged
+ * with a value committed earlier (`committed`) takes the decision that value
+ * was committed with: its record, or, if that record could not be created,
+ * the same one creation. A merge with something no longer offered (see
+ * `possibleMatches`) is ignored.
  *
  * Decisions for individual rows (`rowDecisions`, Homonyms) override the
  * value's decision for those rows; rows no longer using the value are ignored.
@@ -390,23 +443,31 @@ const trimName = (decision: RelatedDecision): RelatedDecision =>
 export function resolveValues(
   values: RelatedValue[],
   lookups: LookupResults,
-  { names, decisions, rowDecisions, merges, possibleMatches }: ResolveOptions = {}
+  { names, decisions, rowDecisions, merges, committed = [], possibleMatches }: ResolveOptions = {}
 ): ResolvedValue[] {
   const found = values.map((value) => lookups.get(value.kind)?.get(value.value));
   const groups = found.map(classifyCandidates);
   const keys = values.map((value) => relatedValueKey(value.kind, value.value));
-  const offered = offerPossibleMatches(values, found, groups, possibleMatches ?? findPossibleMatches(values));
+  // The committed values that can be merged with; a value being resolved is never one of them
+  const inValues = new Set(keys);
+  const earlier = new Map(
+    committed
+      .filter((value) => !inValues.has(relatedValueKey(value.kind, value.value)) && canMergeWithCommitted(value))
+      .map((value) => [relatedValueKey(value.kind, value.value), value])
+  );
+  const offered = offerPossibleMatches(
+    values,
+    found,
+    groups,
+    earlier,
+    possibleMatches ?? findPossibleMatches([...values, ...earlier.values()])
+  );
 
   // The merges that apply: only with something offered, and never over a decision of the Importer
   const merge = keys.map((key, i): MergeTarget | null => {
     const target = merges?.get(key);
     if (!target || decisions?.has(key)) return null;
-    const applies = offered[i].some((match) =>
-      match.source === 'file'
-        ? target.source === 'file' && match.value === target.value
-        : target.source === 'host' && match.candidate.id === target.id
-    );
-    return applies ? target : null;
+    return offered[i].some((match) => sameTarget(targetOf(match), target)) ? target : null;
   });
 
   // A value merged with a value of the file takes the decision of the value at the end of the chain.
@@ -434,6 +495,7 @@ export function resolveValues(
       const candidate = found[i]!.find((c) => c.id === target.id)!;
       return { action: 'link', id: candidate.id, name: candidate.name };
     }
+    if (target?.source === 'committed') return earlier.get(relatedValueKey(values[i].kind, target.value))!.decision;
     if (groups[i] === 'matched') {
       const match = found[i]!.find((c) => c.match === 'normalised')!;
       return { action: 'link', id: match.id, name: match.name };
@@ -472,17 +534,20 @@ const mergeable = (group: ResolutionGroup) => group === 'create' || group === 'p
 /**
  * What each value is offered to merge with. Only values looked up and
  * without a Normalised Match are offered anything: the lookup's Possible
- * Matches, then the values of the file they might be. A pair of values of the
- * file is offered one way only, so merges never go round in circles: into the
- * value with a Normalised Match, else into the value used in more rows (the
- * one seen first when equal). Two values that both have Normalised Matches
- * are never offered, nor a value of the file matched to a record the lookup
- * already offers.
+ * Matches, then the values of the file they might be, then the values
+ * committed earlier they might be (`committed`, Fix & Retry). A pair of
+ * values of the file is offered one way only, so merges never go round in
+ * circles: into the value with a Normalised Match, else into the value used
+ * in more rows (the one seen first when equal). A committed value is only
+ * ever merged into, never offered anything, so it is never decided again.
+ * Two values that both have Normalised Matches are never offered, nor a value
+ * (of the file or committed) linked to a record the lookup already offers.
  */
 function offerPossibleMatches(
   values: RelatedValue[],
   found: Array<RelatedCandidate[] | undefined>,
   groups: ResolutionGroup[],
+  committed: ReadonlyMap<string, CommittedValue>,
   pairs: PossiblePair[]
 ): PossibleMatch[][] {
   const fromHost: PossibleMatch[][] = values.map((_, i) =>
@@ -491,6 +556,9 @@ function offerPossibleMatches(
       : []
   );
   const fromFile: number[][] = values.map(() => []);
+  const fromCommitted: CommittedValue[][] = values.map(() => []);
+  const hostOffers = (i: number, id: RelatedRecordId | undefined) =>
+    id !== undefined && fromHost[i].some((m) => m.source === 'host' && m.candidate.id === id);
 
   const indexOf = new Map(values.map((value, i) => [relatedValueKey(value.kind, value.value), i]));
   const outranks = (a: number, b: number) =>
@@ -500,12 +568,22 @@ function offerPossibleMatches(
 
   for (const { kind, values: pair } of pairs) {
     const [a, b] = pair.map((value) => indexOf.get(relatedValueKey(kind, value)));
-    if (a === undefined || b === undefined || groups[a] === 'pending' || groups[b] === 'pending') continue;
-    if (!mergeable(groups[a]) && !mergeable(groups[b])) continue;
-    const [from, into] = outranks(a, b) ? [b, a] : [a, b];
-    const matchedTo = groups[into] === 'matched' ? found[into]!.find((c) => c.match === 'normalised')!.id : undefined;
-    if (matchedTo !== undefined && fromHost[from].some((m) => m.source === 'host' && m.candidate.id === matchedTo)) continue;
-    fromFile[from].push(into);
+    if (a !== undefined && b !== undefined) {
+      if (groups[a] === 'pending' || groups[b] === 'pending') continue;
+      if (!mergeable(groups[a]) && !mergeable(groups[b])) continue;
+      const [from, into] = outranks(a, b) ? [b, a] : [a, b];
+      const matchedTo = groups[into] === 'matched' ? found[into]!.find((c) => c.match === 'normalised')!.id : undefined;
+      if (hostOffers(from, matchedTo) || fromFile[from].includes(into)) continue;
+      fromFile[from].push(into);
+      continue;
+    }
+    // A value being resolved and a committed value: always into the committed one
+    const from = a ?? b;
+    const into = committed.get(relatedValueKey(kind, a === undefined ? pair[0] : pair[1]));
+    if (from === undefined || !into || !mergeable(groups[from])) continue;
+    const linkedTo = into.decision?.action === 'link' ? into.decision.id : undefined;
+    if (hostOffers(from, linkedTo) || fromCommitted[from].includes(into)) continue;
+    fromCommitted[from].push(into);
   }
 
   return fromHost.map((host, i) => [
@@ -513,6 +591,7 @@ function offerPossibleMatches(
     ...fromFile[i]
       .sort((x, y) => x - y)
       .map((j): PossibleMatch => ({ source: 'file', value: values[j].value, name: values[j].defaultName })),
+    ...fromCommitted[i].map((value): PossibleMatch => ({ source: 'committed', value: value.value, name: value.defaultName })),
   ]);
 }
 

@@ -13,9 +13,12 @@ import {
   Users,
 } from 'lucide-react';
 import type { FieldConfig } from '@/lib/import-wizard/types';
+import type { ResolvedMessages } from '@/lib/import-wizard/messages';
 import {
   decisionsInEffect,
   relatedValueKey,
+  sameTarget,
+  targetOf,
   type MergeTarget,
   type PossibleMatch,
   type RelatedDecision,
@@ -334,15 +337,20 @@ function Region({
   );
 }
 
-const targetOf = (match: PossibleMatch): MergeTarget =>
-  match.source === 'file' ? { source: 'file', value: match.value } : { source: 'host', id: match.candidate.id };
-
-const sameTarget = (a: MergeTarget | null, b: MergeTarget | null) =>
-  a === null || b === null
-    ? a === b
-    : a.source === 'file'
-      ? b.source === 'file' && a.value === b.value
-      : b.source === 'host' && a.id === b.id;
+/** A Possible Match's choice, labelled by what it is: a value of the file, an existing record, or a name committed earlier */
+function mergeChoice(match: PossibleMatch, m: ResolvedMessages) {
+  switch (match.source) {
+    case 'file':
+      return { id: `file:${match.value}`, label: m.resolution.mergeWithValue({ name: match.name }) };
+    case 'committed':
+      return { id: `committed:${match.value}`, label: m.resolution.mergeWithCommitted({ name: match.name }) };
+    case 'host':
+      return {
+        id: `host:${typeof match.candidate.id}:${match.candidate.id}`,
+        label: m.resolution.mergeWithRecord({ name: match.candidate.name, description: match.candidate.description ?? '' }),
+      };
+  }
+}
 
 /**
  * A value with Possible Matches: the Importer merges it with one of them or
@@ -364,14 +372,7 @@ function PossibleItem({
   const group = useId();
   const key = relatedValueKey(value.kind, value.value);
   const choices: Array<{ id: string; target: MergeTarget | null; label: string }> = [
-    ...value.possibleMatches.map((match) => ({
-      id: match.source === 'file' ? `file:${match.value}` : `host:${typeof match.candidate.id}:${match.candidate.id}`,
-      target: targetOf(match),
-      label:
-        match.source === 'file'
-          ? m.resolution.mergeWithValue({ name: match.name })
-          : m.resolution.mergeWithRecord({ name: match.candidate.name, description: match.candidate.description ?? '' }),
-    })),
+    ...value.possibleMatches.map((match) => ({ ...mergeChoice(match, m), target: targetOf(match) })),
     { id: 'separate', target: null, label: m.resolution.keepSeparate() },
   ];
 

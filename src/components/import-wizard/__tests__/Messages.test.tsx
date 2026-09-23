@@ -253,7 +253,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     'Opera già presente', 'Servizio non disponibile',
     // Resolution: Relationship Field labels and values as written in the file
     'Autore', 'Prestatore', 'Lucio Fontana', 'Anna Bianchi', 'L. Fontana', 'Galleria Rossi', 'Piero Manzoni',
-    'Manzoni, Piero',
+    'Manzoni, Piero', 'A. Bianchi',
   ]);
   // Dates are shown as YYYY-MM-DD: no letters, so they need no allowance
 
@@ -719,6 +719,43 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     await screen.findByText('⟦review.title⟧');
     expect(screen.getByText('⟦resolution.badgeNew⟧')).toBeInTheDocument();
     expect(screen.getByText('⟦resolution.badgeLinked⟧')).toBeInTheDocument();
+    expectAllMarked();
+  });
+
+  it('in Fix & Retry’s Resolution: a new name offered to merge with a name from the earlier import', async () => {
+    type RelKey = 'title' | 'author';
+    type RelRec = Record<RelKey, unknown>;
+    const fields: FieldConfig<RelKey>[] = [
+      { key: 'title', label: 'Titolo', type: 'string', required: true, matchKeywords: ['titolo'] },
+      { key: 'author', label: 'Autore', type: 'string', relationship: { kind: 'registry' }, matchKeywords: ['autore'] },
+    ];
+    mockFile([
+      { Titolo: 'Achrome', Autore: 'Anna Bianchi' },
+      { Titolo: 'Concetto spaziale', Autore: 'Piero Manzoni' },
+    ]);
+    let refusing = true;
+    const host = createFakeHostApp<RelRec>({
+      reject: (row) => (refusing && row.record.title === 'Concetto spaziale' ? { reason: 'Opera già presente', field: 'title' } : null),
+    });
+    render(<ImportWizard<RelRec, RelKey> adapter={host.adapter} fields={fields} messages={MARKED} />);
+    await upload();
+    await continueToReview('⟦mapping.continue⟧');
+    await screen.findByText('⟦review.title⟧');
+    await continueToResolution('⟦review.continueToResolution⟧', '⟦resolution.complete⟧');
+    await importRows('⟦resolution.complete⟧');
+
+    // Concetto spaziale's author becomes an initials form of Anna Bianchi, committed on the first Commit
+    await openFixAndRetry('⟦fix.open⟧', '⟦fix.retry⟧');
+    fireEvent.click(within(gridRow(1)).getAllByRole('gridcell')[1]);
+    const input = within(gridRow(1)).getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'A. Bianchi' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    refusing = false;
+    await continueToResolution('⟦review.continueToResolution⟧', '⟦fix.retry⟧');
+
+    const possible = screen.getByRole('region', { name: '⟦resolution.possibleTitle⟧' });
+    expect(within(possible).getByRole('radio', { name: '⟦resolution.mergeWithCommitted⟧' })).toBeInTheDocument();
+    expect(within(possible).getByRole('radio', { name: '⟦resolution.keepSeparate⟧' })).toBeChecked();
     expectAllMarked();
   });
 });
