@@ -11,7 +11,7 @@
  * Keys, a few times with backoff before its rows are given up on.
  */
 
-import type { BatchRetry, CommitProgress, ImportRow, RejectedRow, RetryOptions, SaveBatch } from './types';
+import type { BatchRetry, CommitProgress, ImportReport, ImportRow, RejectedRow, RetryOptions, SaveBatch } from './types';
 import { ENGLISH_MESSAGES, type ResolvedMessages } from './messages';
 
 /** Rows per `saveBatch` call unless the Host App sets `batchSize` */
@@ -321,4 +321,24 @@ export async function commitRows<TRecord>(
   }
 
   return outcome;
+}
+
+const inFileOrder = <T extends ImportRow<unknown>>(rows: T[]): T[] => [...rows].sort((a, b) => a.rowIndex - b.rowIndex);
+
+/**
+ * The Import Report after a Commit. After Fix & Retry (`previous` is the
+ * report it started from), it covers every outcome so far: the rows created
+ * before and now, the rows still rejected (only the retry's: every earlier
+ * Rejected Row was either sent again or excluded), and the rows excluded
+ * before and during Fix & Retry. Every list is in file order.
+ */
+export function importReport<TRecord>(
+  outcome: ImportReport<TRecord>,
+  previous?: ImportReport<TRecord> | null
+): ImportReport<TRecord> {
+  return {
+    created: inFileOrder([...(previous?.created ?? []), ...outcome.created]),
+    rejected: inFileOrder(outcome.rejected),
+    excluded: inFileOrder([...(previous?.excluded ?? []), ...outcome.excluded]),
+  };
 }

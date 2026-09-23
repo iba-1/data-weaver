@@ -29,9 +29,6 @@ export interface RelatedCreation {
 /** A creation and its outcome: the new record's ID, or why it was not created */
 export type CreatedRelated = RelatedCreation & ({ id: RelatedRecordId } | { reason: string });
 
-/** Identifies a planned creation: new records of a kind are told apart by their name's Normalised Match */
-const creationKey = (kind: string, name: string) => relatedValueKey(kind, normaliseForMatch(name));
-
 /**
  * The new Related Records a Commit creates: one per value with rows decided
  * `create`, and one only for values whose names are a Normalised Match of
@@ -57,6 +54,61 @@ export function planRelatedCreations(resolved: ResolvedValue[]): RelatedCreation
     }
   }
   return [...plan.values()];
+}
+
+/**
+ * A new Related Record's identity: its kind and the Normalised Match of its
+ * name. Two creations with the same identity are the same record.
+ */
+export function creationKey(kind: string, name: string): string {
+  return relatedValueKey(kind, normaliseForMatch(name));
+}
+
+/** The Related Records a Commit created, by `creationKey`, with their IDs; failures are left out */
+export function createdRelatedIds(created: CreatedRelated[]): Map<string, RelatedRecordId> {
+  const ids = new Map<string, RelatedRecordId>();
+  for (const creation of created) if ('id' in creation) ids.set(creationKey(creation.kind, creation.name), creation.id);
+  return ids;
+}
+
+/**
+ * For Fix & Retry: values decided `create` whose record an earlier Commit
+ * already created (see `createdRelatedIds`) link to it instead, so a Related
+ * Record is never created twice. Records that could not be created stay
+ * `create`, to be tried again.
+ */
+export function linkAlreadyCreated(
+  resolved: ResolvedValue[],
+  createdIds: ReadonlyMap<string, RelatedRecordId>
+): ResolvedValue[] {
+  return resolved.map((value) => {
+    if (value.decision?.action !== 'create') return value;
+    const id = createdIds.get(creationKey(value.kind, value.decision.name));
+    return id === undefined ? value : { ...value, decision: { action: 'link', id, name: value.decision.name } };
+  });
+}
+
+/**
+ * For Fix & Retry: the rows with only their Relationship Field values that
+ * are not in `decided` (by `relatedValueKey`), the others emptied. These are
+ * the values new or changed since the Commit that decided the others, and
+ * the only ones Resolution needs to see. The rows given are not changed.
+ */
+export function undecidedValuesOnly<R extends { data: unknown }>(
+  rows: R[],
+  fields: Pick<FieldConfig, 'key' | 'relationship'>[],
+  decided: ReadonlyMap<string, unknown>
+): R[] {
+  const relationshipFields = relationshipKinds(fields).flatMap(({ kind, fields: kindFields }) =>
+    kindFields.map((field) => ({ kind, key: field.key }))
+  );
+  return rows.map((row) => {
+    const data = { ...(row.data as Record<string, unknown>) };
+    for (const field of relationshipFields) {
+      if (decided.has(relatedValueKey(field.kind, relatedValueOf(data[field.key])))) data[field.key] = '';
+    }
+    return { ...row, data };
+  });
 }
 
 const isValidId = (id: unknown): id is RelatedRecordId =>
