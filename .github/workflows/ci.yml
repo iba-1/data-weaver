@@ -1,11 +1,10 @@
 name: CI
 
-# Every pull request to main and every push to main runs the checks.
-# Only a push to main (or a manual run on main) deploys the demo site,
-# and only after every check has passed.
+# Every pull request (including ones stacked on another PR's branch) and
+# every push to main runs the checks. Only a push to main (or a manual run
+# on main) deploys the demo site, and only after every check has passed.
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
