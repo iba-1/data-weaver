@@ -53,7 +53,7 @@ The import wizard is split into pure logic and React components, both barrel-exp
 
 ### Generic type system with legacy compat
 
-The library uses `FieldConfig<TKey>` for generic field definitions. Legacy `ArtworkRecord` / `TargetField` types and `ARTWORK_FIELD_CONFIGS` are preserved for backwards compatibility and used by the demo app.
+The library uses `FieldConfig<TKey>` for generic field definitions. Legacy `ArtworkRecord` / `TargetField` types and `ARTWORK_FIELD_CONFIGS` are preserved for backwards compatibility (the default `fields`). The demo app has its own Output Shape and simulated Host App in `src/pages/demo/`.
 
 ### Key patterns
 
