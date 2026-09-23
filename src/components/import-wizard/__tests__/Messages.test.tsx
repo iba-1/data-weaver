@@ -253,6 +253,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     'Opera già presente', 'Servizio non disponibile',
     // Resolution: Relationship Field labels and values as written in the file
     'Autore', 'Prestatore', 'Lucio Fontana', 'Anna Bianchi', 'L. Fontana', 'Galleria Rossi', 'Piero Manzoni',
+    'Manzoni, Piero',
   ]);
   // Dates are shown as YYYY-MM-DD: no letters, so they need no allowance
 
@@ -533,7 +534,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     ]);
   });
 
-  it('in Resolution: lookup, groups, names, blocked import, grid badges and a record not created', async () => {
+  it('in Resolution: lookup, groups, Possible Matches, names, blocked import, grid badges and a record not created', async () => {
     type RelKey = 'title' | 'author' | 'lender';
     type RelRec = Record<RelKey, unknown>;
     const fields: FieldConfig<RelKey>[] = [
@@ -543,7 +544,8 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     ];
     mockFile([
       { Titolo: 'Achrome', Autore: 'Lucio Fontana', Prestatore: 'Galleria Rossi' },
-      { Titolo: 'Concetto spaziale', Autore: 'Anna Bianchi', Prestatore: '' },
+      // "Manzoni, Piero" and "Piero Manzoni" might be the same: a Possible Match within the file
+      { Titolo: 'Concetto spaziale', Autore: 'Anna Bianchi', Prestatore: 'Manzoni, Piero' },
       { Titolo: 'Nature morte', Autore: 'L. Fontana', Prestatore: 'Piero Manzoni' },
     ]);
     const host = createFakeHostApp<RelRec>({
@@ -581,14 +583,19 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expect(screen.getByRole('status')).toHaveTextContent('⟦resolution.loading⟧');
     expectAllMarked();
 
-    // Matched, will be created, and needing a decision (Homonyms and a Possible Match)
+    // Matched, will be created, needing a decision (Homonyms), and possibly the same (in the file and in the system)
     await act(async () => answerLookup());
     await screen.findByRole('region', { name: '⟦resolution.kindTitle⟧' });
     expect(screen.getByRole('region', { name: '⟦resolution.matchedTitle⟧' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '⟦resolution.createTitle⟧' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '⟦resolution.undecidedTitle⟧' })).toBeInTheDocument();
     expect(screen.getByText('⟦resolution.homonyms⟧')).toBeInTheDocument();
-    expect(screen.getByText('⟦resolution.possible⟧')).toBeInTheDocument();
+    const possible = screen.getByRole('region', { name: '⟦resolution.possibleTitle⟧' });
+    expect(within(possible).getByText('⟦resolution.possibleDescription⟧')).toBeInTheDocument();
+    expect(within(possible).getAllByText('⟦resolution.possible⟧')).toHaveLength(2);
+    expect(within(possible).getByRole('radio', { name: '⟦resolution.mergeWithValue⟧' })).toBeInTheDocument();
+    expect(within(possible).getByRole('radio', { name: '⟦resolution.mergeWithRecord⟧' })).toBeInTheDocument();
+    expect(within(possible).getAllByRole('radio', { name: '⟦resolution.keepSeparate⟧' })).toHaveLength(2);
     expect(screen.getByText('⟦resolution.blockedUndecided⟧')).toBeInTheDocument();
     expectAllMarked();
 
@@ -596,8 +603,9 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     fireEvent.click(screen.getByRole('button', { name: '⟦resolution.back⟧' }));
     await screen.findByText('⟦review.title⟧');
     expect(screen.getByText('⟦resolution.badgeLinked⟧')).toBeInTheDocument();
-    expect(screen.getAllByText('⟦resolution.badgeNew⟧')).toHaveLength(2);
-    expect(screen.getAllByText('⟦resolution.badgeUndecided⟧')).toHaveLength(2);
+    // Galleria Rossi, Manzoni, Piero, and the Possible Matches kept separate: L. Fontana and Piero Manzoni
+    expect(screen.getAllByText('⟦resolution.badgeNew⟧')).toHaveLength(4);
+    expect(screen.getAllByText('⟦resolution.badgeUndecided⟧')).toHaveLength(1);
     expectAllMarked();
 
     // Leave the undecided rows out; an empty name blocks the import

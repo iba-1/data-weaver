@@ -1,9 +1,23 @@
 import { useId, useState, type ReactNode } from 'react';
-import { AlertCircle, AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Download, Link2, Plus, RotateCcw, Users } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  GitMerge,
+  Link2,
+  Plus,
+  RotateCcw,
+  Users,
+} from 'lucide-react';
 import type { FieldConfig } from '@/lib/import-wizard/types';
 import {
   decisionsInEffect,
   relatedValueKey,
+  type MergeTarget,
+  type PossibleMatch,
   type RelatedDecision,
   type RelationshipKind,
   type ResolvedValue,
@@ -34,6 +48,8 @@ interface ResolutionStepProps {
   onChoose: (key: string, choice: RelatedChoice) => void;
   /** Choose for one row of a Homonym, or (null) let the row follow the value's choice */
   onChooseForRow: (key: string, rowIndex: number, choice: RelatedChoice | null) => void;
+  /** Merge a value (by relatedValueKey) with one of its Possible Matches, or keep it separate (null) */
+  onMergeChange: (key: string, target: MergeTarget | null) => void;
   onRetry: () => void;
   onBack: () => void;
   onComplete: () => void;
@@ -41,9 +57,9 @@ interface ResolutionStepProps {
 
 /**
  * Resolution: every distinct Relationship Field value of the file, once per
- * kind, grouped as several matches (Homonyms), matched existing, will be
- * created, or needing a decision. A pure decision step: nothing is created
- * until the Importer imports.
+ * kind, grouped as several matches (Homonyms), possibly the same as another
+ * value or record, matched existing, or will be created. A pure decision
+ * step: nothing is created until the Importer imports.
  */
 export function ResolutionStep({
   kinds,
@@ -57,6 +73,7 @@ export function ResolutionStep({
   onNameChange,
   onChoose,
   onChooseForRow,
+  onMergeChange,
   onRetry,
   onBack,
   onComplete,
@@ -129,9 +146,11 @@ export function ResolutionStep({
 
       {sections.map((section) => {
         const fieldLabels = section.fields.map((f) => f.label);
-        // Homonyms stay in their own group once decided, so every group is shown in full
+        // Homonyms stay in their own group once decided, so every group is shown in full;
+        // any other value with Possible Matches is listed with them, whatever it resolves to
         const homonyms = section.values.filter((v) => v.group === 'homonyms');
-        const others = section.values.filter((v) => v.group !== 'homonyms');
+        const possible = section.values.filter((v) => v.group !== 'homonyms' && v.possibleMatches.length > 0);
+        const others = section.values.filter((v) => v.group !== 'homonyms' && v.possibleMatches.length === 0);
         const matched = others.filter((v) => v.decision?.action === 'link');
         const created = others.filter((v) => v.decision?.action === 'create');
         const undecided = others.filter((v) => !v.decision);
@@ -177,6 +196,24 @@ export function ResolutionStep({
                       {value.defaultName}
                     </span>
                   </ValueItem>
+                ))}
+              </Region>
+            )}
+
+            {possible.length > 0 && (
+              <Region
+                title={m.resolution.possibleTitle({ count: possible.length })}
+                description={m.resolution.possibleDescription()}
+                tone="warning"
+              >
+                {possible.map((value) => (
+                  <PossibleItem
+                    key={value.value}
+                    value={value}
+                    names={names}
+                    onNameChange={onNameChange}
+                    onMergeChange={onMergeChange}
+                  />
                 ))}
               </Region>
             )}
@@ -291,6 +328,82 @@ function Region({
       </div>
       <ul className="space-y-2">{children}</ul>
     </section>
+  );
+}
+
+const targetOf = (match: PossibleMatch): MergeTarget =>
+  match.source === 'file' ? { source: 'file', value: match.value } : { source: 'host', id: match.candidate.id };
+
+const sameTarget = (a: MergeTarget | null, b: MergeTarget | null) =>
+  a === null || b === null
+    ? a === b
+    : a.source === 'file'
+      ? b.source === 'file' && a.value === b.value
+      : b.source === 'host' && a.id === b.id;
+
+/**
+ * A value with Possible Matches: the Importer merges it with one of them or
+ * keeps it separate, the default. Kept separate, it is created with the name
+ * shown.
+ */
+function PossibleItem({
+  value,
+  names,
+  onNameChange,
+  onMergeChange,
+}: {
+  value: ResolvedValue;
+  names: ReadonlyMap<string, string>;
+  onNameChange: (key: string, name: string) => void;
+  onMergeChange: (key: string, target: MergeTarget | null) => void;
+}) {
+  const m = useMessages();
+  const group = useId();
+  const key = relatedValueKey(value.kind, value.value);
+  const choices: Array<{ id: string; target: MergeTarget | null; label: string }> = [
+    ...value.possibleMatches.map((match) => ({
+      id: match.source === 'file' ? `file:${match.value}` : `host:${typeof match.candidate.id}:${match.candidate.id}`,
+      target: targetOf(match),
+      label:
+        match.source === 'file'
+          ? m.resolution.mergeWithValue({ name: match.name })
+          : m.resolution.mergeWithRecord({ name: match.candidate.name, description: match.candidate.description ?? '' }),
+    })),
+    { id: 'separate', target: null, label: m.resolution.keepSeparate() },
+  ];
+
+  const details = (
+    <>
+      <fieldset className="space-y-1 text-xs">
+        <legend className="text-foreground">{m.resolution.possible({ count: value.possibleMatches.length })}</legend>
+        {choices.map((choice) => (
+          <label key={choice.id} className="flex cursor-pointer items-center gap-2 pl-3 text-foreground">
+            <input
+              type="radio"
+              name={group}
+              checked={sameTarget(value.merge, choice.target)}
+              onChange={() => onMergeChange(key, choice.target)}
+              className="h-3.5 w-3.5 shrink-0 accent-primary"
+            />
+            {choice.label}
+          </label>
+        ))}
+      </fieldset>
+      {!value.merge && value.decision?.action === 'create' && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <NewRecordName value={value} typed={names.get(key) ?? value.defaultName} onChange={(name) => onNameChange(key, name)} />
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <ValueItem value={value} details={details}>
+      <span className="flex items-center gap-2 font-medium text-foreground">
+        <GitMerge className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+        {value.defaultName}
+      </span>
+    </ValueItem>
   );
 }
 
@@ -484,16 +597,13 @@ function HomonymItem({
   );
 }
 
-/** The existing records a value needs a decision between: Homonyms, or Possible Matches */
+/** The existing records a value needs a decision between: Homonyms */
 function Candidates({ value }: { value: ResolvedValue }) {
   const m = useMessages();
-  const homonyms = value.group === 'homonyms';
-  const shown = value.candidates.filter((c) => c.match === (homonyms ? 'normalised' : 'possible'));
+  const shown = value.candidates.filter((c) => c.match === 'normalised');
   return (
     <div className="space-y-0.5 text-xs">
-      <p className="text-foreground">
-        {homonyms ? m.resolution.homonyms({ count: shown.length }) : m.resolution.possible({ count: shown.length })}
-      </p>
+      <p className="text-foreground">{m.resolution.homonyms({ count: shown.length })}</p>
       {shown.map((candidate) => (
         <p key={String(candidate.id)} className="pl-3 text-muted-foreground">
           {m.resolution.candidate({ name: candidate.name, description: candidate.description ?? '' })}

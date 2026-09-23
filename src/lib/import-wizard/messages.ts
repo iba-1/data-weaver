@@ -164,8 +164,17 @@ export interface MessageParams {
     rowChoice: { row: number; value: string };
     /** The row choice that follows the value's choice */
     rowDefault: void;
-    /** Introduces existing records that might be the same as a value (Possible Matches) */
+    /** Introduces what a value might be the same as: other values of the file, or existing records (Possible Matches) */
     possible: { count: number };
+    /** The values that might be the same as another value of the file or an existing record */
+    possibleTitle: { count: number };
+    possibleDescription: void;
+    /** Merging a value with another value of the file; `name` is that value as spelled in the file */
+    mergeWithValue: { name: string };
+    /** Merging a value with an existing record; `description` is the Host App's (may be empty) */
+    mergeWithRecord: { name: string; description: string };
+    /** Not merging a value with any of its Possible Matches (the default) */
+    keepSeparate: void;
     /** An existing record; `description` is the Host App's (may be empty) */
     candidate: { name: string; description: string };
     /** How many rows use a value */
@@ -429,7 +438,7 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
       'Not in the system yet: a new record is created for each when you import, with the name shown. You can change it.',
     undecidedTitle: 'Needs a decision ({count})',
     undecidedDescription:
-      'These names might be the same as an existing record. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.',
+      'These names could not be decided yet. Go back and change these names, or exclude their rows.',
     homonyms: '{count} records have this name:',
     homonymsTitle: 'Several matches ({count})',
     homonymsDescription:
@@ -442,6 +451,13 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     rowChoice: 'Record for {value} in row {row}',
     rowDefault: 'Same as above',
     possible: 'Might be the same as:',
+    possibleTitle: 'Possibly the same ({count})',
+    possibleDescription:
+      'These names might be another name in your file written differently, or a record already in the system. They are kept separate unless you merge them.',
+    mergeWithValue: 'Merge with {name}, also in your file',
+    mergeWithRecord: (p) =>
+      p.description ? `Merge with ${p.name} (${p.description}), already in the system` : `Merge with ${p.name}, already in the system`,
+    keepSeparate: 'Keep separate',
     candidate: (p) => (p.description ? `${p.name} (${p.description})` : p.name),
     rowCount: (p) => `Used in ${plural(p.count, 'row', 'rows')}`,
     spellings: 'In your file: {spellings}',

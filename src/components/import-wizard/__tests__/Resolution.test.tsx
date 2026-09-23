@@ -247,7 +247,7 @@ describe('Resolution of Relationship Fields', () => {
     expect(report.rejected[0].record.owner).toBe('Galleria Rossi');
   });
 
-  it('never decides Homonyms or Possible Matches: they need a decision and block the import', async () => {
+  it('never decides Homonyms: they need a decision and block the import, unlike Possible Matches', async () => {
     mockFile([
       { Title: 'Achrome', Author: 'Anna Bianchi', Owner: '', Lender: '', Venue: '' },
       { Title: 'Linea', Author: 'L. Fontana', Owner: '', Lender: '', Venue: '' },
@@ -274,10 +274,11 @@ describe('Resolution of Relationship Fields', () => {
     expect(anna).toHaveTextContent('Anna Bianchi (1950)');
     expect(anna).toHaveTextContent('Anna Bianchi (1978)');
     expect(within(anna).getAllByRole('radio').every((radio) => radio.getAttribute('aria-checked') === 'false')).toBe(true);
-    const [fontana] = groupItems(registry, 'Needs a decision (1)');
+    // A Possible Match is kept separate unless merged, so it blocks nothing
+    const [fontana] = groupItems(registry, 'Possibly the same (1)');
     expect(fontana).toHaveTextContent('Might be the same as:');
     expect(fontana).toHaveTextContent('Lucio Fontana (1899–1968)');
-    expect(screen.getByText('2 names need a decision before you can import.')).toBeInTheDocument();
+    expect(screen.getByText('1 name needs a decision before you can import.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /complete import/i })).toBeDisabled();
 
     // Back in the review, leave those rows out: they no longer need a decision
@@ -586,5 +587,120 @@ describe('Homonyms: several existing records with the same name', () => {
 
     await importRows();
     expect(authors(fake)).toEqual(['reg-rossi-1950', 'reg-rossi-1950']);
+
+describe('Possible Matches in Resolution', () => {
+  /** Piero Manzoni is also written "Manzoni, Piero"; the Host App flags Lucio Fontana as possibly "L. Fontana" */
+  const POSSIBLE_FILE = [
+    { Title: 'Achrome', Author: 'Piero Manzoni', Owner: '', Lender: '', Venue: '' },
+    { Title: 'Linea', Author: 'Manzoni, Piero', Owner: 'Piero Manzoni', Lender: '', Venue: '' },
+    { Title: 'Concetto spaziale', Author: 'L. Fontana', Owner: '', Lender: '', Venue: '' },
+    { Title: 'Bozza', Author: 'Nessuno', Owner: '', Lender: '', Venue: '' },
+  ];
+  const MERGE_MANZONI = 'Merge with Piero Manzoni, also in your file';
+  const MERGE_FONTANA = 'Merge with Lucio Fontana (1899–1968), already in the system';
+
+  function possibleHost() {
+    return host({ possible: (_kind, value, record) => value === 'l. fontana' && record.name === 'Lucio Fontana' });
+  }
+
+  async function resolveFile(fake: FakeHostApp<Rec>) {
+    mockFile(POSSIBLE_FILE);
+    renderWizard(fake);
+    await reviewFile();
+    await continueToResolution();
+  }
+
+  const recordId = (fake: FakeHostApp<Rec>, name: string) => fake.related.get('registry')!.find((r) => r.name === name)!.id;
+  const authors = (fake: FakeHostApp<Rec>) => fake.calls.flat().map((row) => row.record.author);
+
+  it('lists what might be the same, within the file or in the system, kept separate by default', async () => {
+    const fake = possibleHost();
+    await resolveFile(fake);
+
+    const registry = kindSection('Author, Owner, Lender');
+    const [manzoni, fontana] = groupItems(registry, 'Possibly the same (2)');
+    expect(manzoni).toHaveTextContent('Manzoni, Piero');
+    expect(manzoni).toHaveTextContent('Might be the same as:');
+    expect(within(manzoni).getByRole('radio', { name: MERGE_MANZONI })).not.toBeChecked();
+    expect(within(manzoni).getByRole('radio', { name: 'Keep separate' })).toBeChecked();
+    // Kept separate, it will be created with the name shown
+    expect(within(manzoni).getByRole('textbox', { name: 'Name of the new record for Manzoni, Piero' })).toHaveValue(
+      'Manzoni, Piero'
+    );
+    expect(fontana).toHaveTextContent('L. Fontana');
+    expect(within(fontana).getByRole('radio', { name: MERGE_FONTANA })).not.toBeChecked();
+    expect(within(fontana).getByRole('radio', { name: 'Keep separate' })).toBeChecked();
+    const [piero] = groupItems(registry, 'Will be created (1)');
+    expect(within(piero).getByRole('textbox')).toHaveValue('Piero Manzoni');
+
+    // Nothing to decide: the import can go ahead, creating each value's own record
+    expect(screen.queryByText(/decision before you can import/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /complete import/i })).toBeEnabled();
+    await importRows();
+    expect(fake.creates.map((c) => c.name)).toEqual(['Piero Manzoni', 'Manzoni, Piero', 'L. Fontana']);
+    expect(authors(fake)).toEqual([
+      recordId(fake, 'Piero Manzoni'),
+      recordId(fake, 'Manzoni, Piero'),
+      recordId(fake, 'L. Fontana'),
+    ]);
+  });
+
+  it('merges a value with another value of the file: one record, and every row points to it', async () => {
+    const fake = possibleHost();
+    await resolveFile(fake);
+
+    const [manzoni] = groupItems(kindSection('Author, Owner, Lender'), 'Possibly the same (2)');
+    fireEvent.click(within(manzoni).getByRole('radio', { name: MERGE_MANZONI }));
+    expect(within(manzoni).getByRole('radio', { name: MERGE_MANZONI })).toBeChecked();
+    expect(within(manzoni).queryByRole('textbox')).not.toBeInTheDocument();
+    await importRows();
+
+    expect(fake.creates.map((c) => c.name)).toEqual(['Piero Manzoni', 'L. Fontana']);
+    const piero = recordId(fake, 'Piero Manzoni');
+    expect(fake.calls.flat().map((row) => [row.record.title, row.record.author, row.record.owner])).toEqual([
+      ['Achrome', piero, null],
+      ['Linea', piero, piero],
+      ['Concetto spaziale', recordId(fake, 'L. Fontana'), null],
+    ]);
+  });
+
+  it('merges a value with an existing record the Host App flagged: its rows are linked to it', async () => {
+    const fake = possibleHost();
+    await resolveFile(fake);
+
+    const [, fontana] = groupItems(kindSection('Author, Owner, Lender'), 'Possibly the same (2)');
+    fireEvent.click(within(fontana).getByRole('radio', { name: MERGE_FONTANA }));
+    await importRows();
+
+    expect(fake.creates.map((c) => c.name)).toEqual(['Piero Manzoni', 'Manzoni, Piero']);
+    expect(authors(fake)[2]).toBe('reg-fontana');
+  });
+
+  it('keeps the Importer’s merges after going back to the review, and shows them in the grid', async () => {
+    const fake = possibleHost();
+    await resolveFile(fake);
+    const [manzoni, fontana] = groupItems(kindSection('Author, Owner, Lender'), 'Possibly the same (2)');
+    fireEvent.click(within(manzoni).getByRole('radio', { name: MERGE_MANZONI }));
+    fireEvent.click(within(fontana).getByRole('radio', { name: MERGE_FONTANA }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Review' }));
+    await screen.findByText(/validate data/i);
+    expect(within(gridRow(2)).getAllByText('New: Piero Manzoni')).toHaveLength(2);
+    expect(within(gridRow(3)).getByText('Lucio Fontana')).toBeInTheDocument();
+
+    await continueToResolution();
+    const [manzoniAgain, fontanaAgain] = groupItems(kindSection('Author, Owner, Lender'), 'Possibly the same (2)');
+    expect(within(manzoniAgain).getByRole('radio', { name: MERGE_MANZONI })).toBeChecked();
+    expect(within(fontanaAgain).getByRole('radio', { name: MERGE_FONTANA })).toBeChecked();
+
+    // And the Importer can still change their mind
+    fireEvent.click(within(fontanaAgain).getByRole('radio', { name: 'Keep separate' }));
+    await importRows();
+    expect(fake.creates.map((c) => c.name)).toEqual(['Piero Manzoni', 'L. Fontana']);
+    expect(authors(fake)).toEqual([
+      recordId(fake, 'Piero Manzoni'),
+      recordId(fake, 'Piero Manzoni'),
+      recordId(fake, 'L. Fontana'),
+    ]);
   });
 });

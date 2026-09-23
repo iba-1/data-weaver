@@ -530,6 +530,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             onNameChange={resolution.setName}
             onChoose={resolution.choose}
             onChooseForRow={resolution.chooseForRow}
+            onMergeChange={resolution.setMerge}
             onRetry={startResolution}
             onBack={handleBackToReview}
             onComplete={handleCommit}
