@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/collapsible';
 import type { AiEditHandler, FieldConfig, RowEdit, RowValidation } from '@/lib/import-wizard/types';
 import { choiceOptions } from '@/lib/import-wizard/choices';
+import { cellText } from '@/lib/import-wizard/values';
+import { useMessages } from './messages';
 
 interface AiEditChatProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   rows: RowValidation<TRecord>[];
@@ -30,6 +32,7 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
   onApplyEdits,
   className,
 }: AiEditChatProps<TRecord, TKey>) {
+  const m = useMessages();
   const [isOpen, setIsOpen] = useState(false);
   const [command, setCommand] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
@@ -66,19 +69,13 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
         }),
       });
 
-      if (!edits || edits.length === 0) {
-        setStatus('success');
-        setError('No changes needed for this command.');
-        setPendingEdits([]);
-      } else {
-        setStatus('success');
-        setPendingEdits(edits);
-      }
-
+      setStatus('success');
+      setPendingEdits(edits ?? []);
       setCommand('');
     } catch (err) {
       setStatus('error');
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      // The Host App's own message is shown as it is; the catalogue covers failures without one
+      setError(err instanceof Error && err.message ? err.message : null);
     }
   }, [command, rows, fields, status, onRequestEdits]);
 
@@ -111,12 +108,12 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
     [handleSubmit]
   );
 
-  const exampleCommands = [
-    'Capitalize all titles',
-    'Trim whitespace from all fields',
-    'Fix common spelling mistakes',
-    'Standardize currency to USD',
-  ];
+  const exampleCommands = m.aiEdit
+    .examples()
+    .split('\n')
+    .map((example) => example.trim())
+    .filter(Boolean);
+  const fieldLabel = (key: string) => fields.find((f) => f.key === key)?.label ?? key;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className={className}>
@@ -130,7 +127,7 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
           )}
         >
           <Sparkles className="h-4 w-4" />
-          AI Edit
+          {m.aiEdit.open()}
         </Button>
       </CollapsibleTrigger>
 
@@ -143,7 +140,7 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Describe how to edit the data..."
+              placeholder={m.aiEdit.placeholder()}
               disabled={status === 'loading'}
               className="flex-1"
             />
@@ -151,6 +148,7 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
               onClick={handleSubmit}
               disabled={!command.trim() || status === 'loading'}
               size="icon"
+              aria-label={m.aiEdit.send()}
             >
               {status === 'loading' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -161,9 +159,9 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
           </div>
 
           {/* Example commands */}
-          {status === 'idle' && !pendingEdits && (
+          {status === 'idle' && !pendingEdits && exampleCommands.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              <span className="text-xs text-muted-foreground mr-1">Try:</span>
+              <span className="text-xs text-muted-foreground mr-1">{m.aiEdit.examplesLabel()}</span>
               {exampleCommands.map((example) => (
                 <Badge
                   key={example}
@@ -181,20 +179,21 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
           {status === 'loading' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Analyzing data and generating edits...
+              {m.aiEdit.working()}
             </div>
           )}
 
           {/* Error state */}
-          {status === 'error' && error && (
+          {status === 'error' && (
             <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>{error}</span>
+              <span>{error ?? m.aiEdit.failed()}</span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 ml-auto"
                 onClick={handleDismiss}
+                aria-label={m.aiEdit.dismiss()}
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -205,12 +204,13 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
           {status === 'success' && pendingEdits && pendingEdits.length === 0 && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-2 rounded">
               <CheckCircle className="h-4 w-4 text-success" />
-              <span>No changes needed for "{lastCommand}"</span>
+              <span>{m.aiEdit.noChanges({ command: lastCommand ?? '' })}</span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 ml-auto"
                 onClick={handleDismiss}
+                aria-label={m.aiEdit.dismiss()}
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -223,38 +223,36 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="h-4 w-4 text-success" />
-                  <span className="text-sm font-medium">
-                    {pendingEdits.length} row{pendingEdits.length !== 1 ? 's' : ''} will be edited
-                  </span>
+                  <span className="text-sm font-medium">{m.aiEdit.willEdit({ count: pendingEdits.length })}</span>
                 </div>
-                <span className="text-xs text-muted-foreground">"{lastCommand}"</span>
+                <span className="text-xs text-muted-foreground">{m.aiEdit.command({ command: lastCommand ?? '' })}</span>
               </div>
 
               {/* Preview of changes */}
               <div className="max-h-32 overflow-y-auto bg-muted/30 rounded p-2 text-xs font-mono space-y-1">
                 {pendingEdits.slice(0, 5).map((edit) => (
                   <div key={edit.rowIndex} className="text-muted-foreground">
-                    Row {edit.rowIndex + 1}:{' '}
-                    {Object.entries(edit.changes)
-                      .map(([key, value]) => `${key}="${value}"`)
-                      .join(', ')}
+                    {m.aiEdit.previewRow({
+                      row: edit.rowIndex + 1,
+                      changes: Object.entries(edit.changes)
+                        .map(([key, value]) => m.aiEdit.previewChange({ field: fieldLabel(key), value: cellText(value) }))
+                        .join(', '),
+                    })}
                   </div>
                 ))}
                 {pendingEdits.length > 5 && (
-                  <div className="text-muted-foreground">
-                    ...and {pendingEdits.length - 5} more
-                  </div>
+                  <div className="text-muted-foreground">{m.aiEdit.more({ count: pendingEdits.length - 5 })}</div>
                 )}
               </div>
 
               {/* Apply/Cancel buttons */}
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={handleDismiss}>
-                  Cancel
+                  {m.aiEdit.cancel()}
                 </Button>
                 <Button size="sm" onClick={handleApply}>
                   <CheckCircle className="mr-1 h-3 w-3" />
-                  Apply Changes
+                  {m.aiEdit.apply()}
                 </Button>
               </div>
             </div>

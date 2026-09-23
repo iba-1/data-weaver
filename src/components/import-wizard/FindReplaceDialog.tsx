@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Replace, Search, AlertTriangle } from 'lucide-react';
+import { Replace, Search, AlertTriangle, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -22,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { FieldConfig, ReplaceOptions } from '@/lib/import-wizard/types';
+import { useMessages } from './messages';
 
 interface FindReplaceDialogProps<TKey extends string = string> {
   onReplace: (find: string, replace: string, options: ReplaceOptions) => number;
@@ -44,6 +44,7 @@ export function FindReplaceDialog<TKey extends string = string>({
   getPreviewCount,
   fields = DEFAULT_FIELDS as FieldConfig<TKey>[],
 }: FindReplaceDialogProps<TKey>) {
+  const m = useMessages();
   const [open, setOpen] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -84,24 +85,22 @@ export function FindReplaceDialog<TKey extends string = string>({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <Replace className="h-4 w-4" />
-          Find & Replace
+          {m.findReplace.open()}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md" onKeyDown={handleKeyDown}>
+      <DialogContent className="sm:max-w-md" onKeyDown={handleKeyDown} closeLabel={m.findReplace.close()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Replace className="h-5 w-5" />
-            Find and Replace
+            {m.findReplace.title()}
           </DialogTitle>
-          <DialogDescription>
-            Search and replace text across all data cells. Use Ctrl+Enter to replace.
-          </DialogDescription>
+          <DialogDescription>{m.findReplace.description()}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* Find input */}
           <div className="space-y-2">
-            <Label htmlFor="find">Find</Label>
+            <Label htmlFor="find">{m.findReplace.find()}</Label>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -111,7 +110,7 @@ export function FindReplaceDialog<TKey extends string = string>({
                   setFindText(e.target.value);
                   setLastReplaceCount(null);
                 }}
-                placeholder="Text to find..."
+                placeholder={m.findReplace.findPlaceholder()}
                 className="pl-9"
                 autoFocus
               />
@@ -120,24 +119,24 @@ export function FindReplaceDialog<TKey extends string = string>({
 
           {/* Replace input */}
           <div className="space-y-2">
-            <Label htmlFor="replace">Replace with</Label>
+            <Label htmlFor="replace">{m.findReplace.replace()}</Label>
             <Input
               id="replace"
               value={replaceText}
               onChange={(e) => setReplaceText(e.target.value)}
-              placeholder="Replacement text (leave empty to delete)"
+              placeholder={m.findReplace.replacePlaceholder()}
             />
           </div>
 
           {/* Column filter */}
           <div className="space-y-2">
-            <Label>In column</Label>
+            <Label>{m.findReplace.column()}</Label>
             <Select value={selectedColumn} onValueChange={setSelectedColumn}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All columns</SelectItem>
+                <SelectItem value="all">{m.findReplace.allColumns()}</SelectItem>
                 {fields.map((field) => (
                   <SelectItem key={field.key} value={field.key}>
                     {field.label}
@@ -156,7 +155,7 @@ export function FindReplaceDialog<TKey extends string = string>({
                 onCheckedChange={(checked) => setCaseSensitive(checked === true)}
               />
               <Label htmlFor="caseSensitive" className="text-sm font-normal cursor-pointer">
-                Case sensitive
+                {m.findReplace.caseSensitive()}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -166,7 +165,7 @@ export function FindReplaceDialog<TKey extends string = string>({
                 onCheckedChange={(checked) => setWholeWord(checked === true)}
               />
               <Label htmlFor="wholeWord" className="text-sm font-normal cursor-pointer">
-                Whole word
+                {m.findReplace.wholeWord()}
               </Label>
             </div>
           </div>
@@ -175,16 +174,11 @@ export function FindReplaceDialog<TKey extends string = string>({
           {findText && (
             <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
               {previewCount > 0 ? (
-                <>
-                  <Badge variant="secondary">{previewCount}</Badge>
-                  <span className="text-sm text-muted-foreground">
-                    {previewCount === 1 ? 'cell' : 'cells'} will be updated
-                  </span>
-                </>
+                <span className="text-sm text-muted-foreground">{m.findReplace.willUpdate({ count: previewCount })}</span>
               ) : (
                 <>
                   <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">No matches found</span>
+                  <span className="text-sm text-muted-foreground">{m.findReplace.noMatches()}</span>
                 </>
               )}
             </div>
@@ -193,19 +187,18 @@ export function FindReplaceDialog<TKey extends string = string>({
           {/* Success message */}
           {lastReplaceCount !== null && lastReplaceCount > 0 && (
             <div className="flex items-center gap-2 p-3 bg-success/10 text-success rounded-lg">
-              <span className="text-sm font-medium">
-                ✓ Replaced {lastReplaceCount} {lastReplaceCount === 1 ? 'cell' : 'cells'}
-              </span>
+              <Check className="h-4 w-4" />
+              <span className="text-sm font-medium">{m.findReplace.replaced({ count: lastReplaceCount })}</span>
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Close
+            {m.findReplace.close()}
           </Button>
           <Button onClick={handleReplace} disabled={!findText || previewCount === 0}>
-            Replace All
+            {m.findReplace.replaceAll()}
           </Button>
         </DialogFooter>
       </DialogContent>

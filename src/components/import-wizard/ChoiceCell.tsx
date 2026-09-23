@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 import type { ChoiceOption } from '@/lib/import-wizard/types';
 import { choiceLabel } from '@/lib/import-wizard/choices';
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger } from '@/components/ui/select';
+import { useMessages } from './messages';
 
 /** Picker value for "clear this cell"; option values are never control characters */
 const CLEAR = '\u0000clear';
@@ -37,6 +38,7 @@ export function ChoiceCell({
   isHighlighted = false,
   className,
 }: ChoiceCellProps) {
+  const m = useMessages();
   const text = value === null || value === undefined ? '' : String(value);
   const selected = options.some((o) => o.value === text) ? text : '';
 
@@ -58,7 +60,7 @@ export function ChoiceCell({
         {text ? (
           <span className="max-w-[180px] truncate">{text}</span>
         ) : (
-          <span className="text-muted-foreground/60 italic">empty</span>
+          <span className="text-muted-foreground/60 italic">{m.cell.empty()}</span>
         )}
       </SelectTrigger>
       <SelectContent>
@@ -74,7 +76,7 @@ export function ChoiceCell({
           <>
             <SelectSeparator />
             <SelectItem value={CLEAR} className="text-muted-foreground">
-              Clear
+              {m.cell.clear()}
             </SelectItem>
           </>
         )}

@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useMessages } from './messages';
 
 interface SearchBarProps {
   value: string;
@@ -13,6 +14,7 @@ interface SearchBarProps {
 }
 
 export function SearchBar({ value, onChange, matchCount, className }: SearchBarProps) {
+  const m = useMessages();
   return (
     <div className={cn('relative flex items-center gap-2', className)}>
       <div className="relative flex-1">
@@ -20,7 +22,7 @@ export function SearchBar({ value, onChange, matchCount, className }: SearchBarP
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Search in data..."
+          placeholder={m.search.placeholder()}
           className="pl-9 pr-8 h-9"
         />
         {value && (
@@ -29,6 +31,7 @@ export function SearchBar({ value, onChange, matchCount, className }: SearchBarP
             size="icon"
             className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
             onClick={() => onChange('')}
+            aria-label={m.search.clear()}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -36,7 +39,7 @@ export function SearchBar({ value, onChange, matchCount, className }: SearchBarP
       </div>
       {value && matchCount !== undefined && (
         <Badge variant="secondary" className="shrink-0">
-          {matchCount} {matchCount === 1 ? 'match' : 'matches'}
+          {m.search.matchCount({ count: matchCount })}
         </Badge>
       )}
     </div>

@@ -49,7 +49,7 @@ describe('review step', () => {
     ]);
 
     const dialog = openFindReplace('100', '1,000');
-    expect(within(dialog).getByText('cells will be updated')).toBeInTheDocument();
+    expect(within(dialog).getByText('2 cells will be updated')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /replace all/i }));
 
     expect(within(dialog).getByText(/replaced 2 cells/i)).toBeInTheDocument();

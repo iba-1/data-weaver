@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cellText } from '@/lib/import-wizard/values';
+import { useMessages } from './messages';
 
 interface EditableCellProps {
   value: string | number | Date | null;
@@ -22,6 +23,7 @@ export function EditableCell({
   isHighlighted = false,
   className,
 }: EditableCellProps) {
+  const m = useMessages();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +117,7 @@ export function EditableCell({
             className="h-6 w-6 text-success hover:text-success hover:bg-success/10"
             onClick={handleSave}
             tabIndex={-1}
+            aria-label={m.cell.save()}
           >
             <Check className="h-3 w-3" />
           </Button>
@@ -124,6 +127,7 @@ export function EditableCell({
             className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             onClick={handleCancel}
             tabIndex={-1}
+            aria-label={m.cell.cancel()}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -157,7 +161,7 @@ export function EditableCell({
       {value !== null && value !== undefined ? (
         <span className="max-w-[180px] truncate block text-sm">{cellText(value)}</span>
       ) : (
-        <span className="text-muted-foreground/60 italic text-sm">empty</span>
+        <span className="text-muted-foreground/60 italic text-sm">{m.cell.empty()}</span>
       )}
     </div>
   );

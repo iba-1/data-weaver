@@ -13,6 +13,7 @@ import { FindReplaceDialog } from '../FindReplaceDialog';
 import { AiEditChat } from '../AiEditChat';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { ExportMenu } from './ExportMenu';
+import { useMessages } from '../messages';
 
 interface ReviewToolbarProps<TRecord, TKey extends string> {
   rows: RowValidation<TRecord>[];
@@ -54,6 +55,7 @@ export function ReviewToolbar<TRecord, TKey extends string>({
   canUndo,
   canRedo,
 }: ReviewToolbarProps<TRecord, TKey>) {
+  const m = useMessages();
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between relative">
       <div className="flex items-center gap-2 flex-1">
@@ -81,10 +83,10 @@ export function ReviewToolbar<TRecord, TKey extends string>({
               className="gap-1.5"
             >
               <Ban className="h-4 w-4" />
-              Exclude Errors
+              {m.review.excludeErrors()}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Leave every row that still has errors out of the import</TooltipContent>
+          <TooltipContent>{m.review.excludeErrorsHint()}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -97,10 +99,10 @@ export function ReviewToolbar<TRecord, TKey extends string>({
               className="gap-1.5"
             >
               <ListChecks className="h-4 w-4" />
-              Fill Required
+              {m.review.fillRequired()}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Fill empty required fields with placeholder values</TooltipContent>
+          <TooltipContent>{m.review.fillRequiredHint()}</TooltipContent>
         </Tooltip>
 
         <UndoRedoButtons onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} />

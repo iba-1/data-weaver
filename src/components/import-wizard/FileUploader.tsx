@@ -12,13 +12,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { TARGET_FIELDS, type FieldConfig } from '@/lib/import-wizard/types';
 import { WizardRoot } from './WizardRoot';
+import { useMessages } from './messages';
 
 interface FileUploaderProps {
   /** Called with a file that passed the type and size checks */
   onFileSelected: (file: File) => void;
   isLoading?: boolean;
   error?: string | null;
-  /** Plain text shown in the info banner above the drop zone */
+  /** Plain text shown in the info banner above the drop zone; defaults to the catalogue's `upload.helpText` */
   helpText?: string;
   /** Fields shown as the expected columns in the preview; defaults to the artwork fields */
   fields?: Pick<FieldConfig, 'key' | 'label'>[];
@@ -42,21 +43,24 @@ function FileUploaderContent({
   onFileSelected,
   isLoading = false,
   error = null,
-  helpText = 'Upload a spreadsheet with column names in the first row and one record per row after it.',
+  helpText,
   fields = TARGET_FIELDS,
   acceptedFileTypes = DEFAULT_ACCEPTED_FILE_TYPES,
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
   className,
 }: FileUploaderProps) {
+  const m = useMessages();
   const [isDragActive, setIsDragActive] = useState(false);
-  const [dragError, setDragError] = useState<string | null>(null);
+  // The file just refused; its message is worded at render, in the current catalogue
+  const [refusedFile, setRefusedFile] = useState<File | null>(null);
   const acceptedTypes = normaliseFileTypes(acceptedFileTypes);
+  const rules = { acceptedFileTypes, maxFileSize };
 
   const selectFile = useCallback(
     (file: File) => {
-      const refusal = checkUpload(file, { acceptedFileTypes, maxFileSize });
-      setDragError(refusal);
-      if (!refusal) onFileSelected(file);
+      const refused = checkUpload(file, { acceptedFileTypes, maxFileSize }) !== null;
+      setRefusedFile(refused ? file : null);
+      if (!refused) onFileSelected(file);
     },
     [acceptedFileTypes, maxFileSize, onFileSelected]
   );
@@ -65,7 +69,7 @@ function FileUploaderContent({
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(true);
-    setDragError(null);
+    setRefusedFile(null);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -120,14 +124,15 @@ function FileUploaderContent({
   }
 
   // A refusal of the file just picked outranks an error left from an earlier one
-  const displayError = dragError || error;
+  const refusal = refusedFile && checkUpload(refusedFile, rules, m);
+  const displayError = refusal || error;
 
   return (
     <div className={cn('space-y-4', className)}>
       {/* Info banner */}
       <div className="flex items-start gap-3 rounded-lg bg-[hsl(var(--info-bg))] px-4 py-3 text-[hsl(var(--info-foreground))]">
         <Info className="h-5 w-5 mt-0.5 flex-shrink-0" />
-        <p className="text-sm">{helpText}</p>
+        <p className="text-sm">{helpText ?? m.upload.helpText()}</p>
       </div>
 
       {/* Drop zone with skeleton table background */}
@@ -188,10 +193,14 @@ function FileUploaderContent({
         <div className="relative flex flex-col items-center gap-4 px-8 pb-10 pt-4 text-center">
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-foreground">
-              {isDragActive ? 'Drop your file here' : 'Drag and drop a file here'}
+              {isDragActive ? m.upload.dropHere() : m.upload.dragAndDrop()}
             </h3>
             <p className="text-sm text-muted-foreground">
-              You can upload: {acceptedTypes.join(', ')} (up to {formatFileSize(maxFileSize)})
+              {m.upload.accepted({
+                types: acceptedTypes.join(', '),
+                maxSize: formatFileSize(maxFileSize),
+                maxBytes: maxFileSize,
+              })}
             </p>
           </div>
 
@@ -204,7 +213,7 @@ function FileUploaderContent({
               document.getElementById('file-input')?.click();
             }}
           >
-            Choose a file
+            {m.upload.chooseFile()}
           </Button>
 
           {displayError && (

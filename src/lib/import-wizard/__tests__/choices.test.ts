@@ -93,7 +93,7 @@ describe('choice fields: reading the file', () => {
     const row = validate('Frank');
     expect(row.data.currency).toBe('Frank');
     expect(row.isValid).toBe(false);
-    expect(row.errors).toEqual([
+    expect(row.errors).toMatchObject([
       { field: 'currency', message: 'Currency must be one of: Euro, US dollar, Pound sterling' },
     ]);
   });
@@ -109,7 +109,7 @@ describe('choice fields: reading the file', () => {
     expect(validate('  ')).toMatchObject({ data: { currency: null }, isValid: true });
 
     const required = validate('', [FIELDS[0], { ...CURRENCY, required: true }]);
-    expect(required.errors).toEqual([{ field: 'currency', message: 'Currency is required' }]);
+    expect(required.errors).toMatchObject([{ field: 'currency', message: 'Currency is required' }]);
   });
 
   it('applies the field transform only to a matched value', () => {
@@ -125,12 +125,12 @@ describe('choice fields: reading the file', () => {
   it('flags every value of a choice field whose options are not loaded, rather than accepting it', () => {
     const row = validate('EUR', [FIELDS[0], { ...CURRENCY, options: async () => CURRENCIES }]);
     expect(row.isValid).toBe(false);
-    expect(row.errors).toEqual([{ field: 'currency', message: 'The options for Currency are not loaded' }]);
+    expect(row.errors).toMatchObject([{ field: 'currency', message: 'The options for Currency are not loaded' }]);
   });
 
   it('flags every value of a choice field with no options', () => {
     const row = validate('EUR', [FIELDS[0], { ...CURRENCY, options: [] }]);
-    expect(row.errors).toEqual([{ field: 'currency', message: 'Currency has no options to choose from' }]);
+    expect(row.errors).toMatchObject([{ field: 'currency', message: 'Currency has no options to choose from' }]);
   });
 });
 

@@ -3,6 +3,8 @@ import type { FieldConfig, RowValidation } from './types';
 
 export interface ExportOptions {
   filename?: string;
+  /** Name of the workbook's sheet (Excel) */
+  sheetName?: string;
   format?: 'csv' | 'xlsx';
   includeHeaders?: boolean;
   onlyValid?: boolean;
@@ -18,6 +20,7 @@ export function exportData<TRecord, TKey extends string>(
 ): void {
   const {
     filename = 'export',
+    sheetName = 'Data',
     format = 'csv',
     includeHeaders = true,
     onlyValid = false,
@@ -49,7 +52,7 @@ export function exportData<TRecord, TKey extends string>(
   // Create workbook
   const worksheet = XLSX.utils.aoa_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
   // Set column widths based on content
   const colWidths = fields.map((field, idx) => {
@@ -80,7 +83,7 @@ export function exportToBlob<TRecord, TKey extends string>(
   fields: FieldConfig<TKey>[],
   options: Omit<ExportOptions, 'filename'> = {}
 ): Blob {
-  const { format = 'csv', includeHeaders = true, onlyValid = false } = options;
+  const { format = 'csv', sheetName = 'Data', includeHeaders = true, onlyValid = false } = options;
 
   const dataRows = onlyValid ? rows.filter((r) => r.isValid) : rows;
   const data: (string | number | null)[][] = [];
@@ -102,7 +105,7 @@ export function exportToBlob<TRecord, TKey extends string>(
 
   const worksheet = XLSX.utils.aoa_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
   const mimeType =
     format === 'xlsx'

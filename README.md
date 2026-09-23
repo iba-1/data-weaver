@@ -29,6 +29,9 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 - Export the rows (all, or valid only) to CSV or Excel.
 - **AI Edit** (optional): the Importer describes a change in plain language and reviews the proposed edits before applying them. It appears only when the Host App supplies its own AI endpoint through `aiEdit`.
 
+### Language
+- Every piece of text the Importer sees comes from a message catalogue. English is built in. Your app passes its own entries for the Importer's language, and anything it leaves out falls back to English. See [Messages and translation](#messages-and-translation).
+
 ### Styling
 - Ships its own precompiled stylesheet, scoped to the wizard. Your app does **not** need Tailwind, and the wizard's CSS doesn't touch the rest of your page.
 - Themed through CSS custom properties, with light and dark variants.
@@ -285,6 +288,7 @@ The complete 3-step flow.
 | `description`       | `string`                                          | none                        | Text shown above the step indicator, below the title. |
 | `acceptedFileTypes` | `string[]`                                        | `['.csv', '.xlsx', '.xls']` | Extensions the upload step accepts; must be a subset of the default. Also sets the file picker's filter and the "You can upload" line. |
 | `maxFileSize`       | `number`                                          | `10485760` (10 MB)          | Largest file, in bytes, the upload step accepts. |
+| `messages`          | `PartialMessageCatalogue`                         | English                     | Text in the Importer's language; missing entries fall back to English. See [Messages and translation](#messages-and-translation). |
 | `className`         | `string`                                          | -                           | Extra CSS class for the wizard's root element. |
 
 **No default heading.** The wizard is usually placed inside a page that already has its own heading, so it shows no title unless you pass `title` (and no description unless you pass `description`).
@@ -430,11 +434,13 @@ interface RowCompleteEvent<TRecord> {
 }
 ```
 
-`ERROR` is emitted when a file that passed the upload checks can't be parsed, and when a choice field's options fail to load.
+`ERROR` is emitted when a file that passed the upload checks can't be parsed, and when a choice field's options fail to load. Its `error` is written with the wizard's message catalogue.
+
+Validation errors and warnings raised by Data Weaver itself also carry a `messageRef` (their catalogue key and parameters); see [Messages and translation](#messages-and-translation).
 
 ### Individual components
 
-Use these to build your own flow. Each step component brings its own `WizardRoot` (styling scope, tooltip context and a container for popovers), so it works on its own. To compose several pieces under one scope, wrap them in `<WizardRoot>` yourself.
+Use these to build your own flow. Each step component brings its own `WizardRoot` (styling scope, tooltip context and a container for popovers), so it works on its own. To compose several pieces under one scope, wrap them in `<WizardRoot>` yourself. To show them in another language, wrap them in `<WizardRoot messages={...}>` (see [Messages and translation](#messages-and-translation)).
 
 #### `<FileUploader />`
 
@@ -452,7 +458,7 @@ Use these to build your own flow. Each step component brings its own `WizardRoot
 | `acceptedFileTypes` | `string[]`                             | `['.csv', '.xlsx', '.xls']` | Accepted extensions. Other files are refused with a message. |
 | `maxFileSize`       | `number`                               | `10485760` (10 MB)          | Largest accepted file, in bytes. |
 | `fields`            | `Pick<FieldConfig, 'key' \| 'label'>[]` | artwork fields              | Columns shown in the preview. |
-| `helpText`          | `string`                               | a one-line explanation      | Plain text shown in the info banner. |
+| `helpText`          | `string`                               | `upload.helpText`           | Plain text shown in the info banner. |
 | `isLoading`         | `boolean`                              | `false`                     | Show a loading skeleton. |
 | `error`             | `string \| null`                       | `null`                      | Error to display, e.g. from parsing. |
 | `className`         | `string`                               | -                           | Extra CSS class. |
@@ -521,6 +527,7 @@ import { checkUpload, parseFile, isValidFileType, getFileTypeFromName } from 'da
 
 checkUpload(file, { acceptedFileTypes: ['.csv'], maxFileSize: 10 * 1024 * 1024 });
 // => null if accepted, otherwise the message shown to the Importer
+checkUpload(file, rules, italian); // the same, worded with a message catalogue
 
 const data = await parseFile(file); // .csv, .xlsx or .xls; throws on anything else
 // => { headers: string[], rows: Record<string, unknown>[], fileName: string, fileType: 'csv' | 'excel' }
@@ -607,6 +614,171 @@ const blob = exportToBlob(rows, fields, { format: 'csv' });
 
 ---
 
+## Messages and translation
+
+Every piece of text the Importer sees comes from a **message catalogue**: step labels, headings, buttons, tooltips, accessible labels, placeholders, empty states, counts, upload refusals, validation messages Data Weaver raises, the options loader's failure, Find and Replace, the export menu and AI Edit. Data Weaver ships English only. To show the wizard in another language, pass the entries you want to replace as `messages`. Anything you leave out stays in English. Data Weaver has no i18n library dependency: build the catalogue from your own.
+
+```tsx
+import { ImportWizard, type PartialMessageCatalogue } from 'data-weaver';
+
+// A constant or a memoised object: not a new object on every render
+const italian: PartialMessageCatalogue = {
+  steps: { upload: 'Carica', mapping: 'Abbina le colonne', review: 'Controlla e correggi' },
+  upload: {
+    chooseFile: 'Scegli un file',
+    tooLarge: '{fileName} è troppo grande. La dimensione massima è {maxSize}.',
+  },
+  review: {
+    rowCount: ({ count }) => (count === 1 ? '1 riga' : `${count.toLocaleString('it')} righe`),
+  },
+  validation: {
+    required: '{field} è obbligatorio',
+  },
+};
+
+<ImportWizard fields={fields} messages={italian} />;
+```
+
+**Entries.** An entry is either:
+
+- a **string** with named placeholders, e.g. `'{count} righe'`. Each `{name}` is replaced by the parameter of that name. Numbers are formatted with the browser's locale (`10,000`). A placeholder with no parameter of that name is left as it is.
+- a **function** of the entry's parameters, e.g. `({ count }) => ...`. Use it for plural rules, or to call your i18n library:
+
+  ```tsx
+  const { t } = useTranslation('import');
+  const messages = useMemo<PartialMessageCatalogue>(
+    () => ({ review: { rowCount: ({ count }) => t('rowCount', { count }) } }),
+    [t]
+  );
+  ```
+
+**Types.** `PartialMessageCatalogue` is what `messages` accepts. TypeScript rejects unknown groups or keys and functions with the wrong parameters, so your translations are checked. `MessageCatalogue` is the complete catalogue. `DEFAULT_MESSAGES` holds the English defaults. `MessageParams` gives each entry's parameters.
+
+**Step components used on their own** read the catalogue from the nearest `WizardRoot`: wrap them in `<WizardRoot messages={italian}>`. A `WizardRoot` inside another only replaces the entries it is given. Components outside any `WizardRoot` are in English.
+
+**Validation messages.** Messages from your own validators (`FieldConfig.validate`, `validateRow`) are yours, and are shown as you wrote them. Messages Data Weaver raises itself (required, invalid date, not one of the options…) are shown from the `validation.*` entries. On a `ValidationError` or `ValidationWarning` in the rows and events you receive, `message` is the English text and `messageRef` holds the entry's key and parameters. To show one in your language, use `formatValidationMessage(error, italian)`.
+
+**Upload refusals and `ERROR` events.** `checkUpload(file, rules, messages)` returns its refusal in the catalogue's language. The `ERROR` event's `error` is written with the wizard's catalogue.
+
+**Field labels and options** are part of your Output Shape, not of the catalogue: give them in the Importer's language in `fields`.
+
+### Keys
+
+Keys are grouped by where the text appears. They are part of the public API: renaming or removing one is a breaking change.
+
+| Key | Parameters | English default |
+| --- | ---------- | --------------- |
+| `steps.upload` | - | `Upload` |
+| `steps.mapping` | - | `Match columns` |
+| `steps.review` | - | `Review and edit` |
+| `upload.helpText` | - | `Upload a spreadsheet with column names in the first row and one record per row after it.` |
+| `upload.dropHere` | - | `Drop your file here` |
+| `upload.dragAndDrop` | - | `Drag and drop a file here` |
+| `upload.accepted` | types, maxSize, maxBytes | `You can upload: {types} (up to {maxSize})` |
+| `upload.chooseFile` | - | `Choose a file` |
+| `upload.unsupportedType` | fileName, types | `{fileName} is not a supported file type. You can upload: {types}` |
+| `upload.tooLarge` | fileName, maxSize, maxBytes | `{fileName} is too large. The maximum file size is {maxSize}.` |
+| `upload.empty` | fileName | `The file appears to be empty or has no data rows.` |
+| `upload.unreadable` | fileName, reason | `{fileName} could not be read: {reason}` |
+| `mapping.title` | - | `Map Columns` |
+| `mapping.description` | - | `Match your file columns to the expected fields` |
+| `mapping.mappedCount` | mapped, total | `{mapped}/{total} mapped` |
+| `mapping.autoMatched` | - | `Some columns were auto-matched. Review and adjust as needed.` |
+| `mapping.autoBadge` | - | `Auto` |
+| `mapping.selectField` | - | `Select field...` |
+| `mapping.doNotImport` | - | `Don't import` |
+| `mapping.missingRequired` | fields, count | `Missing required fields: {fields}` |
+| `mapping.continue` | - | `Continue to Validation` |
+| `options.loading` | fields, count | `Loading the options for {fields}…` |
+| `options.loadFailed` | field, reason | `Could not load the options for {field}: {reason}` |
+| `options.blocked` | - | `The rows can't be reviewed or imported until the options load.` |
+| `options.retry` | - | `Try again` |
+| `review.title` | - | `Validate Data` |
+| `review.description` | - | `Review, search, and fix data before importing` |
+| `review.rowCount` | count | `1 row`, `10,000 rows` |
+| `review.rowCountFiltered` | visible, total | `12 of 10,000 rows` |
+| `review.filterValid` | count | `{count} Valid` |
+| `review.filterWarnings` | count | `{count} Warnings` |
+| `review.filterErrors` | count | `{count} Errors` |
+| `review.filterExcluded` | count | `{count} Excluded` |
+| `review.noSearchMatches` | - | `No rows match your search` |
+| `review.noFilterMatches` | - | `No rows match the current filter` |
+| `review.rowNumberHeader` | - | `#` |
+| `review.statusHeader` | - | `Status` |
+| `review.excludeRow` | row | `Exclude row {row}` |
+| `review.includeRow` | row | `Include row {row}` |
+| `review.excludeRowHint` | - | `Leave this row out of the import` |
+| `review.includeRowHint` | - | `Include this row in the import again` |
+| `review.excludedStatus` | - | `Excluded` |
+| `review.cellLabel` | field, row | `{field}, row {row}` |
+| `review.excludeErrors` | - | `Exclude Errors` |
+| `review.excludeErrorsHint` | - | `Leave every row that still has errors out of the import` |
+| `review.fillRequired` | - | `Fill Required` |
+| `review.fillRequiredHint` | - | `Fill empty required fields with placeholder values` |
+| `review.fillPlaceholder` | - | `N/A` |
+| `review.undo` | - | `Undo (Ctrl+Z)` |
+| `review.redo` | - | `Redo (Ctrl+Shift+Z)` |
+| `review.back` | - | `Back to Mapping` |
+| `review.excludedCount` | count | `{count} excluded` |
+| `review.complete` | count | `Complete Import (1 row)`, `Complete Import (2 rows)` |
+| `cell.empty` | - | `empty` |
+| `cell.clear` | - | `Clear` |
+| `cell.save` | - | `Save` |
+| `cell.cancel` | - | `Cancel` |
+| `search.placeholder` | - | `Search in data...` |
+| `search.clear` | - | `Clear search` |
+| `search.matchCount` | count | `1 match`, `2 matches` |
+| `findReplace.open` | - | `Find & Replace` |
+| `findReplace.title` | - | `Find and Replace` |
+| `findReplace.description` | - | `Search and replace text across all data cells. Use Ctrl+Enter to replace.` |
+| `findReplace.find` | - | `Find` |
+| `findReplace.findPlaceholder` | - | `Text to find...` |
+| `findReplace.replace` | - | `Replace with` |
+| `findReplace.replacePlaceholder` | - | `Replacement text (leave empty to delete)` |
+| `findReplace.column` | - | `In column` |
+| `findReplace.allColumns` | - | `All columns` |
+| `findReplace.caseSensitive` | - | `Case sensitive` |
+| `findReplace.wholeWord` | - | `Whole word` |
+| `findReplace.willUpdate` | count | `1 cell will be updated`, `2 cells will be updated` |
+| `findReplace.noMatches` | - | `No matches found` |
+| `findReplace.replaced` | count | `Replaced 1 cell`, `Replaced 2 cells` |
+| `findReplace.close` | - | `Close` |
+| `findReplace.replaceAll` | - | `Replace All` |
+| `export.menu` | - | `Export` |
+| `export.csv` | - | `Export as CSV` |
+| `export.excel` | - | `Export as Excel` |
+| `export.validOnly` | - | `Export valid rows only (Excel)` |
+| `export.fileName` | - | `data-export` |
+| `export.validFileName` | - | `data-export-valid` |
+| `export.sheetName` | - | `Data` |
+| `aiEdit.open` | - | `AI Edit` |
+| `aiEdit.placeholder` | - | `Describe how to edit the data...` |
+| `aiEdit.send` | - | `Send` |
+| `aiEdit.examplesLabel` | - | `Try:` |
+| `aiEdit.examples` | - | `Capitalize all titles`, `Trim whitespace from all fields`, `Fix common spelling mistakes`, `Standardize currency to USD` (one per line) |
+| `aiEdit.working` | - | `Analyzing data and generating edits...` |
+| `aiEdit.failed` | - | `An unexpected error occurred` |
+| `aiEdit.noChanges` | command | `No changes needed for "{command}"` |
+| `aiEdit.command` | command | `"{command}"` |
+| `aiEdit.willEdit` | count | `1 row will be edited`, `2 rows will be edited` |
+| `aiEdit.previewRow` | row, changes | `Row {row}: {changes}` |
+| `aiEdit.previewChange` | field, value | `{field}="{value}"` |
+| `aiEdit.more` | count | `...and {count} more` |
+| `aiEdit.cancel` | - | `Cancel` |
+| `aiEdit.apply` | - | `Apply Changes` |
+| `aiEdit.dismiss` | - | `Dismiss` |
+| `validation.required` | field | `{field} is required` |
+| `validation.invalidDate` | field, format, dateOrder | `{field} is not a valid date (use {format} or YYYY-MM-DD)` |
+| `validation.notAnOption` | field, options | `{field} must be one of: {options}` |
+| `validation.notAnOptionAndMore` | field, options, more | `{field} must be one of: {options} and {more} more` |
+| `validation.optionsNotLoaded` | field | `The options for {field} are not loaded` |
+| `validation.noOptions` | field | `{field} has no options to choose from` |
+| `validation.amountWithoutCurrency` | field | `Value amount provided without currency` |
+| `validation.currencyWithoutAmount` | field | `Currency provided without value amount` |
+| `validation.numericOnly` | field | `{field} appears to be numeric only` |
+
+---
+
 ## Keyboard shortcuts
 
 | Shortcut                 | Action                               |
@@ -658,7 +830,7 @@ The demo app (`src/pages/Index.tsx`) is an artwork importer. It is deployed to G
 
 ## Planned
 
-From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, Commit in batches with per-row outcomes, an Import Report, Fix & Retry, a message catalogue for translations, and a grid that stays fast with 10,000 rows.
+From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, Commit in batches with per-row outcomes, an Import Report, Fix & Retry, and a grid that stays fast with 10,000 rows.
 
 ## License
 

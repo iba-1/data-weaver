@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { ParsedFileData } from './types';
 import { excelSerialToText } from './dates';
+import { resolveMessages, type PartialMessageCatalogue } from './messages';
 
 /** File types the upload step accepts unless the Host App narrows them */
 export const DEFAULT_ACCEPTED_FILE_TYPES = ['.csv', '.xlsx', '.xls'];
@@ -127,18 +128,27 @@ export function formatFileSize(bytes: number): string {
 
 /**
  * Checks a file against the upload step's rules before it is parsed.
+ * @param messages the Host App's message catalogue; English by default
  * @returns a message for the Importer when the file is refused, otherwise null
  */
-export function checkUpload(file: Pick<File, 'name' | 'size'>, rules: UploadRules): string | null {
+export function checkUpload(
+  file: Pick<File, 'name' | 'size'>,
+  rules: UploadRules,
+  messages?: PartialMessageCatalogue
+): string | null {
   const accepted = normaliseFileTypes(rules.acceptedFileTypes);
   const extension = getExtension(file.name);
 
   if (!extension || !accepted.includes(`.${extension}`)) {
-    return `${file.name} is not a supported file type. You can upload: ${accepted.join(', ')}`;
+    return resolveMessages(messages).upload.unsupportedType({ fileName: file.name, types: accepted.join(', ') });
   }
 
   if (file.size > rules.maxFileSize) {
-    return `${file.name} is too large. The maximum file size is ${formatFileSize(rules.maxFileSize)}.`;
+    return resolveMessages(messages).upload.tooLarge({
+      fileName: file.name,
+      maxSize: formatFileSize(rules.maxFileSize),
+      maxBytes: rules.maxFileSize,
+    });
   }
 
   return null;

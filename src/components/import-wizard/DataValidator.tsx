@@ -12,6 +12,7 @@ import { ReviewSummary } from './review/ReviewSummary';
 import { ReviewToolbar } from './review/ReviewToolbar';
 import { ReviewGrid } from './review/ReviewGrid';
 import { ReviewActions } from './review/ReviewActions';
+import { useMessages } from './messages';
 
 interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   validatedRows: RowValidation<TRecord>[];
@@ -52,11 +53,13 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   isLoading = false,
   className,
 }: DataValidatorProps<TRecord, TKey>) {
+  const m = useMessages();
   const review = useReviewRows<TRecord, TKey>(validatedRows, {
     fields,
     requiredFields,
     validateRow,
     onRowsChange,
+    fillPlaceholder: m.review.fillPlaceholder(),
   });
   const { rows } = review;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,10 +78,8 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Validate Data</h3>
-            <p className="text-sm text-muted-foreground">
-              Review, search, and fix data before importing
-            </p>
+            <h3 className="text-lg font-semibold text-foreground">{m.review.title()}</h3>
+            <p className="text-sm text-muted-foreground">{m.review.description()}</p>
           </div>
           <ReviewSummary summary={summary} filter={view.filter} onFilterChange={view.setFilter} />
         </div>
@@ -105,7 +106,9 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
 
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          {rowCountLabel(view.visibleRows.length, view.totalRows)}
+          {view.visibleRows.length === view.totalRows
+            ? m.review.rowCount({ count: view.totalRows })
+            : m.review.rowCountFiltered({ visible: view.visibleRows.length, total: view.totalRows })}
         </p>
         <ReviewGrid
           rows={view.visibleRows}
@@ -121,13 +124,6 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
       <ReviewActions summary={summary} onBack={onBack} onComplete={onComplete} />
     </div>
   );
-}
-
-/** "10,000 rows", or "12 of 10,000 rows" while a filter or search narrows the grid */
-function rowCountLabel(visible: number, total: number): string {
-  const format = (n: number) => n.toLocaleString();
-  const noun = total === 1 ? 'row' : 'rows';
-  return visible === total ? `${format(total)} ${noun}` : `${format(visible)} of ${format(total)} ${noun}`;
 }
 
 function ReviewSkeleton({ className }: { className?: string }) {

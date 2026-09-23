@@ -11,6 +11,8 @@ export interface ReviewRowsOptions<TRecord, TKey extends string> {
   /** Host App row validator, re-applied after every edit */
   validateRow?: (data: TRecord, rowIndex: number) => ValidationResult[];
   onRowsChange?: (rows: RowValidation<TRecord>[]) => void;
+  /** Written into empty required text cells by "Fill Required" when the field has no `placeholder` */
+  fillPlaceholder: string;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface ReviewRowsOptions<TRecord, TKey extends string> {
  */
 export function useReviewRows<TRecord, TKey extends string>(
   initialRows: RowValidation<TRecord>[],
-  { fields, requiredFields, validateRow, onRowsChange }: ReviewRowsOptions<TRecord, TKey>
+  { fields, requiredFields, validateRow, onRowsChange, fillPlaceholder }: ReviewRowsOptions<TRecord, TKey>
 ) {
   const {
     state: rows,
@@ -112,7 +114,7 @@ export function useReviewRows<TRecord, TKey extends string>(
             if (field?.type === 'number') {
               data[fieldKey] = field.placeholder ? parseFloat(field.placeholder) || 0 : 0;
             } else {
-              data[fieldKey] = field?.placeholder || 'N/A';
+              data[fieldKey] = field?.placeholder || fillPlaceholder;
             }
             modified = true;
           }
@@ -121,7 +123,7 @@ export function useReviewRows<TRecord, TKey extends string>(
         return modified ? revalidate({ ...row, data: data as TRecord }) : row;
       })
     );
-  }, [fields, requiredKeys, revalidate, setRows]);
+  }, [fields, requiredKeys, revalidate, setRows, fillPlaceholder]);
 
   return {
     rows,

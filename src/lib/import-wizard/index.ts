@@ -58,6 +58,20 @@ export type {
 export { TARGET_FIELDS, ARTWORK_FIELD_CONFIGS } from './types';
 
 // ============================================================
+// MESSAGE CATALOGUE
+// ============================================================
+
+export {
+  DEFAULT_MESSAGES,
+  formatValidationMessage,
+  type MessageCatalogue,
+  type PartialMessageCatalogue,
+  type MessageEntry,
+  type MessageParams,
+  type ValidationMessageRef,
+} from './messages';
+
+// ============================================================
 // PARSING
 // ============================================================
 
@@ -120,7 +134,7 @@ export { parseCalendarDate, formatCalendarDate, type DateOrder } from './dates';
 
 export { normaliseForMatch, isNormalisedMatch } from './normalise';
 
-export { matchChoice, loadChoiceOptions, hasOptionLoaders } from './choices';
+export { matchChoice, loadChoiceOptions, hasOptionLoaders, OptionsLoadError } from './choices';
 
 // ============================================================
 // EXPORT

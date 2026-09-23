@@ -10,8 +10,9 @@ import type {
 } from './types';
 import { TARGET_FIELDS } from './types';
 import { parseNumber } from './values';
-import { invalidDateMessage, parseCalendarDate } from './dates';
+import { invalidDateError, parseCalendarDate } from './dates';
 import { checkChoice, coerceChoice } from './choices';
+import { validationIssue } from './messages';
 
 /**
  * Validate all rows using the column mappings
@@ -101,10 +102,7 @@ export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = Tar
     const value = data[fieldKey];
     if (value === null || value === undefined || value === '') {
       const fieldConfig = fields?.find((f) => f.key === fieldKey);
-      errors.push({
-        field: fieldKey,
-        message: `${fieldConfig?.label || fieldKey} is required`,
-      });
+      errors.push(validationIssue(fieldKey, { key: 'required', params: { field: fieldConfig?.label || fieldKey } }));
     }
   }
   
@@ -125,32 +123,7 @@ export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = Tar
       }
     }
   } else {
-    // Legacy artwork-specific warnings
-    const artworkData = data as unknown as ArtworkRecord;
-    if (artworkData.valueAmount !== null && artworkData.valueCurrency === null) {
-      warnings.push({
-        field: 'valueCurrency',
-        message: 'Value amount provided without currency',
-      });
-    }
-    if (artworkData.valueCurrency !== null && artworkData.valueAmount === null) {
-      warnings.push({
-        field: 'valueAmount',
-        message: 'Currency provided without value amount',
-      });
-    }
-    if (artworkData.title && /^\d+$/.test(String(artworkData.title))) {
-      warnings.push({
-        field: 'title',
-        message: 'Title appears to be numeric only',
-      });
-    }
-    if (artworkData.artist && /^\d+$/.test(String(artworkData.artist))) {
-      warnings.push({
-        field: 'artist',
-        message: 'Artist appears to be numeric only',
-      });
-    }
+    warnings.push(...legacyArtworkWarnings(data as unknown as ArtworkRecord));
   }
   
   // Run custom row validator
@@ -229,10 +202,8 @@ function validateRow<TRecord, TKey extends string>(
     if (value === null || value === undefined || value === '') {
       const fieldConfig = fields?.find((f) => f.key === fieldKey);
       const legacyField = TARGET_FIELDS.find((f) => f.key === fieldKey);
-      errors.push({
-        field: fieldKey,
-        message: `${fieldConfig?.label || legacyField?.label || fieldKey} is required`,
-      });
+      const label = fieldConfig?.label || legacyField?.label || fieldKey;
+      errors.push(validationIssue(fieldKey, { key: 'required', params: { field: label } }));
     }
   }
   
@@ -253,32 +224,7 @@ function validateRow<TRecord, TKey extends string>(
       }
     }
   } else {
-    // Legacy artwork-specific warnings
-    const artworkData = data as unknown as ArtworkRecord;
-    if (artworkData.valueAmount !== null && artworkData.valueCurrency === null) {
-      warnings.push({
-        field: 'valueCurrency',
-        message: 'Value amount provided without currency',
-      });
-    }
-    if (artworkData.valueCurrency !== null && artworkData.valueAmount === null) {
-      warnings.push({
-        field: 'valueAmount',
-        message: 'Currency provided without value amount',
-      });
-    }
-    if (artworkData.title && /^\d+$/.test(String(artworkData.title))) {
-      warnings.push({
-        field: 'title',
-        message: 'Title appears to be numeric only',
-      });
-    }
-    if (artworkData.artist && /^\d+$/.test(String(artworkData.artist))) {
-      warnings.push({
-        field: 'artist',
-        message: 'Artist appears to be numeric only',
-      });
-    }
+    warnings.push(...legacyArtworkWarnings(data as unknown as ArtworkRecord));
   }
   
   // Run custom row validator
@@ -318,14 +264,32 @@ function checkFieldTypes<TKey extends string>(
     const value = data[field.key];
     if (value === null || value === undefined || value === '') continue;
     if (field.type === 'date' && !parseCalendarDate(value, field.dateOrder)) {
-      errors.push({ field: field.key, message: invalidDateMessage(field.label, field.dateOrder) });
+      errors.push(invalidDateError(field.key, field.label, field.dateOrder));
     }
     if (field.type === 'choice') {
-      const message = checkChoice(value, field);
-      if (message) errors.push({ field: field.key, message });
+      const error = checkChoice(value, field);
+      if (error) errors.push(error);
     }
   }
   return errors;
+}
+
+/** Warnings for the legacy artwork fields, used only when no `fields` are given */
+function legacyArtworkWarnings(data: ArtworkRecord): ValidationWarning[] {
+  const label = (key: TargetField) => TARGET_FIELDS.find((f) => f.key === key)?.label ?? key;
+  const warnings: ValidationWarning[] = [];
+  if (data.valueAmount !== null && data.valueCurrency === null) {
+    warnings.push(validationIssue('valueCurrency', { key: 'amountWithoutCurrency', params: { field: label('valueCurrency') } }));
+  }
+  if (data.valueCurrency !== null && data.valueAmount === null) {
+    warnings.push(validationIssue('valueAmount', { key: 'currencyWithoutAmount', params: { field: label('valueAmount') } }));
+  }
+  for (const key of ['title', 'artist'] as const) {
+    if (data[key] && /^\d+$/.test(String(data[key]))) {
+      warnings.push(validationIssue(key, { key: 'numericOnly', params: { field: label(key) } }));
+    }
+  }
+  return warnings;
 }
 
 function processValue(
