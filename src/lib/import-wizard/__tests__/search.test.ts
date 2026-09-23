@@ -173,3 +173,56 @@ describe('findReplaceEdits', () => {
     expect(applyRowEdits(ROWS, edits, FIELDS).get(2)?.data.artist).toBeNull();
   });
 });
+
+describe('date cells', () => {
+  const DATE_FIELDS: FieldConfig[] = [
+    { key: 'title', label: 'Title', type: 'string' },
+    { key: 'acquired', label: 'Acquired', type: 'date' },
+  ];
+  const day = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
+  const DATE_ROWS = [
+    row(0, { title: 'Dawn', acquired: day(2024, 1, 15) }),
+    row(1, { title: 'Dusk', acquired: day(2024, 1, 31) }),
+    row(2, { title: 'Noon', acquired: day(2023, 12, 31) }),
+    row(3, { title: 'Night', acquired: null }),
+  ];
+
+  it('search matches a date by the YYYY-MM-DD text the grid shows', () => {
+    expect(matchesSearch(day(2024, 1, 15), '2024-01-15')).toBe(true);
+    expect(matchesSearch(day(2024, 1, 15), '2024-01')).toBe(true);
+    expect(matchesSearch(day(2024, 1, 15), '2024-01-16')).toBe(false);
+    expect(matchesSearch(day(2024, 1, 15), 'GMT')).toBe(false);
+    expect(matchesSearch(day(2024, 1, 15), 'Jan')).toBe(false);
+  });
+
+  it('keeps rows and counts cells whose date matches', () => {
+    expect(DATE_ROWS.filter((r) => rowMatchesSearch(r, DATE_FIELDS, '2024-01-15')).map((r) => r.rowIndex)).toEqual([0]);
+    expect(countSearchMatches(DATE_ROWS, DATE_FIELDS, '2024-01')).toBe(2);
+    expect(countSearchMatches(DATE_ROWS, DATE_FIELDS, '-31')).toBe(2);
+  });
+
+  it('find counts date cells by their YYYY-MM-DD text', () => {
+    expect(countFindMatches(DATE_ROWS, DATE_FIELDS, '2024-01', opts())).toBe(2);
+    expect(countFindMatches(DATE_ROWS, DATE_FIELDS, '2024-01-15', opts({ wholeWord: true }))).toBe(1);
+    expect(countFindMatches(DATE_ROWS, DATE_FIELDS, '12-31', opts({ selectedColumn: 'acquired' }))).toBe(1);
+  });
+
+  it('replace writes YYYY-MM-DD text that applying the edits reads back as a calendar date', () => {
+    const edits = findReplaceEdits(DATE_ROWS, DATE_FIELDS, '2024-01', '2025-01', opts());
+    expect(edits).toEqual([
+      { rowIndex: 0, changes: { acquired: '2025-01-15' } },
+      { rowIndex: 1, changes: { acquired: '2025-01-31' } },
+    ]);
+
+    const changed = applyRowEdits(DATE_ROWS, edits, DATE_FIELDS);
+    expect(changed.get(0)?.data.acquired).toEqual(day(2025, 1, 15));
+    expect(changed.get(1)?.data.acquired).toEqual(day(2025, 1, 31));
+    expect(changed.has(2)).toBe(false);
+  });
+
+  it('keeps a replacement that is no longer a date as text, for validation to flag', () => {
+    const edits = findReplaceEdits(DATE_ROWS, DATE_FIELDS, '-15', '-45', opts());
+    expect(edits).toEqual([{ rowIndex: 0, changes: { acquired: '2024-01-45' } }]);
+    expect(applyRowEdits(DATE_ROWS, edits, DATE_FIELDS).get(0)?.data.acquired).toBe('2024-01-45');
+  });
+});

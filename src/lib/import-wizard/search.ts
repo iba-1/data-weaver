@@ -1,4 +1,5 @@
 import type { FieldConfig, ReplaceOptions, RowEdit, RowValidation } from './types';
+import { cellText } from './values';
 
 type FieldKeys = Pick<FieldConfig, 'key'>[];
 
@@ -10,10 +11,11 @@ function cellValues<TRecord>(row: RowValidation<TRecord>): Record<string, unknow
 // SEARCH
 // ============================================================
 
-/** Whether a cell contains the search text, ignoring case */
+/** Whether a cell's text (see `cellText`) contains the search text, ignoring case */
 export function matchesSearch(value: unknown, query: string): boolean {
-  if (!query || value === null || value === undefined) return false;
-  return String(value).toLowerCase().includes(query.toLowerCase());
+  if (!query) return false;
+  const text = cellText(value);
+  return text !== '' && text.toLowerCase().includes(query.toLowerCase());
 }
 
 /** Whether any of the row's fields contains the search text; an empty search matches every row */
@@ -96,17 +98,17 @@ export function countFindMatches<TRecord>(
     const data = cellValues(row);
     for (const field of fields) {
       if (!inSelectedColumn(field.key, options)) continue;
-      const value = data[field.key];
-      if (value !== null && value !== undefined && matchesFind(String(value), find, options)) count++;
+      if (matchesFind(cellText(data[field.key]), find, options)) count++;
     }
   }
   return count;
 }
 
 /**
- * The edits a "replace all" makes: one change per cell whose text actually
- * changes. Values are the replaced text; applying the edits coerces them to
- * each field's type.
+ * The edits a "replace all" makes: one change per cell whose text (see
+ * `cellText`) actually changes. Values are the replaced text; applying the
+ * edits coerces them to each field's type, so a date's `YYYY-MM-DD` text is
+ * read back as a calendar date.
  */
 export function findReplaceEdits<TRecord>(
   rows: RowValidation<TRecord>[],
@@ -123,10 +125,7 @@ export function findReplaceEdits<TRecord>(
 
     for (const field of fields) {
       if (!inSelectedColumn(field.key, options)) continue;
-      const value = data[field.key];
-      if (value === null || value === undefined) continue;
-
-      const text = String(value);
+      const text = cellText(data[field.key]);
       if (!matchesFind(text, find, options)) continue;
 
       const replaced = replaceInText(text, find, replace, options);

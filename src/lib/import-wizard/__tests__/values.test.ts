@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseNumber } from '../values';
+import { cellText, parseNumber } from '../values';
 import { coerceEditedValue } from '../edits';
 import { validateRows } from '../validator';
 import type { ColumnMapping, FieldConfig } from '../types';
@@ -49,5 +49,24 @@ describe('coerceEditedValue', () => {
   it('keeps non-string values and text for non-number fields as they are', () => {
     expect(coerceEditedValue(12, PRICE)).toBe(12);
     expect(coerceEditedValue('$5', { type: 'string' })).toBe('$5');
+  });
+});
+
+describe('cellText', () => {
+  it('reads empty cells as no text', () => {
+    expect(cellText(null)).toBe('');
+    expect(cellText(undefined)).toBe('');
+  });
+
+  it('reads a date as its calendar day, YYYY-MM-DD, whatever the time zone', () => {
+    expect(cellText(new Date(Date.UTC(2024, 0, 15)))).toBe('2024-01-15');
+    expect(cellText(new Date(Date.UTC(2024, 11, 31)))).toBe('2024-12-31');
+  });
+
+  it('reads anything else as its plain text', () => {
+    expect(cellText('The Cat')).toBe('The Cat');
+    expect(cellText(2100)).toBe('2100');
+    expect(cellText(0)).toBe('0');
+    expect(cellText(false)).toBe('false');
   });
 });

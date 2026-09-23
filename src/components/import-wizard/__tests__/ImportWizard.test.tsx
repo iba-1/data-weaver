@@ -153,6 +153,52 @@ describe('ImportWizard', () => {
   });
 });
 
+describe('ImportWizard with a date field', () => {
+  type DatedKey = 'title' | 'acquired';
+  const DATED_FIELDS: FieldConfig<DatedKey>[] = [
+    { key: 'title', label: 'Title', type: 'string', matchKeywords: ['title'] },
+    { key: 'acquired', label: 'Acquired', type: 'date', matchKeywords: ['acquired'] },
+  ];
+
+  beforeEach(() => {
+    mockFile([
+      { title: 'Dawn', acquired: '15/01/2024' },
+      { title: 'Dusk', acquired: '31/12/2023' },
+    ]);
+  });
+
+  it('search finds a date by the YYYY-MM-DD text the grid shows, and highlights it', async () => {
+    render(<ImportWizard<Record<DatedKey, unknown>, DatedKey> fields={DATED_FIELDS} />);
+    await goToReview();
+
+    fireEvent.change(screen.getByPlaceholderText(/search in data/i), { target: { value: '2024-01-15' } });
+
+    expect(screen.getByText('1 match')).toBeInTheDocument();
+    expect(screen.queryByText('Dusk')).not.toBeInTheDocument();
+    expect(screen.getByText('2024-01-15').closest('[role="gridcell"]')).toHaveClass('bg-primary/20');
+    expect(screen.getByText('Dawn').closest('[role="gridcell"]')).not.toHaveClass('bg-primary/20');
+  });
+
+  it('find/replace on a date keeps it a valid calendar date', async () => {
+    const onComplete = vi.fn();
+    render(<ImportWizard<Record<DatedKey, unknown>, DatedKey> fields={DATED_FIELDS} onComplete={onComplete} />);
+    await goToReview();
+
+    fireEvent.click(screen.getByRole('button', { name: /find & replace/i }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Find'), { target: { value: '2024-01' } });
+    fireEvent.change(within(dialog).getByLabelText('Replace with'), { target: { value: '2025-01' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /replace all/i }));
+    expect(within(dialog).getByText(/replaced 1 cell/i)).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    expect(screen.getByText('2025-01-15')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
+    const [data] = onComplete.mock.calls[0];
+    expect(data[0].acquired).toEqual(new Date(Date.UTC(2025, 0, 15)));
+  });
+});
+
 describe('DataValidator', () => {
   const rows: RowValidation<Rec>[] = [
     { rowIndex: 0, data: { name: 'Ada', email: 'a@x.io' }, originalData: {}, isValid: true, errors: [], warnings: [] },
