@@ -8,35 +8,53 @@
 import type { CreateRelated, FieldConfig, ImportRow, RejectedRow, RelatedRecordId } from './types';
 import { ENGLISH_MESSAGES, type ResolvedMessages } from './messages';
 import { normaliseForMatch } from './normalise';
-import { relatedValueKey, relatedValueOf, relationshipKinds, type ResolvedValue } from './resolution';
+import {
+  decisionForRow,
+  decisionsInEffect,
+  relatedValueKey,
+  relatedValueOf,
+  relationshipKinds,
+  type ResolvedValue,
+} from './resolution';
 
 /** A new Related Record to create at the start of Commit */
 export interface RelatedCreation {
   kind: string;
   /** The stored name, as confirmed in Resolution */
   name: string;
-  /** The values (`relatedValueKey`) that will point to it */
+  /** The values (`relatedValueKey`) some of whose rows will point to it */
   keys: string[];
 }
 
 /** A creation and its outcome: the new record's ID, or why it was not created */
 export type CreatedRelated = RelatedCreation & ({ id: RelatedRecordId } | { reason: string });
 
+/** Identifies a planned creation: new records of a kind are told apart by their name's Normalised Match */
+const creationKey = (kind: string, name: string) => relatedValueKey(kind, normaliseForMatch(name));
+
 /**
- * The new Related Records a Commit creates: one per value decided `create`,
- * and one only for values whose names are a Normalised Match of each other
- * (e.g. the Importer gave `G. Rossi` the name `Galleria Rossi`). A value used
- * in several fields is one value, so it is created once. Kinds never mix.
+ * The new Related Records a Commit creates: one per value with rows decided
+ * `create`, and one only for values whose names are a Normalised Match of
+ * each other (e.g. the Importer gave `G. Rossi` the name `Galleria Rossi`).
+ * A value used in several fields is one value, so it is created once. Kinds
+ * never mix.
+ *
+ * With per-row decisions (Homonyms), only the decisions some row actually
+ * gets count: every row of a value assigned to "create new" points to the
+ * same one new record, whether by the value's decision or its own. A value
+ * whose rows all link to existing records creates nothing.
  */
 export function planRelatedCreations(resolved: ResolvedValue[]): RelatedCreation[] {
   const plan = new Map<string, RelatedCreation>();
   for (const value of resolved) {
-    if (value.decision?.action !== 'create') continue;
-    const id = relatedValueKey(value.kind, normaliseForMatch(value.decision.name));
     const key = relatedValueKey(value.kind, value.value);
-    const planned = plan.get(id);
-    if (planned) planned.keys.push(key);
-    else plan.set(id, { kind: value.kind, name: value.decision.name, keys: [key] });
+    for (const decision of decisionsInEffect(value)) {
+      if (decision?.action !== 'create') continue;
+      const id = creationKey(value.kind, decision.name);
+      const planned = plan.get(id);
+      if (!planned) plan.set(id, { kind: value.kind, name: decision.name, keys: [key] });
+      else if (!planned.keys.includes(key)) planned.keys.push(key);
+    }
   }
   return [...plan.values()];
 }
@@ -98,8 +116,11 @@ export interface SubstitutedRows<TRecord> {
  * Rejected Row (`relatedNotCreated`) naming that record, with the field it
  * came from, and its record as reviewed.
  *
- * Every value in `rows` must be in `resolved` with a decision (Commit starts
- * only when nothing blocks it); otherwise this throws.
+ * Each row gets its own decision for a value when it has one (Homonyms'
+ * per-row overrides), else the value's: rows using the same name can point
+ * to different records. Every value in `rows` must be in `resolved` with a
+ * decision for each of its rows (Commit starts only when nothing blocks it);
+ * otherwise this throws.
  */
 export function substituteRelatedIds<TRecord>(
   rows: ImportRow<TRecord>[],
@@ -109,21 +130,17 @@ export function substituteRelatedIds<TRecord>(
   messages: ResolvedMessages = ENGLISH_MESSAGES
 ): SubstitutedRows<TRecord> {
   const outcomeOf = new Map<string, CreatedRelated>();
-  for (const creation of created) for (const key of creation.keys) outcomeOf.set(key, creation);
+  for (const creation of created) outcomeOf.set(creationKey(creation.kind, creation.name), creation);
+  const valueOf = new Map(resolved.map((value) => [relatedValueKey(value.kind, value.value), value]));
 
   type Target = { id: RelatedRecordId } | { failed: CreatedRelated | undefined; name: string };
-  const targets = new Map<string, Target>();
-  for (const value of resolved) {
-    const key = relatedValueKey(value.kind, value.value);
-    const { decision } = value;
-    if (!decision) continue;
-    if (decision.action === 'link') {
-      targets.set(key, { id: decision.id });
-    } else {
-      const outcome = outcomeOf.get(key);
-      targets.set(key, outcome && 'id' in outcome ? { id: outcome.id } : { failed: outcome, name: decision.name });
-    }
-  }
+  const targetOf = (value: ResolvedValue | undefined, rowIndex: number): Target | undefined => {
+    const decision = value && decisionForRow(value, rowIndex);
+    if (!decision) return undefined;
+    if (decision.action === 'link') return { id: decision.id };
+    const outcome = outcomeOf.get(creationKey(value.kind, decision.name));
+    return outcome && 'id' in outcome ? { id: outcome.id } : { failed: outcome, name: decision.name };
+  };
 
   const relationshipFields = relationshipKinds(fields).flatMap(({ kind, fields: kindFields }) =>
     kindFields.map((field) => ({ kind, key: field.key }))
@@ -135,7 +152,7 @@ export function substituteRelatedIds<TRecord>(
     for (const field of relationshipFields) {
       const value = relatedValueOf(record[field.key]);
       if (value === '') continue;
-      const target = targets.get(relatedValueKey(field.kind, value));
+      const target = targetOf(valueOf.get(relatedValueKey(field.kind, value)), row.rowIndex);
       if (!target) {
         throw new Error(`The ${field.key} value "${String(record[field.key])}" of row ${row.rowIndex + 1} was not resolved.`);
       }

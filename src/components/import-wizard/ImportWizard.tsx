@@ -8,6 +8,7 @@ import { autoMatchColumns, updateMapping } from '@/lib/import-wizard/matcher';
 import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator';
 import { hasOptionLoaders, loadChoiceOptions, OptionsLoadError } from '@/lib/import-wizard/choices';
 import { resolveMessages } from '@/lib/import-wizard/messages';
+import { cellText } from '@/lib/import-wizard/values';
 import { commitRows, createImportKeys, normaliseBatchSize, toBatches } from '@/lib/import-wizard/commit';
 import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptionsStatus';
 import { CommitProgress } from './commit/CommitProgress';
@@ -128,6 +129,17 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   });
   const withResolution = resolution.kinds.length > 0;
   const { start: startLookup, leave: leaveResolution } = resolution;
+
+  // In Resolution's per-row choices, a row is shown with its first field (e.g. its title), as in the Import Report
+  const rowsByIndex = useMemo(() => new Map(state.validatedRows.map((r) => [r.rowIndex, r])), [state.validatedRows]);
+  const describeRow = useCallback(
+    (rowIndex: number) => {
+      const identifying = fieldConfigs[0];
+      const row = rowsByIndex.get(rowIndex);
+      return identifying && row ? cellText((row.data as Record<string, unknown>)[identifying.key]) : '';
+    },
+    [fieldConfigs, rowsByIndex]
+  );
 
   const emit = useCallback(
     (event: ImportWizardEvent<TRecord>) => {
@@ -514,7 +526,10 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             blockers={resolution.blockers}
             canCommit={resolution.canCommit}
             rowCount={state.validatedRows.filter((r) => !r.excluded).length}
+            describeRow={describeRow}
             onNameChange={resolution.setName}
+            onChoose={resolution.choose}
+            onChooseForRow={resolution.chooseForRow}
             onRetry={startResolution}
             onBack={handleBackToReview}
             onComplete={handleCommit}

@@ -290,8 +290,32 @@ export interface ResolvedValue extends RelatedValue {
   group: ResolutionGroup;
   /** What the lookup found; empty while `pending` */
   candidates: RelatedCandidate[];
-  /** What Commit will do, or null while the value still needs the Importer (or the lookup) */
+  /**
+   * What Commit does for the value's rows without a row decision, or null
+   * while the value still needs the Importer (or the lookup)
+   */
   decision: RelatedDecision | null;
+  /**
+   * The Importer's decisions for individual rows (by `rowIndex`), overriding
+   * `decision` for those rows (Homonyms, Q27). Only rows using the value.
+   */
+  rowDecisions: ReadonlyMap<number, RelatedDecision>;
+}
+
+/** What Commit does for one row using a value: the row's own decision, else the value's */
+export function decisionForRow(value: ResolvedValue, rowIndex: number): RelatedDecision | null {
+  return value.rowDecisions.get(rowIndex) ?? value.decision;
+}
+
+/** The decision Commit applies to each row using a value, in file order (null: undecided) */
+export function decisionsInEffect(value: ResolvedValue): Array<RelatedDecision | null> {
+  if (value.rows.length === 0) return [value.decision];
+  return value.rows.map((rowIndex) => decisionForRow(value, rowIndex));
+}
+
+/** Whether every row using the value has a decision: its own, or the value's */
+export function isValueDecided(value: ResolvedValue): boolean {
+  return value.group !== 'pending' && decisionsInEffect(value).every((decision) => decision !== null);
 }
 
 /** The group a value falls in, from its lookup candidates (undefined: not looked up) */
@@ -308,19 +332,29 @@ export interface ResolveOptions {
   names?: ReadonlyMap<string, string>;
   /** Decisions the Importer made, by `relatedValueKey`; they override the automatic ones */
   decisions?: ReadonlyMap<string, RelatedDecision>;
+  /**
+   * Decisions the Importer made for individual rows, by `relatedValueKey`
+   * then `rowIndex`: each overrides the value's decision for that row. Rows
+   * no longer using the value are ignored.
+   */
+  rowDecisions?: ReadonlyMap<string, ReadonlyMap<number, RelatedDecision>>;
 }
+
+/** A new record's name is stored trimmed */
+const trimName = (decision: RelatedDecision): RelatedDecision =>
+  decision.action === 'create' ? { action: 'create', name: decision.name.trim() } : decision;
 
 /**
  * Decide what can be decided without the Importer: a value with exactly one
  * Normalised Match links to it, a value with no candidates will be created
  * (with the Importer's name for it, or its default name). Homonyms and
  * Possible Matches are never decided here: they stay `null` until the
- * Importer decides (`decisions`).
+ * Importer decides (`decisions`, and `rowDecisions` for individual rows).
  */
 export function resolveValues(
   values: RelatedValue[],
   lookups: LookupResults,
-  { names, decisions }: ResolveOptions = {}
+  { names, decisions, rowDecisions }: ResolveOptions = {}
 ): ResolvedValue[] {
   return values.map((value) => {
     const found = lookups.get(value.kind)?.get(value.value);
@@ -328,31 +362,39 @@ export function resolveValues(
     const key = relatedValueKey(value.kind, value.value);
     const name = (names?.get(key) ?? value.defaultName).trim();
 
-    let decision: RelatedDecision | null = decisions?.get(key) ?? null;
-    if (decision?.action === 'create') decision = { action: 'create', name: decision.name.trim() };
+    const chosen = decisions?.get(key);
+    let decision: RelatedDecision | null = chosen ? trimName(chosen) : null;
     if (!decision && group === 'matched') {
       const match = found!.find((c) => c.match === 'normalised')!;
       decision = { action: 'link', id: match.id, name: match.name };
     }
     if (!decision && group === 'create') decision = { action: 'create', name };
 
-    return { ...value, group, candidates: found ?? [], decision };
+    const chosenForRows = rowDecisions?.get(key);
+    const byRow = new Map<number, RelatedDecision>();
+    for (const rowIndex of value.rows) {
+      const rowDecision = chosenForRows?.get(rowIndex);
+      if (rowDecision) byRow.set(rowIndex, trimName(rowDecision));
+    }
+
+    return { ...value, group, candidates: found ?? [], decision, rowDecisions: byRow };
   });
 }
 
 /**
- * What stops Commit: values not looked up yet, values waiting for the
- * Importer's decision, and new records without a name. Commit may start only
- * when all three are 0.
+ * What stops Commit: values not looked up yet, values with rows waiting for
+ * the Importer's decision, and new records without a name (only those some
+ * row will point to). Commit may start only when all three are 0.
  */
 export function resolutionBlockers(resolved: ResolvedValue[]): { pending: number; undecided: number; unnamed: number } {
   let pending = 0;
   let undecided = 0;
   let unnamed = 0;
   for (const value of resolved) {
+    const inEffect = decisionsInEffect(value);
     if (value.group === 'pending') pending++;
-    else if (!value.decision) undecided++;
-    else if (value.decision.action === 'create' && value.decision.name === '') unnamed++;
+    else if (inEffect.some((decision) => decision === null)) undecided++;
+    else if (inEffect.some((decision) => decision?.action === 'create' && decision.name === '')) unnamed++;
   }
   return { pending, undecided, unnamed };
 }

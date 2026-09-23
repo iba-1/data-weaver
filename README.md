@@ -32,7 +32,7 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 ### Linking related records (Resolution)
 - A field can be a **Relationship Field**: its cells name another record, e.g. an artwork's author or owner (a Registry entry), rather than holding a plain value. See [Relationship Fields and Resolution](#relationship-fields-and-resolution).
 - When your fields include some, a **Link records** step follows the review. Every distinct name in the file is listed once per kind of record, even when it is used in several columns (author, owner, lender), with the spellings folded into it and how many rows use it. Names that differ only in case, extra spaces or accents are the same name.
-- Your app looks the names up once per kind. A name that matches exactly one existing record is linked to it; a name that matches none will be created, with the most frequent spelling (preferring the accented one) as its name, which the Importer can change. A name matching several existing records (Homonyms), or that only might be the same as one (Possible Matches), is never decided automatically: it is shown as needing a decision and blocks the import. Choosing between them is not available yet.
+- Your app looks the names up once per kind. A name that matches exactly one existing record is linked to it; a name that matches none will be created, with the most frequent spelling (preferring the accented one) as its name, which the Importer can change. A name matching several existing records (Homonyms), or that only might be the same as one (Possible Matches), is never decided automatically and blocks the import until the Importer decides. For Homonyms, the Importer sees each record with your description (e.g. a birth year), picks one or creates a new record, and can assign individual rows to a different one. Choosing for Possible Matches is not available yet.
 - Nothing is created until the Importer imports. The import then creates each new record once, before any row is saved, and the rows reach your app with the records' IDs, never their names.
 - Back in the review, each such cell keeps the file's text with a badge naming the record it resolved to.
 
@@ -464,15 +464,16 @@ A name is not an identity: two people can share one. So Data Weaver never sends 
 3. **Decide.** Each value falls in one group:
    - **Matched existing**: exactly one candidate is a Normalised Match. It is linked to that record.
    - **Will be created**: no candidates. A new record will be created. Its name is the most frequent spelling in the file; between spellings that differ only by accents, the accented one wins (`Niccolo Rossi` ×3 and `Niccolò Rossi` ×1 give `Niccolò Rossi`). The Importer can change it; an empty name blocks the import.
-   - **Needs a decision**: several Normalised Match candidates (Homonyms), or only Possible Match candidates. These are never decided for the Importer. For now the Importer can't choose between them in the wizard: the import stays blocked until those values are changed or their rows excluded in the review.
+   - **Several matches** (Homonyms): several candidates are a Normalised Match, e.g. two `Mario Rossi` born in 1950 and 1987. Never decided for the Importer: each candidate is listed with its `description`, and the Importer picks one, or **Create a new record** (a genuinely new person who shares an existing name). **Choose for each row** lists the value's rows (row number and first field) so individual rows can go to a different candidate, or to the new record. A row's choice wins over the value's; a row without one follows the value's. The import stays blocked until every row of every Homonym has a record. Every row assigned to "create new", whether by the value's choice or its own, points to the **same one** new record, created once with the name shown (editable); rows that are different new people need their names changed in the review. The value stays in this group once decided, and the choices are kept when the Importer goes back to the review and returns (a row's choice stops counting while the row no longer uses the value, e.g. once excluded).
+   - **Needs a decision**: only Possible Match candidates. These are never decided for the Importer. For now the Importer can't choose between them in the wizard: the import stays blocked until those values are changed or their rows excluded in the review.
 4. **Nothing is created yet.** Leaving the wizard during Resolution, or going back to the review, creates nothing.
-5. **Commit.** When the Importer imports, `createRelated(kind, name)` is called once for each new record, one at a time, before any row is saved. A value used in several fields (e.g. the same gallery as owner and lender) is created once; so are two values the Importer gave the same name. Then each Relationship Field value in the rows is replaced by its record's ID, and the rows go to `saveBatch`.
+5. **Commit.** When the Importer imports, `createRelated(kind, name)` is called once for each new record, one at a time, before any row is saved. A value used in several fields (e.g. the same gallery as owner and lender) is created once; so are two values the Importer gave the same name, and all the rows of a Homonym assigned to "create new". Then each Relationship Field value in the rows is replaced by its record's ID (the row's own choice for a Homonym), and the rows go to `saveBatch`.
 
 **How IDs reach `saveBatch`.** A Relationship Field's value in `record` is the Related Record's ID as your `findRelated` or `createRelated` gave it (a `string` or `number`), in place of the name: `{ title: 'Achrome', author: 'reg-17', owner: 42, lender: null }`. Empty cells stay `null`. Names are never sent.
 
 **A record that can't be created.** If `createRelated` rejects, the other records are still created, and every row pointing to that record becomes a Rejected Row that is never sent, with the field it came from, `cause: 'relatedNotCreated'` and the reason *The record "Galleria Rossi" could not be created:* followed by your Error's message. The other rows are saved.
 
-**In the review grid.** After Resolution, going back to the review shows each Relationship Field cell with the file's text and a badge: the linked record's name, `New: <name>` for a record to be created, or *Needs a decision*. Editing a cell to a name not resolved yet removes its badge until Resolution runs again.
+**In the review grid.** After Resolution, going back to the review shows each Relationship Field cell with the file's text and a badge: the linked record's name (with its description for a chosen Homonym, e.g. *Mario Rossi (b. 1987)*, following the row's own choice), `New: <name>` for a record to be created, or *Needs a decision*. Editing a cell to a name not resolved yet removes its badge until Resolution runs again.
 
 ### The Host App adapter
 
@@ -1042,8 +1043,17 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `resolution.createTitle` | count | `Will be created ({count})` |
 | `resolution.createDescription` | - | `Not in the system yet: a new record is created for each when you import, with the name shown. You can change it.` |
 | `resolution.undecidedTitle` | count | `Needs a decision ({count})` |
-| `resolution.undecidedDescription` | - | `These names match several existing records, or might be the same as one. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.` |
+| `resolution.undecidedDescription` | - | `These names might be the same as an existing record. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.` |
 | `resolution.homonyms` | count | `{count} records have this name:` |
+| `resolution.homonymsTitle` | count | `Several matches ({count})` |
+| `resolution.homonymsDescription` | - | `More than one existing record has each of these names. Choose which one each name means, or create a new record. You can choose differently for individual rows.` |
+| `resolution.homonymChoice` | value | `Which record is {value}?` (accessible name of a Homonym's choices) |
+| `resolution.createNew` | - | `Create a new record` |
+| `resolution.perRow` | count | `Choose for each row (1 row)`, `Choose for each row (3 rows)` |
+| `resolution.perRowCount` | count | `1 row chosen individually`, `2 rows chosen individually` |
+| `resolution.rowLabel` | row, title | `Row 3: Achrome`; `Row 3` when the row's first field is empty |
+| `resolution.rowChoice` | row, value | `Record for {value} in row {row}` (accessible name of one row's choice) |
+| `resolution.rowDefault` | - | `Same as above` |
 | `resolution.possible` | count | `Might be the same as:` |
 | `resolution.candidate` | name, description | `Lucio Fontana (1899–1968)`; the name alone when there is no description |
 | `resolution.rowCount` | count | `Used in 1 row`, `Used in 2 rows` |
@@ -1055,7 +1065,7 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `resolution.complete` | count | `Complete Import (1 row)`, `Complete Import (2 rows)` |
 | `resolution.blockedUndecided` | count | `1 name needs a decision before you can import.`, `2 names need a decision before you can import.` |
 | `resolution.blockedUnnamed` | count | `Give every new record a name before you can import.` |
-| `resolution.badgeLinked` | name | `{name}` |
+| `resolution.badgeLinked` | name, description | `Lucio Fontana`; `Mario Rossi (b. 1987)` for a chosen Homonym (its `description`) |
 | `resolution.badgeNew` | name | `New: {name}` |
 | `resolution.badgeUndecided` | - | `Needs a decision` |
 | `resolution.notCreated` | name, reason | `The record "{name}" could not be created: {reason}` |
@@ -1187,7 +1197,7 @@ The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a si
 
 ## Planned
 
-From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): choosing between Homonyms (with per-row choices) and Possible Matches in Resolution, and Fix & Retry.
+From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): choosing for Possible Matches in Resolution, and Fix & Retry.
 
 ## License
 

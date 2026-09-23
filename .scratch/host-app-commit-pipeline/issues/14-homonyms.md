@@ -8,8 +8,10 @@
 
 Spec: `../spec.md`
 
-- [ ] A 'several matches' group lists each Homonym with its candidates' distinguishing details
-- [ ] The Importer picks one candidate or 'create new' per value
-- [ ] Individual rows of a value can be assigned to a different candidate
-- [ ] Commit is blocked while any Homonym is undecided
-- [ ] Tests use a fake Host App holding two Registry entries with the same name
+- [x] A 'several matches' group lists each Homonym with its candidates' distinguishing details
+- [x] The Importer picks one candidate or 'create new' per value
+- [x] Individual rows of a value can be assigned to a different candidate
+- [x] Commit is blocked while any Homonym is undecided
+- [x] Tests use a fake Host App holding two Registry entries with the same name
+
+**Decided:** per value, "create new" means one new record for every row assigned to it (by the value's choice or its own), created once with the value's name. Rows that are different new people get different names in the review.
