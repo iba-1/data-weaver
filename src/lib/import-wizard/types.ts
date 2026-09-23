@@ -3,6 +3,7 @@
  */
 
 import type { DateOrder } from './dates';
+import type { PartialMessageCatalogue, ValidationMessageRef } from './messages';
 
 // ============================================================
 // CONFIGURABLE IMPORT WIZARD TYPES
@@ -188,12 +189,22 @@ export interface RowValidation<TRecord = ArtworkRecord> {
 
 export interface ValidationError {
   field: string;
+  /**
+   * The message as written. For messages Data Weaver raises itself this is
+   * the English default; `messageRef` lets it be shown in another language.
+   * Messages from the Host App's validators are passed through untouched.
+   */
   message: string;
+  /** Set on messages Data Weaver raises itself: their catalogue key and parameters */
+  messageRef?: ValidationMessageRef;
 }
 
 export interface ValidationWarning {
   field: string;
+  /** As for `ValidationError.message` */
   message: string;
+  /** Set on messages Data Weaver raises itself: their catalogue key and parameters */
+  messageRef?: ValidationMessageRef;
 }
 
 // ============================================================
@@ -371,6 +382,15 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
    * @default 10485760 (10 MB)
    */
   maxFileSize?: number;
+
+  /**
+   * Text in the Importer's language. Pass any entries of the catalogue;
+   * the rest fall back to English. Entries are strings with `{name}`
+   * placeholders or functions of their parameters. Pass a stable object
+   * (a constant, or memoised), not a new one on every render.
+   * @default DEFAULT_MESSAGES (English)
+   */
+  messages?: PartialMessageCatalogue;
   
   /**
    * Custom CSS class

@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { choiceOptions } from '@/lib/import-wizard/choices';
 import { EditableCell } from '../EditableCell';
+import { issueText } from '@/lib/import-wizard/messages';
 import { ChoiceCell } from '../ChoiceCell';
+import { useMessages } from '../messages';
 
 interface ReviewRowProps<TRecord, TKey extends string> {
   row: RowValidation<TRecord>;
@@ -48,7 +50,9 @@ function ReviewRowView<TRecord, TKey extends string>({
   onToggleExcluded,
   searchQuery,
 }: ReviewRowProps<TRecord, TKey>) {
+  const m = useMessages();
   const data = row.data as Record<string, unknown>;
+  const rowNumber = row.rowIndex + 1;
 
   return (
     <TableRow
@@ -64,17 +68,17 @@ function ReviewRowView<TRecord, TKey extends string>({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                aria-label={`${row.excluded ? 'Include' : 'Exclude'} row ${row.rowIndex + 1}`}
+                aria-label={row.excluded ? m.review.includeRow({ row: rowNumber }) : m.review.excludeRow({ row: rowNumber })}
                 onClick={() => onToggleExcluded(row.rowIndex, !row.excluded)}
               >
                 {row.excluded ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {row.excluded ? 'Include this row in the import again' : 'Leave this row out of the import'}
+              {row.excluded ? m.review.includeRowHint() : m.review.excludeRowHint()}
             </TooltipContent>
           </Tooltip>
-          {row.rowIndex + 1}
+          {rowNumber}
         </div>
       </TableCell>
       <TableCell className={CELL}>
@@ -84,6 +88,7 @@ function ReviewRowView<TRecord, TKey extends string>({
         const value = data[field.key];
         const error = row.errors.find((e) => e.field === field.key);
         const warning = row.warnings.find((w) => w.field === field.key);
+        const issue = error ?? warning;
 
         // Every kind of cell sits in the same compact TableCell, so rows stay REVIEW_ROW_HEIGHT tall
         return (
@@ -93,10 +98,10 @@ function ReviewRowView<TRecord, TKey extends string>({
                 value={value}
                 options={choiceOptions(field) ?? []}
                 onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
-                aria-label={`${field.label}, row ${row.rowIndex + 1}`}
+                aria-label={m.review.cellLabel({ field: field.label, row: rowNumber })}
                 hasError={!!error && !row.excluded}
                 hasWarning={!!warning && !row.excluded}
-                message={(error ?? warning)?.message}
+                message={issue && issueText(m, issue)}
                 isHighlighted={matchesSearch(value, searchQuery)}
                 className={cn(row.excluded && 'line-through')}
               />
@@ -118,8 +123,9 @@ function ReviewRowView<TRecord, TKey extends string>({
 }
 
 function RowStatus<TRecord>({ row }: { row: RowValidation<TRecord> }) {
+  const m = useMessages();
   if (row.excluded) {
-    return <Ban className="h-4 w-4 text-muted-foreground" aria-label="Excluded" />;
+    return <Ban className="h-4 w-4 text-muted-foreground" aria-label={m.review.excludedStatus()} />;
   }
   if (!row.isValid) {
     return (
@@ -127,7 +133,7 @@ function RowStatus<TRecord>({ row }: { row: RowValidation<TRecord> }) {
         <TooltipTrigger>
           <AlertCircle className="h-4 w-4 text-destructive" />
         </TooltipTrigger>
-        <TooltipContent>{row.errors.map((e) => e.message).join(', ')}</TooltipContent>
+        <TooltipContent>{row.errors.map((e) => issueText(m, e)).join(', ')}</TooltipContent>
       </Tooltip>
     );
   }
@@ -137,7 +143,7 @@ function RowStatus<TRecord>({ row }: { row: RowValidation<TRecord> }) {
         <TooltipTrigger>
           <AlertTriangle className="h-4 w-4 text-warning" />
         </TooltipTrigger>
-        <TooltipContent>{row.warnings.map((w) => w.message).join(', ')}</TooltipContent>
+        <TooltipContent>{row.warnings.map((w) => issueText(m, w)).join(', ')}</TooltipContent>
       </Tooltip>
     );
   }

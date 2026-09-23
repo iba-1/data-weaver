@@ -38,6 +38,7 @@ The import wizard is split into pure logic and React components, both barrel-exp
   - `matcher.ts` — Fuzzy column auto-matching using keyword similarity
   - `validator.ts` — Row validation with field-level and custom validators
   - `exporter.ts` — Export to CSV/Excel blobs
+  - `messages.ts` — The message catalogue: English defaults (`DEFAULT_MESSAGES`), typed params, resolving a Host App's partial catalogue. Core messages carry a `messageRef` (key + params) so the UI can translate them
   - `types.ts` — All type definitions and the legacy `ArtworkRecord` defaults
 
 - **`src/components/import-wizard/`** — React components consuming the logic layer:
@@ -48,7 +49,7 @@ The import wizard is split into pure logic and React components, both barrel-exp
   - `EditableCell.tsx` — Single cell editor with keyboard navigation
   - `SearchBar.tsx` / `FindReplaceDialog.tsx` — Search and bulk replace
   - `AiEditChat.tsx` — AI Edit chat; calls the Host App-supplied `aiEdit` handler (hidden without one)
-  - `WizardRoot.tsx` — `.dw-root` styling scope + TooltipProvider + portal container; every step component wraps itself in one
+  - `WizardRoot.tsx` — `.dw-root` styling scope + TooltipProvider + portal container + message catalogue context; every step component wraps itself in one. Components read text with `useMessages()` (`messages.ts`): no hard-coded Importer-visible copy (enforced by `__tests__/Messages.test.tsx`)
 
 ### Generic type system with legacy compat
 

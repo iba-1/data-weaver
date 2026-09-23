@@ -1,6 +1,7 @@
 import { Redo2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMessages } from '../messages';
 
 interface UndoRedoButtonsProps {
   onUndo: () => void;
@@ -10,6 +11,7 @@ interface UndoRedoButtonsProps {
 }
 
 export function UndoRedoButtons({ onUndo, onRedo, canUndo, canRedo }: UndoRedoButtonsProps) {
+  const m = useMessages();
   return (
     <div className="flex items-center border rounded-md">
       <Tooltip>
@@ -19,12 +21,13 @@ export function UndoRedoButtons({ onUndo, onRedo, canUndo, canRedo }: UndoRedoBu
             size="sm"
             onClick={onUndo}
             disabled={!canUndo}
+            aria-label={m.review.undo()}
             className="h-8 px-2 rounded-r-none border-r"
           >
             <Undo2 className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+        <TooltipContent>{m.review.undo()}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -33,12 +36,13 @@ export function UndoRedoButtons({ onUndo, onRedo, canUndo, canRedo }: UndoRedoBu
             size="sm"
             onClick={onRedo}
             disabled={!canRedo}
+            aria-label={m.review.redo()}
             className="h-8 px-2 rounded-l-none"
           >
             <Redo2 className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+        <TooltipContent>{m.review.redo()}</TooltipContent>
       </Tooltip>
     </div>
   );

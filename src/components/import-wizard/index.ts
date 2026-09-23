@@ -32,7 +32,7 @@
 /** Main wizard component - orchestrates the 3-step import flow */
 export { ImportWizard } from './ImportWizard';
 
-/** Styling scope, tooltips and portals; wrap sub-components used on their own */
+/** Styling scope, tooltips, portals and the message catalogue; wrap sub-components used on their own */
 export { WizardRoot } from './WizardRoot';
 
 /** Drag-and-drop file upload with validation */
@@ -102,6 +102,22 @@ export type {
   TargetFieldConfig,
 } from '@/lib/import-wizard/types';
 
+// ============================================================
+// MESSAGE CATALOGUE
+// ============================================================
+
+export {
+  /** The English defaults of every piece of text the Importer sees */
+  DEFAULT_MESSAGES,
+  /** A validation error or warning's text in a catalogue's language */
+  formatValidationMessage,
+  type MessageCatalogue,
+  type PartialMessageCatalogue,
+  type MessageEntry,
+  type MessageParams,
+  type ValidationMessageRef,
+} from '@/lib/import-wizard/messages';
+
 /** Default artwork field configurations (for backwards compatibility) */
 export { TARGET_FIELDS, ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types';
 
@@ -168,6 +184,8 @@ export {
   matchChoice,
   /** Call every choice field's options loader once; resolves to the fields with their options */
   loadChoiceOptions,
+  /** What loadChoiceOptions rejects with: the field's label and the reason */
+  OptionsLoadError,
   /** Whether any choice field still has an options loader */
   hasOptionLoaders,
 } from '@/lib/import-wizard/choices';

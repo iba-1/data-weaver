@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import type { getValidationSummary } from '@/lib/import-wizard/validator';
 import { Badge } from '@/components/ui/badge';
 import type { RowFilter } from './useVisibleRows';
+import { useMessages } from '../messages';
 
 interface ReviewSummaryProps {
   summary: ReturnType<typeof getValidationSummary>;
@@ -12,6 +13,7 @@ interface ReviewSummaryProps {
 
 /** Valid / warning / error / excluded counts; each badge filters the grid to those rows */
 export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummaryProps) {
+  const m = useMessages();
   return (
     <div className="flex flex-wrap gap-2">
       <Badge
@@ -20,7 +22,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
         onClick={() => onFilterChange('all')}
       >
         <CheckCircle className="mr-1 h-3 w-3" />
-        {summary.valid} Valid
+        {m.review.filterValid({ count: summary.valid })}
       </Badge>
       <Badge
         variant={filter === 'warnings' ? 'default' : 'outline'}
@@ -31,7 +33,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
         onClick={() => onFilterChange('warnings')}
       >
         <AlertTriangle className="mr-1 h-3 w-3" />
-        {summary.withWarnings} Warnings
+        {m.review.filterWarnings({ count: summary.withWarnings })}
       </Badge>
       <Badge
         variant={filter === 'errors' ? 'default' : 'outline'}
@@ -42,7 +44,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
         onClick={() => onFilterChange('errors')}
       >
         <AlertCircle className="mr-1 h-3 w-3" />
-        {summary.withErrors} Errors
+        {m.review.filterErrors({ count: summary.withErrors })}
       </Badge>
       <Badge
         variant={filter === 'excluded' ? 'default' : 'outline'}
@@ -50,7 +52,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
         onClick={() => onFilterChange('excluded')}
       >
         <Ban className="mr-1 h-3 w-3" />
-        {summary.excluded} Excluded
+        {m.review.filterExcluded({ count: summary.excluded })}
       </Badge>
     </div>
   );

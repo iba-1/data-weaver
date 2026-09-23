@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useMessages } from '../messages';
 
 interface ExportMenuProps<TRecord, TKey extends string> {
   rows: RowValidation<TRecord>[];
@@ -16,28 +17,27 @@ interface ExportMenuProps<TRecord, TKey extends string> {
 
 /** Download the rows under review as CSV or Excel */
 export function ExportMenu<TRecord, TKey extends string>({ rows, fields }: ExportMenuProps<TRecord, TKey>) {
+  const m = useMessages();
+  const download = (format: 'csv' | 'xlsx', onlyValid = false) =>
+    exportData(rows, fields, {
+      format,
+      onlyValid,
+      filename: onlyValid ? m.export.validFileName() : m.export.fileName(),
+      sheetName: m.export.sheetName(),
+    });
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
           <FileSpreadsheet className="h-4 w-4" />
-          Export
+          {m.export.menu()}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="bg-popover">
-        <DropdownMenuItem onClick={() => exportData(rows, fields, { format: 'csv', filename: 'data-export' })}>
-          Export as CSV
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => exportData(rows, fields, { format: 'xlsx', filename: 'data-export' })}>
-          Export as Excel
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() =>
-            exportData(rows, fields, { format: 'xlsx', filename: 'data-export-valid', onlyValid: true })
-          }
-        >
-          Export valid rows only (Excel)
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => download('csv')}>{m.export.csv()}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => download('xlsx')}>{m.export.excel()}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => download('xlsx', true)}>{m.export.validOnly()}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

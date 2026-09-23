@@ -31,7 +31,7 @@ describe('required fields', () => {
     const [row] = validateRows([{ Name: '', Email: 'a@b.c' }], mappings, { fields });
 
     expect(row.isValid).toBe(false);
-    expect(row.errors).toEqual([{ field: 'name', message: 'Name is required' }]);
+    expect(row.errors).toMatchObject([{ field: 'name', message: 'Name is required' }]);
   });
 
   it('combines FieldConfig.required with the requiredFields list', () => {
@@ -59,7 +59,7 @@ describe('required fields', () => {
 
     const revalidated = revalidateRow(row, { fields });
 
-    expect(revalidated.errors).toEqual([{ field: 'name', message: 'Name is required' }]);
+    expect(revalidated.errors).toMatchObject([{ field: 'name', message: 'Name is required' }]);
   });
 
   it('keeps the legacy artwork rules only when no fields are given', () => {

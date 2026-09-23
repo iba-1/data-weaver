@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WizardRoot } from './WizardRoot';
+import { useMessages } from './messages';
 
 interface ColumnMapperProps<TKey extends string = string> {
   mappings: ColumnMapping<TKey>[];
@@ -35,12 +36,11 @@ function ColumnMapperContent<TKey extends string = string>({
   isLoading = false,
   className,
 }: ColumnMapperProps<TKey>) {
+  const m = useMessages();
   const unmappedTargetFields = getUnmappedTargetFields(mappings, fields);
   const mappedCount = mappings.filter((m) => m.targetField !== null).length;
   const requiredFields = fields.filter((f) => f.required);
-  const requiredFieldsMapped = requiredFields.filter((f) =>
-    mappings.some((m) => m.targetField === f.key)
-  ).length;
+  const missingRequired = requiredFields.filter((f) => !mappings.some((mapping) => mapping.targetField === f.key));
 
   if (isLoading) {
     return (
@@ -61,21 +61,19 @@ function ColumnMapperContent<TKey extends string = string>({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">Map Columns</h3>
-          <p className="text-sm text-muted-foreground">
-            Match your file columns to the expected fields
-          </p>
+          <h3 className="text-lg font-semibold text-foreground">{m.mapping.title()}</h3>
+          <p className="text-sm text-muted-foreground">{m.mapping.description()}</p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          {mappedCount}/{fields.length} mapped
+          {m.mapping.mappedCount({ mapped: mappedCount, total: fields.length })}
         </Badge>
       </div>
 
       {/* Auto-match indicator */}
-      {mappings.some((m) => m.isAutoMatched && m.targetField) && (
+      {mappings.some((mapping) => mapping.isAutoMatched && mapping.targetField) && (
         <div className="flex items-center gap-2 rounded-lg bg-primary/10 p-3 text-sm text-primary">
           <Sparkles className="h-4 w-4" />
-          <span>Some columns were auto-matched. Review and adjust as needed.</span>
+          <span>{m.mapping.autoMatched()}</span>
         </div>
       )}
 
@@ -93,14 +91,13 @@ function ColumnMapperContent<TKey extends string = string>({
       </div>
 
       {/* Unmapped required fields warning */}
-      {requiredFieldsMapped < requiredFields.length && (
+      {missingRequired.length > 0 && (
         <div className="rounded-lg border border-warning/50 bg-warning/10 p-3">
           <p className="text-sm font-medium text-warning">
-            Missing required fields:{' '}
-            {requiredFields
-              .filter((f) => !mappings.some((m) => m.targetField === f.key))
-              .map((f) => f.label)
-              .join(', ')}
+            {m.mapping.missingRequired({
+              fields: missingRequired.map((f) => f.label).join(', '),
+              count: missingRequired.length,
+            })}
           </p>
         </div>
       )}
@@ -110,9 +107,9 @@ function ColumnMapperContent<TKey extends string = string>({
         onClick={onConfirm}
         className="w-full"
         size="lg"
-        disabled={requiredFieldsMapped < requiredFields.length}
+        disabled={missingRequired.length > 0}
       >
-        Continue to Validation
+        {m.mapping.continue()}
         <ArrowRight className="ml-2 h-4 w-4" />
       </Button>
     </div>
@@ -132,6 +129,7 @@ function MappingRow<TKey extends string>({
   unmappedTargetFields,
   onMappingChange,
 }: MappingRowProps<TKey>) {
+  const m = useMessages();
   const currentTarget = mapping.targetField
     ? fields.find((f) => f.key === mapping.targetField)
     : null;
@@ -158,7 +156,7 @@ function MappingRow<TKey extends string>({
           {mapping.isAutoMatched && mapping.targetField && (
             <Badge variant="outline" className="shrink-0 text-xs">
               <Sparkles className="mr-1 h-3 w-3" />
-              Auto
+              {m.mapping.autoBadge()}
             </Badge>
           )}
         </div>
@@ -176,11 +174,11 @@ function MappingRow<TKey extends string>({
           }
         >
           <SelectTrigger className={cn('w-full', !mapping.targetField && 'text-muted-foreground')}>
-            <SelectValue placeholder="Select field..." />
+            <SelectValue placeholder={m.mapping.selectField()} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="unmapped">
-              <span className="text-muted-foreground">Don't import</span>
+              <span className="text-muted-foreground">{m.mapping.doNotImport()}</span>
             </SelectItem>
             {availableFields.map((field) => (
               <SelectItem key={field.key} value={field.key}>

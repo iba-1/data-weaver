@@ -5,6 +5,7 @@
 
 import type { ChoiceOption, FieldConfig } from './types';
 import { normaliseForMatch } from './normalise';
+import { validationIssue } from './messages';
 
 /** How many options a cell error lists before summarising the rest */
 const OPTIONS_IN_MESSAGE = 5;
@@ -81,18 +82,17 @@ export function coerceChoice(value: unknown, field: Pick<FieldConfig, 'options'>
 }
 
 /** The cell error for a non-empty choice value, or null when it is one of the options */
-export function checkChoice(
-  value: unknown,
-  field: Pick<FieldConfig, 'label' | 'options'>
-): string | null {
+export function checkChoice(value: unknown, field: Pick<FieldConfig, 'key' | 'label' | 'options'>) {
   const options = choiceOptions(field);
-  if (!options) return `The options for ${field.label} are not loaded`;
-  if (options.length === 0) return `${field.label} has no options to choose from`;
+  if (!options) return validationIssue(field.key, { key: 'optionsNotLoaded', params: { field: field.label } });
+  if (options.length === 0) return validationIssue(field.key, { key: 'noOptions', params: { field: field.label } });
   if (typeof value === 'string' && indexOf(options).exact.has(value)) return null;
 
   const listed = options.slice(0, OPTIONS_IN_MESSAGE).map(choiceLabel).join(', ');
   const more = options.length - OPTIONS_IN_MESSAGE;
-  return `${field.label} must be one of: ${listed}${more > 0 ? ` and ${more} more` : ''}`;
+  return more > 0
+    ? validationIssue(field.key, { key: 'notAnOptionAndMore', params: { field: field.label, options: listed, more } })
+    : validationIssue(field.key, { key: 'notAnOption', params: { field: field.label, options: listed } });
 }
 
 /** Whether any choice field still has a loader instead of a list of options */
@@ -114,12 +114,29 @@ function isOptionList(options: unknown): options is ChoiceOption[] {
 }
 
 /**
+ * A choice field's options could not be loaded. `field` is the field's label
+ * and `reason` why, so the wizard can say it in the Importer's language
+ * (catalogue entry `options.loadFailed`); `message` says it in English.
+ */
+export class OptionsLoadError extends Error {
+  readonly field: string;
+  readonly reason: string;
+
+  constructor(field: string, reason: string) {
+    super(`Could not load the options for ${field}: ${reason}`);
+    this.name = 'OptionsLoadError';
+    this.field = field;
+    this.reason = reason;
+  }
+}
+
+/**
  * Call every choice field's options loader, once each and in parallel, and
  * return the fields with their loaded options. Fields without a loader are
  * returned as they are.
  *
- * Rejects with an Error naming the field when a loader rejects or returns
- * something that is not a list of `{ value, label }` options.
+ * Rejects with an OptionsLoadError naming the field when a loader rejects or
+ * returns something that is not a list of `{ value, label }` options.
  */
 export async function loadChoiceOptions<TKey extends string>(
   fields: FieldConfig<TKey>[]
@@ -132,13 +149,10 @@ export async function loadChoiceOptions<TKey extends string>(
       try {
         options = await field.options();
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Could not load the options for ${field.label}: ${reason}`);
+        throw new OptionsLoadError(field.label, error instanceof Error ? error.message : String(error));
       }
       if (!isOptionList(options)) {
-        throw new Error(
-          `Could not load the options for ${field.label}: expected a list of { value, label } options`
-        );
+        throw new OptionsLoadError(field.label, 'expected a list of { value, label } options');
       }
       return { ...field, options };
     })

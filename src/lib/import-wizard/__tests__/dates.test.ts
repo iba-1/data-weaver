@@ -160,7 +160,7 @@ describe('date fields in validation', () => {
   it('flags an impossible date as a cell error and keeps what was typed', () => {
     const row = validate('31/02/2024');
     expect(row.isValid).toBe(false);
-    expect(row.errors).toEqual([
+    expect(row.errors).toMatchObject([
       { field: 'acquired', message: 'Acquired is not a valid date (use DD/MM/YYYY or YYYY-MM-DD)' },
     ]);
     expect(row.data.acquired).toBe('31/02/2024');
@@ -168,14 +168,14 @@ describe('date fields in validation', () => {
 
   it('describes the expected format of a month-first field', () => {
     const row = validate('13/01/2024', [fields[0], { ...fields[1], dateOrder: 'MDY' }]);
-    expect(row.errors).toEqual([
+    expect(row.errors).toMatchObject([
       { field: 'acquired', message: 'Acquired is not a valid date (use MM/DD/YYYY or YYYY-MM-DD)' },
     ]);
   });
 
   it('flags an unparseable date on a required field once, as not a valid date', () => {
     const row = validate('sometime in 2024', [fields[0], { ...fields[1], required: true }]);
-    expect(row.errors).toEqual([
+    expect(row.errors).toMatchObject([
       { field: 'acquired', message: 'Acquired is not a valid date (use DD/MM/YYYY or YYYY-MM-DD)' },
     ]);
   });
@@ -202,7 +202,7 @@ describe('date fields in validation', () => {
 
   it('still requires an empty required date', () => {
     const row = validate('', [fields[0], { ...fields[1], required: true }]);
-    expect(row.errors).toEqual([{ field: 'acquired', message: 'Acquired is required' }]);
+    expect(row.errors).toMatchObject([{ field: 'acquired', message: 'Acquired is required' }]);
   });
 
   it('clears the error once the Importer fixes the date', () => {
@@ -220,7 +220,7 @@ describe('date fields in validation', () => {
     const row = validate('31/02/2024');
     const edited = { ...row, data: { ...row.data, title: 'Attese' } };
     const revalidated = revalidateRow<Record<Key, unknown>, Key>(edited, { fields });
-    expect(revalidated.errors).toEqual([
+    expect(revalidated.errors).toMatchObject([
       { field: 'acquired', message: 'Acquired is not a valid date (use DD/MM/YYYY or YYYY-MM-DD)' },
     ]);
   });

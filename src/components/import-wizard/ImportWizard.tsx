@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { FileUploader } from './FileUploader';
 import { ColumnMapper } from './ColumnMapper';
 import { DataValidator } from './DataValidator';
@@ -6,8 +6,10 @@ import { WizardRoot } from './WizardRoot';
 import { DEFAULT_ACCEPTED_FILE_TYPES, DEFAULT_MAX_FILE_SIZE, parseFile } from '@/lib/import-wizard/parser';
 import { autoMatchColumns, updateMapping } from '@/lib/import-wizard/matcher';
 import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator';
-import { hasOptionLoaders, loadChoiceOptions } from '@/lib/import-wizard/choices';
+import { hasOptionLoaders, loadChoiceOptions, OptionsLoadError } from '@/lib/import-wizard/choices';
+import { resolveMessages } from '@/lib/import-wizard/messages';
 import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptionsStatus';
+import { MessagesContext, useMessages } from './messages';
 import type {
   ArtworkRecord,
   ColumnMapping,
@@ -31,7 +33,8 @@ import { Check } from 'lucide-react';
  */
 type ReviewState<TKey extends string> =
   | { status: 'loading' }
-  | { status: 'error'; message: string }
+  /** `field` is the label of the field whose options failed, `reason` the loader's error */
+  | { status: 'error'; field: string; reason: string }
   | { status: 'ready'; fields: FieldConfig<TKey>[] };
 
 const INITIAL_STATE: ImportWizardState = {
@@ -57,8 +60,12 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   description,
   acceptedFileTypes = DEFAULT_ACCEPTED_FILE_TYPES,
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
+  messages,
   className,
 }: ImportWizardProps<TRecord, TKey>) {
+  // The same catalogue WizardRoot provides below, for text built here (errors and ERROR events)
+  const enclosingMessages = useContext(MessagesContext);
+  const m = useMemo(() => resolveMessages(messages, enclosingMessages), [messages, enclosingMessages]);
   const [state, setState] = useState<ImportWizardState<TRecord>>(INITIAL_STATE as ImportWizardState<TRecord>);
   const [review, setReview] = useState<ReviewState<TKey>>({ status: 'loading' });
 
@@ -111,7 +118,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
           setState((s) => ({
             ...s,
             isLoading: false,
-            error: 'The file appears to be empty or has no data rows.',
+            error: m.upload.empty({ fileName: file.name }),
           }));
           return;
         }
@@ -128,12 +135,13 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
         emit({ type: 'FILE_PARSED', data: parsedData });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to parse file';
+        const reason = error instanceof Error ? error.message : String(error);
+        const message = m.upload.unreadable({ fileName: file.name, reason });
         setState((s) => ({ ...s, isLoading: false, error: message }));
         emit({ type: 'ERROR', error: message });
       }
     },
-    [emit, fieldConfigs]
+    [emit, fieldConfigs, m]
   );
 
   const handleMappingChange = useCallback(
@@ -203,11 +211,14 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       if (request === reviewRequestRef.current) showReview(fields, parsedData, columnMappings);
     } catch (error) {
       if (request !== reviewRequestRef.current) return;
-      const message = error instanceof Error ? error.message : 'Could not load the options';
-      setReview({ status: 'error', message });
-      emit({ type: 'ERROR', error: message });
+      const failure =
+        error instanceof OptionsLoadError
+          ? { field: error.field, reason: error.reason }
+          : { field: loaderFieldLabels(fieldConfigs).join(', '), reason: error instanceof Error ? error.message : String(error) };
+      setReview({ status: 'error', ...failure });
+      emit({ type: 'ERROR', error: m.options.loadFailed(failure) });
     }
-  }, [state, fieldConfigs, showReview, emit]);
+  }, [state, fieldConfigs, showReview, emit, m]);
 
   const handleBack = useCallback(() => {
     reviewRequestRef.current++;
@@ -243,7 +254,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   }, [review.status, state.validatedRows, emit, onComplete]);
 
   return (
-    <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)}>
+    <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)} messages={messages}>
       {/* Optional heading; omitted so the wizard can sit under a Host App's own */}
       {(title || description) && (
         <div className="mb-8 space-y-1 text-center">
@@ -279,14 +290,15 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
         )}
 
         {state.step === 'validation' && review.status === 'loading' && (
-          <ChoiceOptionsLoading
-            fieldLabels={fieldConfigs.filter((f) => f.type === 'choice' && typeof f.options === 'function').map((f) => f.label)}
-            onBack={handleBack}
-          />
+          <ChoiceOptionsLoading fieldLabels={loaderFieldLabels(fieldConfigs)} onBack={handleBack} />
         )}
 
         {state.step === 'validation' && review.status === 'error' && (
-          <ChoiceOptionsError message={review.message} onRetry={startReview} onBack={handleBack} />
+          <ChoiceOptionsError
+            message={m.options.loadFailed({ field: review.field, reason: review.reason })}
+            onRetry={startReview}
+            onBack={handleBack}
+          />
         )}
 
         {state.step === 'validation' && review.status === 'ready' && (
@@ -306,15 +318,21 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   );
 }
 
+/** Labels of the choice fields whose options are loaded when the review starts */
+function loaderFieldLabels(fields: FieldConfig[]): string[] {
+  return fields.filter((f) => f.type === 'choice' && typeof f.options === 'function').map((f) => f.label);
+}
+
 interface StepIndicatorProps {
   currentStep: WizardStep;
 }
 
 function StepIndicator({ currentStep }: StepIndicatorProps) {
+  const m = useMessages();
   const steps: Array<{ key: WizardStep; label: string; number: number }> = [
-    { key: 'upload', label: 'Upload', number: 1 },
-    { key: 'mapping', label: 'Match columns', number: 2 },
-    { key: 'validation', label: 'Review and edit', number: 3 },
+    { key: 'upload', label: m.steps.upload(), number: 1 },
+    { key: 'mapping', label: m.steps.mapping(), number: 2 },
+    { key: 'validation', label: m.steps.review(), number: 3 },
   ];
 
   const currentIndex = steps.findIndex((s) => s.key === currentStep);

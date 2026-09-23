@@ -6,6 +6,8 @@
  * and day with UTC arithmetic: nothing here reads or writes local time.
  */
 
+import { validationIssue } from './messages';
+
 /** How an ambiguous numeric date such as 01/02/2024 is read */
 export type DateOrder = 'DMY' | 'MDY';
 
@@ -64,10 +66,12 @@ export function formatCalendarDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-/** The message shown on a cell that is not a valid date */
-export function invalidDateMessage(label: string, order: DateOrder = DEFAULT_DATE_ORDER): string {
-  const numeric = order === 'MDY' ? 'MM/DD/YYYY' : 'DD/MM/YYYY';
-  return `${label} is not a valid date (use ${numeric} or YYYY-MM-DD)`;
+/** The error on a cell that is not a valid date, e.g. "Acquired is not a valid date (use DD/MM/YYYY or YYYY-MM-DD)" */
+export function invalidDateError(field: string, label: string, order: DateOrder = DEFAULT_DATE_ORDER) {
+  return validationIssue(field, {
+    key: 'invalidDate',
+    params: { field: label, format: order === 'MDY' ? 'MM/DD/YYYY' : 'DD/MM/YYYY', dateOrder: order },
+  });
 }
 
 /**

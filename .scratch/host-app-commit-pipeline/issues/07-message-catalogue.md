@@ -8,8 +8,8 @@
 
 Spec: `../spec.md`
 
-- [ ] Every Importer-visible string comes from the catalogue; no hard-coded copy remains in the wizard
-- [ ] Entries can be strings with named placeholders or functions of their parameters (so Host Apps can apply plural rules)
-- [ ] Missing keys fall back to the English defaults
-- [ ] A test renders the wizard with an override catalogue and sees the overridden strings
-- [ ] The README documents the catalogue and lists its keys
+- [x] Every Importer-visible string comes from the catalogue; no hard-coded copy remains in the wizard
+- [x] Entries can be strings with named placeholders or functions of their parameters (so Host Apps can apply plural rules)
+- [x] Missing keys fall back to the English defaults
+- [x] A test renders the wizard with an override catalogue and sees the overridden strings
+- [x] The README documents the catalogue and lists its keys

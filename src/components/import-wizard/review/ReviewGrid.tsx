@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { FieldConfig, RowValidation } from '@/lib/import-wizard/types';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { REVIEW_ROW_HEIGHT, ReviewRow } from './ReviewRow';
+import { useMessages } from '../messages';
 
 /** Rows rendered beyond each edge of the viewport, so fast scrolls and Tab stay smooth */
 const OVERSCAN = 10;
@@ -33,6 +34,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
   onCellEdit,
   onToggleExcluded,
 }: ReviewGridProps<TRecord, TKey>) {
+  const m = useMessages();
   const viewportRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -63,8 +65,8 @@ export function ReviewGrid<TRecord, TKey extends string>({
       >
         <TableHeader className="sticky top-0 bg-background z-10 shadow-[inset_0_-1px_0_hsl(var(--border))]">
           <TableRow aria-rowindex={1} className="hover:bg-transparent">
-            <TableHead className="w-24 px-3">#</TableHead>
-            <TableHead className="w-16 px-3">Status</TableHead>
+            <TableHead className="w-24 px-3">{m.review.rowNumberHeader()}</TableHead>
+            <TableHead className="w-16 px-3">{m.review.statusHeader()}</TableHead>
             {fields.map((field) => (
               <TableHead key={field.key} className="w-[180px] px-3 truncate" title={field.label}>
                 {field.label}
@@ -77,7 +79,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
           {rows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="text-center text-muted-foreground py-8">
-                {searchQuery ? 'No rows match your search' : 'No rows match the current filter'}
+                {searchQuery ? m.review.noSearchMatches() : m.review.noFilterMatches()}
               </TableCell>
             </TableRow>
           ) : (
