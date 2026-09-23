@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import { mockReviewGridLayout } from "./reviewGridLayout";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
@@ -13,3 +14,6 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// jsdom has no layout; give the virtualised review grid a viewport to fill
+mockReviewGridLayout();

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { AiEditHandler, FieldConfig, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
 import { getValidationSummary } from '@/lib/import-wizard/validator';
@@ -11,7 +11,6 @@ import { useUndoRedoShortcuts } from './review/useUndoRedoShortcuts';
 import { ReviewSummary } from './review/ReviewSummary';
 import { ReviewToolbar } from './review/ReviewToolbar';
 import { ReviewGrid } from './review/ReviewGrid';
-import { ReviewPagination } from './review/ReviewPagination';
 import { ReviewActions } from './review/ReviewActions';
 
 interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends string = string> {
@@ -65,7 +64,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
 
   const view = useVisibleRows(rows, fields);
   const findReplace = useFindReplace(rows, fields, review.applyEdits);
-  const summary = getValidationSummary(rows);
+  const summary = useMemo(() => getValidationSummary(rows), [rows]);
 
   if (isLoading) {
     return <ReviewSkeleton className={className} />;
@@ -104,20 +103,31 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
         />
       </div>
 
-      <ReviewGrid
-        rows={view.pageRows}
-        fields={fields}
-        requiredKeys={review.requiredKeys}
-        searchQuery={view.searchQuery}
-        onCellEdit={review.editCell}
-        onToggleExcluded={review.toggleExcluded}
-      />
-
-      <ReviewPagination {...view.pagination} />
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {rowCountLabel(view.visibleRows.length, view.totalRows)}
+        </p>
+        <ReviewGrid
+          rows={view.visibleRows}
+          fields={fields}
+          requiredKeys={review.requiredKeys}
+          searchQuery={view.searchQuery}
+          scrollResetKey={`${view.filter}\u0000${view.searchQuery}`}
+          onCellEdit={review.editCell}
+          onToggleExcluded={review.toggleExcluded}
+        />
+      </div>
 
       <ReviewActions summary={summary} onBack={onBack} onComplete={onComplete} />
     </div>
   );
+}
+
+/** "10,000 rows", or "12 of 10,000 rows" while a filter or search narrows the grid */
+function rowCountLabel(visible: number, total: number): string {
+  const format = (n: number) => n.toLocaleString();
+  const noun = total === 1 ? 'row' : 'rows';
+  return visible === total ? `${format(total)} ${noun}` : `${format(visible)} of ${format(total)} ${noun}`;
 }
 
 function ReviewSkeleton({ className }: { className?: string }) {
