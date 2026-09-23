@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { AiEditHandler, FieldConfig, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
 import { getValidationSummary } from '@/lib/import-wizard/validator';
@@ -59,7 +60,8 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
     onRowsChange,
   });
   const { rows } = review;
-  useUndoRedoShortcuts(review.undo, review.redo);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useUndoRedoShortcuts(review.undo, review.redo, containerRef);
 
   const view = useVisibleRows(rows, fields);
   const findReplace = useFindReplace(rows, fields, review.applyEdits);
@@ -70,7 +72,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   }
 
   return (
-    <div className={cn('space-y-4', className)}>
+    <div ref={containerRef} className={cn('space-y-4', className)}>
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

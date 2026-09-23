@@ -524,8 +524,11 @@ const blob = exportToBlob(rows, fields, { format: 'csv' });
 | `Escape`                 | Cancel editing                       |
 | `Tab`                    | Save the cell                        |
 | `Ctrl+Z` / `Cmd+Z`       | Undo                                 |
+| `Ctrl+Shift+Z` / `Cmd+Shift+Z` | Redo                           |
 | `Ctrl+Y` / `Cmd+Y`       | Redo                                 |
 | `Ctrl+Enter`             | Replace all (in the Find and Replace dialog) |
+
+Undo and redo apply to the grid. While you type in a text field (a cell, the search box, AI Edit, Find and Replace) they undo your typing instead.
 
 ---
 
