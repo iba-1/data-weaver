@@ -13,6 +13,7 @@ import { ReviewToolbar } from './review/ReviewToolbar';
 import { ReviewGrid } from './review/ReviewGrid';
 import { ReviewActions } from './review/ReviewActions';
 import { useMessages } from './messages';
+import { hasRelationshipFields, type ResolvedValue } from '@/lib/import-wizard/resolution';
 
 interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   validatedRows: RowValidation<TRecord>[];
@@ -26,6 +27,11 @@ interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends str
   onComplete: () => void;
   onBack: () => void;
   onRowsChange?: (rows: RowValidation<TRecord>[]) => void;
+  /**
+   * Relationship Field values as last resolved (by `relatedValueKey`): their
+   * cells show a badge naming the Related Record they resolved to
+   */
+  relatedValues?: ReadonlyMap<string, ResolvedValue>;
   isLoading?: boolean;
   className?: string;
 }
@@ -50,6 +56,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   onComplete,
   onBack,
   onRowsChange,
+  relatedValues,
   isLoading = false,
   className,
 }: DataValidatorProps<TRecord, TKey>) {
@@ -118,10 +125,16 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           scrollResetKey={`${view.filter}\u0000${view.searchQuery}`}
           onCellEdit={review.editCell}
           onToggleExcluded={review.toggleExcluded}
+          relatedValues={relatedValues}
         />
       </div>
 
-      <ReviewActions summary={summary} onBack={onBack} onComplete={onComplete} />
+      <ReviewActions
+        summary={summary}
+        onBack={onBack}
+        onComplete={onComplete}
+        continuesToResolution={hasRelationshipFields(fields)}
+      />
     </div>
   );
 }

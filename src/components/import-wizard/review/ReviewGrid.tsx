@@ -4,6 +4,7 @@ import type { FieldConfig, RowValidation } from '@/lib/import-wizard/types';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { REVIEW_ROW_HEIGHT, ReviewRow } from './ReviewRow';
 import { useMessages } from '../messages';
+import type { ResolvedValue } from '@/lib/import-wizard/resolution';
 
 /** Rows rendered beyond each edge of the viewport, so fast scrolls and Tab stay smooth */
 const OVERSCAN = 10;
@@ -18,6 +19,8 @@ interface ReviewGridProps<TRecord, TKey extends string> {
   scrollResetKey: string;
   onCellEdit: (rowIndex: number, fieldKey: TKey, newValue: string) => void;
   onToggleExcluded: (rowIndex: number, excluded: boolean) => void;
+  /** Relationship Field values as last resolved: their cells show a badge naming the Related Record */
+  relatedValues?: ReadonlyMap<string, ResolvedValue>;
 }
 
 /**
@@ -33,6 +36,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
   scrollResetKey,
   onCellEdit,
   onToggleExcluded,
+  relatedValues,
 }: ReviewGridProps<TRecord, TKey>) {
   const m = useMessages();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -96,6 +100,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
                     onCellEdit={onCellEdit}
                     onToggleExcluded={onToggleExcluded}
                     searchQuery={searchQuery}
+                    relatedValues={relatedValues}
                   />
                 );
               })}

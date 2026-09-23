@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { AlertCircle, AlertTriangle, Ban, Check, RotateCcw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Ban, Check, Link2, Plus, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FieldConfig, RowValidation } from '@/lib/import-wizard/types';
 import { matchesSearch } from '@/lib/import-wizard/search';
@@ -11,6 +11,7 @@ import { EditableCell } from '../EditableCell';
 import { issueText } from '@/lib/import-wizard/messages';
 import { ChoiceCell } from '../ChoiceCell';
 import { useMessages } from '../messages';
+import { relatedValueKey, relatedValueOf, type ResolvedValue } from '@/lib/import-wizard/resolution';
 
 interface ReviewRowProps<TRecord, TKey extends string> {
   row: RowValidation<TRecord>;
@@ -20,6 +21,8 @@ interface ReviewRowProps<TRecord, TKey extends string> {
   onCellEdit: (rowIndex: number, fieldKey: TKey, newValue: string) => void;
   onToggleExcluded: (rowIndex: number, excluded: boolean) => void;
   searchQuery: string;
+  /** Relationship Field values as last resolved, by relatedValueKey: their cells show a badge */
+  relatedValues?: ReadonlyMap<string, ResolvedValue>;
 }
 
 /** Every grid row is this tall (px); the virtualised grid positions rows with it */
@@ -49,6 +52,7 @@ function ReviewRowView<TRecord, TKey extends string>({
   onCellEdit,
   onToggleExcluded,
   searchQuery,
+  relatedValues,
 }: ReviewRowProps<TRecord, TKey>) {
   const m = useMessages();
   const data = row.data as Record<string, unknown>;
@@ -106,19 +110,49 @@ function ReviewRowView<TRecord, TKey extends string>({
                 className={cn(row.excluded && 'line-through')}
               />
             ) : (
-              <EditableCell
-                value={value as string | number | null}
-                onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
-                hasError={!!error && !row.excluded}
-                hasWarning={!!warning && !row.excluded}
-                isHighlighted={matchesSearch(value, searchQuery)}
-                className={cn(row.excluded && 'line-through')}
-              />
+              <div className="flex min-w-0 items-center gap-1">
+                <EditableCell
+                  value={value as string | number | null}
+                  onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
+                  hasError={!!error && !row.excluded}
+                  hasWarning={!!warning && !row.excluded}
+                  isHighlighted={matchesSearch(value, searchQuery)}
+                  className={cn('min-w-0 flex-1', row.excluded && 'line-through')}
+                />
+                {field.relationship && relatedValues && !row.excluded && (
+                  <RelatedBadge resolved={relatedValues.get(relatedValueKey(field.relationship.kind, relatedValueOf(value)))} />
+                )}
+              </div>
             )}
           </TableCell>
         );
       })}
     </TableRow>
+  );
+}
+
+/**
+ * The Related Record a Relationship Field cell resolved to: the existing
+ * record's name, the name a new one will be created with, or that the value
+ * still needs a decision. The cell itself keeps the file's text.
+ */
+function RelatedBadge({ resolved }: { resolved: ResolvedValue | undefined }) {
+  const m = useMessages();
+  if (!resolved) return null;
+  const { decision } = resolved;
+  const [text, Icon, tone] = !decision
+    ? [m.resolution.badgeUndecided(), AlertTriangle, 'border-warning/40 text-warning']
+    : decision.action === 'link'
+      ? [m.resolution.badgeLinked({ name: decision.name }), Link2, 'border-success/40 text-success']
+      : [m.resolution.badgeNew({ name: decision.name }), Plus, 'border-primary/40 text-primary'];
+  return (
+    <span
+      className={cn('inline-flex max-w-[50%] shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px]', tone)}
+      title={text}
+    >
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span className="truncate">{text}</span>
+    </span>
   );
 }
 

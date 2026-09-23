@@ -13,6 +13,9 @@ import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptions
 import { CommitProgress } from './commit/CommitProgress';
 import { ImportReportView } from './commit/ImportReportView';
 import { RejectedRowsDownload } from './commit/RejectedRowsDownload';
+import { ResolutionStep } from './resolution/ResolutionStep';
+import { useResolution } from './resolution/useResolution';
+import { createRelatedRecords, planRelatedCreations, substituteRelatedIds } from '@/lib/import-wizard/related';
 import { MessagesContext, useMessages } from './messages';
 import type {
   ArtworkRecord,
@@ -24,6 +27,7 @@ import type {
   ImportReport,
   ImportRow,
   ParsedFileData,
+  RejectedRow,
   RowCompleteEvent,
   RowValidation,
   TargetField,
@@ -113,6 +117,17 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     () => markRequiredFields((fields || ARTWORK_FIELD_CONFIGS) as FieldConfig<TKey>[], requiredFields),
     [fields, requiredFields]
   );
+
+  // With Relationship Fields, Resolution sits between review and Commit
+  const resolution = useResolution<TRecord, TKey>({
+    fields: fieldConfigs,
+    rows: state.validatedRows,
+    adapter,
+    messages: m,
+    active: state.step === 'resolution',
+  });
+  const withResolution = resolution.kinds.length > 0;
+  const { start: startLookup, leave: leaveResolution } = resolution;
 
   const emit = useCallback(
     (event: ImportWizardEvent<TRecord>) => {
@@ -305,13 +320,33 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     [reportRowComplete]
   );
 
-  /** Commit: save every included row through the Host App's adapter, then show the Import Report */
+  /** Open Resolution and look up the values not looked up yet */
+  const startResolution = useCallback(async () => {
+    setState((s) => ({ ...s, step: 'resolution' }));
+    const failure = await startLookup();
+    if (failure) emit({ type: 'ERROR', error: failure });
+  }, [startLookup, emit]);
+
+  /** Back from Resolution to the review; the grid then shows what each value resolved to */
+  const handleBackToReview = useCallback(() => {
+    leaveResolution();
+    setState((s) => ({ ...s, step: 'validation' }));
+  }, [leaveResolution]);
+
+  /**
+   * Commit: create the new Related Records chosen in Resolution (if any),
+   * save every included row through the Host App's adapter, then show the
+   * Import Report
+   */
   const handleCommit = useCallback(async () => {
     // Rows are only checked against choice options once the options have loaded
     if (review.status !== 'ready' || committingRef.current) return;
     const rows = state.validatedRows;
     // Never drop a row silently: every row is either valid or excluded
     if (rows.some((r) => !r.excluded && !r.isValid)) return;
+    // Every Relationship Field value must be looked up, decided and named
+    if (withResolution && !resolution.canCommit) return;
+    const resolved = resolution.resolved;
     committingRef.current = true;
 
     const toImportRow = (row: RowValidation<TRecord>): ImportRow<TRecord> => ({
@@ -324,16 +359,33 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
     setCommitProgress({ done: 0, total: included.length, retry: null });
     setState((s) => ({ ...s, step: 'commit' }));
-    emit({
-      type: 'COMMIT_STARTED',
-      rows: included.length,
-      batches: toBatches(included, normaliseBatchSize(batchSize)).length,
-      excluded: excluded.length,
-    });
 
     const abort = new AbortController();
     commitAbortRef.current = abort;
-    const outcome = await commitRows(included, {
+
+    // First the new Related Records, once each and one at a time, then IDs in place of names (ADR-0001)
+    let toSave = included;
+    let notCreated: RejectedRow<TRecord>[] = [];
+    if (withResolution) {
+      const created = await createRelatedRecords(planRelatedCreations(resolved), {
+        // Called on the adapter, so a Host App's class instance keeps its `this`
+        createRelated: (kind, name) => adapter.createRelated!(kind, name),
+        messages: m,
+        signal: abort.signal,
+      });
+      if (abort.signal.aborted) return;
+      ({ ready: toSave, rejected: notCreated } = substituteRelatedIds(included, fieldConfigs, resolved, created, m));
+      setCommitProgress({ done: notCreated.length, total: included.length, retry: null });
+    }
+
+    emit({
+      type: 'COMMIT_STARTED',
+      rows: toSave.length,
+      batches: toBatches(toSave, normaliseBatchSize(batchSize)).length,
+      excluded: excluded.length,
+    });
+
+    const outcome = await commitRows(toSave, {
       signal: abort.signal,
       // Called on the adapter, so a Host App's class instance keeps its `this`
       saveBatch: (batch) => adapter.saveBatch(batch),
@@ -346,18 +398,36 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       },
       onBatchSettled: (result, progress) => {
         for (const problem of result.problems) console.error(`[data-weaver] ${problem}`);
-        setCommitProgress({ done: progress.done, total: progress.total, retry: null });
+        setCommitProgress({ done: notCreated.length + progress.done, total: included.length, retry: null });
         emit({ type: 'BATCH_SETTLED', progress, created: result.created, rejected: result.rejected });
       },
     });
 
     if (abort.signal.aborted) return;
-    const finished: ImportReport<TRecord> = { ...outcome, excluded };
+    const finished: ImportReport<TRecord> = {
+      created: outcome.created,
+      // In file order, whether the Host App refused them or their Related Record was not created
+      rejected: [...notCreated, ...outcome.rejected].sort((a, b) => a.rowIndex - b.rowIndex),
+      excluded,
+    };
     setReport(finished);
     setState((s) => ({ ...s, step: 'report' }));
     emit({ type: 'IMPORT_FINISHED', report: finished });
     callHost('onImportFinished', () => onImportFinishedRef.current?.(finished));
-  }, [review.status, state.validatedRows, importKeys, adapter, batchSize, retry, m, emit]);
+  }, [
+    review.status,
+    state.validatedRows,
+    withResolution,
+    resolution.canCommit,
+    resolution.resolved,
+    importKeys,
+    adapter,
+    fieldConfigs,
+    batchSize,
+    retry,
+    m,
+    emit,
+  ]);
 
   return (
     <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)} messages={messages}>
@@ -370,7 +440,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       )}
 
       {/* Step indicator */}
-      <StepIndicator currentStep={state.step} />
+      <StepIndicator currentStep={state.step} withResolution={withResolution} />
 
       {/* Content */}
       <div className="mt-8">
@@ -413,10 +483,27 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             fields={review.fields}
             validateRow={customValidator}
             aiEdit={aiEdit}
-            onComplete={handleCommit}
+            onComplete={withResolution ? startResolution : handleCommit}
             onBack={handleBack}
             onRowsChange={handleRowsChange}
+            relatedValues={withResolution ? resolution.badges : undefined}
             isLoading={state.isLoading}
+          />
+        )}
+
+        {state.step === 'resolution' && (
+          <ResolutionStep
+            kinds={resolution.kinds}
+            lookup={resolution.lookup}
+            resolved={resolution.resolved}
+            names={resolution.names}
+            blockers={resolution.blockers}
+            canCommit={resolution.canCommit}
+            rowCount={state.validatedRows.filter((r) => !r.excluded).length}
+            onNameChange={resolution.setName}
+            onRetry={startResolution}
+            onBack={handleBackToReview}
+            onComplete={handleCommit}
           />
         )}
 
@@ -455,16 +542,19 @@ function loaderFieldLabels(fields: FieldConfig[]): string[] {
 
 interface StepIndicatorProps {
   currentStep: WizardStep;
+  /** Whether the Output Shape has Relationship Fields, so there is a Resolution step */
+  withResolution: boolean;
 }
 
-function StepIndicator({ currentStep }: StepIndicatorProps) {
+function StepIndicator({ currentStep, withResolution }: StepIndicatorProps) {
   const m = useMessages();
   const steps: Array<{ key: WizardStep; label: string; number: number }> = [
-    { key: 'upload', label: m.steps.upload(), number: 1 },
-    { key: 'mapping', label: m.steps.mapping(), number: 2 },
-    { key: 'validation', label: m.steps.review(), number: 3 },
-    { key: 'commit', label: m.steps.import(), number: 4 },
-  ];
+    { key: 'upload' as const, label: m.steps.upload() },
+    { key: 'mapping' as const, label: m.steps.mapping() },
+    { key: 'validation' as const, label: m.steps.review() },
+    ...(withResolution ? [{ key: 'resolution' as const, label: m.steps.resolution() }] : []),
+    { key: 'commit' as const, label: m.steps.import() },
+  ].map((step, index) => ({ ...step, number: index + 1 }));
 
   // Commit and the Import Report are both the import step
   const currentIndex = steps.findIndex((s) => s.key === (currentStep === 'report' ? 'commit' : currentStep));

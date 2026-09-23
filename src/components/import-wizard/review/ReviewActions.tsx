@@ -7,10 +7,12 @@ interface ReviewActionsProps {
   summary: ReturnType<typeof getValidationSummary>;
   onBack: () => void;
   onComplete: () => void;
+  /** The Output Shape has Relationship Fields: the next step is Resolution, not the import */
+  continuesToResolution?: boolean;
 }
 
-/** Sticky footer: back to mapping, or complete the import once no included row has errors */
-export function ReviewActions({ summary, onBack, onComplete }: ReviewActionsProps) {
+/** Sticky footer: back to mapping, or on (to Resolution or the import) once no included row has errors */
+export function ReviewActions({ summary, onBack, onComplete, continuesToResolution = false }: ReviewActionsProps) {
   const m = useMessages();
   return (
     <div className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t pt-4 pb-2 -mx-1 px-1 z-10">
@@ -25,7 +27,9 @@ export function ReviewActions({ summary, onBack, onComplete }: ReviewActionsProp
           )}
           <Button onClick={onComplete} disabled={summary.withErrors > 0} size="lg">
             <Download className="mr-2 h-4 w-4" />
-            {m.review.complete({ count: summary.valid + summary.withWarnings })}
+            {continuesToResolution
+              ? m.review.continueToResolution({ count: summary.valid + summary.withWarnings })
+              : m.review.complete({ count: summary.valid + summary.withWarnings })}
           </Button>
         </div>
       </div>

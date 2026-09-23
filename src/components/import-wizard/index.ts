@@ -71,6 +71,7 @@ export type {
   FieldType,
   ChoiceOption,
   ChoiceOptionsLoader,
+  RelationshipConfig,
   DataRecord,
   ValidationResult,
   
@@ -95,6 +96,10 @@ export type {
   // Commit: the Host App adapter and the Import Report
   HostAppAdapter,
   SaveBatch,
+  FindRelated,
+  CreateRelated,
+  RelatedCandidate,
+  RelatedRecordId,
   ImportRow,
   RowOutcome,
   RejectedRow,
@@ -219,6 +224,40 @@ export {
   type CommitOptions,
   type CommitOutcome,
 } from '@/lib/import-wizard/commit';
+
+// Resolution
+export {
+  /** The Output Shape's Relationship Fields, grouped by the kind of Related Record */
+  relationshipKinds,
+  /** Every distinct Relationship Field value per kind, grouped by Normalised Match, with spellings and rows */
+  collectRelatedValues,
+  /** The stored name for a new Related Record: most frequent spelling, preferring accented */
+  preferredSpelling,
+  /** Look up one kind's values with a Host App's findRelated, checking the answer */
+  lookupRelated,
+  /** Decide what can be decided without the Importer: one Normalised Match links, none creates */
+  resolveValues,
+  /** What still stops Commit: values not looked up, undecided, or new records without a name */
+  resolutionBlockers,
+  relatedValueKey,
+  RelatedLookupError,
+  type RelatedValue,
+  type ResolvedValue,
+  type ResolutionGroup,
+  type RelatedDecision,
+  type LookupResults,
+} from '@/lib/import-wizard/resolution';
+
+export {
+  /** The new Related Records a Commit creates, once each */
+  planRelatedCreations,
+  /** Create them with a Host App's createRelated, one at a time */
+  createRelatedRecords,
+  /** Put Related Record IDs in place of names; rows pointing to a record not created are rejected */
+  substituteRelatedIds,
+  type RelatedCreation,
+  type CreatedRelated,
+} from '@/lib/import-wizard/related';
 
 // Export
 export {
