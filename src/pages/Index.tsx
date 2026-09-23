@@ -33,7 +33,7 @@ const Index = () => {
             Artwork Data Importer
           </h1>
           <p className="text-muted-foreground">
-            Import artwork data from CSV, Excel, or PDF files
+            Import artwork data from CSV or Excel files
           </p>
         </header>
 

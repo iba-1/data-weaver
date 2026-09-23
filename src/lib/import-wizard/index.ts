@@ -1,5 +1,5 @@
 /**
- * React Import Wizard - Core Library
+ * Data Weaver - core logic (`data-weaver/core`)
  * 
  * This module exports all core logic functions for parsing, matching,
  * validating, and exporting data. Use these for custom implementations
@@ -57,10 +57,14 @@ export { TARGET_FIELDS, ARTWORK_FIELD_CONFIGS } from './types';
 // PARSING
 // ============================================================
 
-export { 
+export {
   parseFile,
   getFileTypeFromName,
   isValidFileType,
+  checkUpload,
+  DEFAULT_ACCEPTED_FILE_TYPES,
+  DEFAULT_MAX_FILE_SIZE,
+  type UploadRules,
 } from './parser';
 
 // ============================================================

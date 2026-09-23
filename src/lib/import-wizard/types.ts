@@ -122,7 +122,7 @@ export interface ParsedFileData {
   headers: string[];
   rows: Record<string, unknown>[];
   fileName: string;
-  fileType: 'csv' | 'excel' | 'pdf';
+  fileType: 'csv' | 'excel';
 }
 
 // ============================================================
@@ -300,25 +300,28 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
   aiEdit?: AiEditHandler;
   
   /**
-   * Title shown at the top of the wizard
-   * @default 'Import Data'
+   * Heading shown above the step indicator. There is no default: when the
+   * wizard sits inside a Host App page that has its own heading, leave it out.
    */
   title?: string;
-  
+
   /**
-   * Description shown below the title
+   * Text shown above the step indicator, below the title if there is one.
+   * Nothing is shown when omitted.
    */
   description?: string;
-  
+
   /**
-   * Accepted file types
+   * File extensions the upload step accepts, e.g. `['.csv']`. Must be a subset
+   * of what the parser reads: `.csv`, `.xlsx`, `.xls`. Other files are refused
+   * with a message. Also sets the file picker's `accept` and the upload copy.
    * @default ['.csv', '.xlsx', '.xls']
    */
   acceptedFileTypes?: string[];
-  
+
   /**
-   * Maximum file size in bytes
-   * @default 10485760 (10MB)
+   * Maximum file size in bytes. Larger files are refused with a message.
+   * @default 10485760 (10 MB)
    */
   maxFileSize?: number;
   

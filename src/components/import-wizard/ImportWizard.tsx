@@ -3,7 +3,7 @@ import { FileUploader } from './FileUploader';
 import { ColumnMapper } from './ColumnMapper';
 import { DataValidator } from './DataValidator';
 import { WizardRoot } from './WizardRoot';
-import { parseFile } from '@/lib/import-wizard/parser';
+import { DEFAULT_ACCEPTED_FILE_TYPES, DEFAULT_MAX_FILE_SIZE, parseFile } from '@/lib/import-wizard/parser';
 import { autoMatchColumns, updateMapping } from '@/lib/import-wizard/matcher';
 import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator';
 import type {
@@ -41,10 +41,10 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   onRowComplete,
   validateRow: customValidator,
   aiEdit,
-  title = 'Import Data',
+  title,
   description,
-  acceptedFileTypes = ['.csv', '.xlsx', '.xls'],
-  maxFileSize = 10485760,
+  acceptedFileTypes = DEFAULT_ACCEPTED_FILE_TYPES,
+  maxFileSize = DEFAULT_MAX_FILE_SIZE,
   className,
 }: ImportWizardProps<TRecord, TKey>) {
   const [state, setState] = useState<ImportWizardState<TRecord>>(INITIAL_STATE as ImportWizardState<TRecord>);
@@ -93,15 +93,6 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
       try {
         const parsedData = await parseFile(file);
-
-        if (parsedData.fileType === 'pdf') {
-          setState((s) => ({
-            ...s,
-            isLoading: false,
-            error: 'PDF parsing with AI is not yet implemented. Please use CSV or Excel.',
-          }));
-          return;
-        }
 
         if (parsedData.rows.length === 0) {
           setState((s) => ({
@@ -211,6 +202,14 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
   return (
     <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)}>
+      {/* Optional heading; omitted so the wizard can sit under a Host App's own */}
+      {(title || description) && (
+        <div className="mb-8 space-y-1 text-center">
+          {title && <h2 className="text-2xl font-semibold text-foreground">{title}</h2>}
+          {description && <p className="text-muted-foreground">{description}</p>}
+        </div>
+      )}
+
       {/* Step indicator */}
       <StepIndicator currentStep={state.step} />
 
@@ -220,6 +219,8 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
           <FileUploader
             onFileSelected={handleFileSelected}
             fields={fieldConfigs}
+            acceptedFileTypes={acceptedFileTypes}
+            maxFileSize={maxFileSize}
             isLoading={state.isLoading}
             error={state.error}
           />

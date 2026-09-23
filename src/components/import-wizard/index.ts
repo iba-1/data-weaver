@@ -1,15 +1,16 @@
 /**
- * React Import Wizard
- * 
- * A powerful, fully-featured data import wizard for React applications.
- * 
+ * Data Weaver
+ *
+ * A spreadsheet import wizard for React: upload, map columns, review and fix rows.
+ *
  * @packageDocumentation
- * @module react-import-wizard
- * 
+ * @module data-weaver
+ *
  * @example
  * ```tsx
- * import { ImportWizard } from 'react-import-wizard';
- * 
+ * import { ImportWizard } from 'data-weaver';
+ * import 'data-weaver/styles.css';
+ *
  * function App() {
  *   return (
  *     <ImportWizard
@@ -49,7 +50,7 @@ export { SearchBar } from './SearchBar';
 /** Find and replace dialog with options */
 export { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
 
-/** AI-powered inline chat for bulk data edits */
+/** AI Edit chat; calls the Host App-supplied `aiEdit` handler */
 export { AiEditChat } from './AiEditChat';
 
 /** Editable cell with keyboard support */
@@ -102,18 +103,23 @@ export { TARGET_FIELDS, ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types'
 // ============================================================
 
 // Parsing
-export { 
-  /** Parse CSV/Excel file into structured data */
-  parseFile, 
+export {
+  /** Parse a CSV or Excel file into structured data */
+  parseFile,
   /** Get file type from filename */
-  getFileTypeFromName, 
-  /** Check if file type is supported */
-  isValidFileType 
+  getFileTypeFromName,
+  /** Check if the parser reads this file type (.csv, .xlsx, .xls) */
+  isValidFileType,
+  /** Check a file against accepted types and maximum size; returns a message or null */
+  checkUpload,
+  DEFAULT_ACCEPTED_FILE_TYPES,
+  DEFAULT_MAX_FILE_SIZE,
+  type UploadRules,
 } from '@/lib/import-wizard/parser';
 
 // Column Matching
 export { 
-  /** Auto-match source columns to target fields using fuzzy matching */
+  /** Auto-match source columns to target fields by keyword similarity */
   autoMatchColumns, 
   /** Update a column mapping */
   updateMapping, 
