@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FileUploader } from './FileUploader';
 import { ColumnMapper } from './ColumnMapper';
 import { DataValidator } from './DataValidator';
@@ -699,6 +699,40 @@ interface StepIndicatorProps {
   withResolution: boolean;
 }
 
+/**
+ * Whether a row of fixed-size items is wider than its container. The row's
+ * natural width is measured while it is shown in full, so switching to the
+ * compact form can't flip it back; a change of `contentKey` (e.g. translated
+ * labels) measures again. Without ResizeObserver it stays in full.
+ */
+function useCompactWhenOverflowing(contentKey: string) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  const fullWidthRef = useRef(0);
+
+  useLayoutEffect(() => {
+    setCompact(false);
+    fullWidthRef.current = 0;
+  }, [contentKey]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const row = rowRef.current;
+    if (!container || !row || typeof ResizeObserver === 'undefined') return;
+    const check = () => {
+      if (!compact) fullWidthRef.current = row.scrollWidth;
+      setCompact(container.clientWidth + 1 < fullWidthRef.current);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [compact, contentKey]);
+
+  return { containerRef, rowRef, compact };
+}
+
 function StepIndicator({ currentStep, withResolution }: StepIndicatorProps) {
   const m = useMessages();
   const steps: Array<{ key: WizardStep; label: string; number: number }> = [
@@ -714,48 +748,62 @@ function StepIndicator({ currentStep, withResolution }: StepIndicatorProps) {
     (s) => s.key === (currentStep === 'report' || currentStep === 'fix' ? 'commit' : currentStep)
   );
 
-  return (
-    <div className="flex items-center justify-center gap-6">
-      {steps.map((step, index) => {
-        const isComplete = index < currentIndex;
-        const isCurrent = index === currentIndex;
-        const isActive = isComplete || isCurrent;
+  const { containerRef, rowRef, compact } = useCompactWhenOverflowing(steps.map((s) => s.label).join('|'));
 
-        return (
-          <React.Fragment key={step.key}>
-            {index > 0 && (
-              <div
-                className={cn(
-                  'h-px w-8 transition-colors',
-                  isActive ? 'bg-[hsl(var(--step-active))]' : 'bg-border'
-                )}
-              />
-            )}
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold transition-all',
-                  isActive
-                    ? 'bg-[hsl(var(--step-active))] text-white'
-                    : 'bg-muted text-[hsl(var(--step-inactive))]'
-                )}
-              >
-                {isComplete ? <Check className="h-3.5 w-3.5" /> : step.number}
+  // When the full indicator doesn't fit its container (e.g. a Host App's drawer, or a phone),
+  // lines and gaps shrink and only the current step keeps a visible label
+  return (
+    <div
+      ref={containerRef}
+      data-step-indicator=""
+      data-compact={compact || undefined}
+      // Even compact, a very narrow container scrolls the row rather than widen the page
+      className={cn(compact && 'overflow-x-auto')}
+    >
+      <div ref={rowRef} className={cn('flex items-center justify-center', compact ? 'gap-2' : 'gap-6')}>
+        {steps.map((step, index) => {
+          const isComplete = index < currentIndex;
+          const isCurrent = index === currentIndex;
+          const isActive = isComplete || isCurrent;
+
+          return (
+            <React.Fragment key={step.key}>
+              {index > 0 && (
+                <div
+                  className={cn(
+                    'h-px shrink-0 transition-colors',
+                    compact ? 'w-4' : 'w-8',
+                    isActive ? 'bg-[hsl(var(--step-active))]' : 'bg-border'
+                  )}
+                />
+              )}
+              <div className="flex shrink-0 items-center gap-2" aria-current={isCurrent ? 'step' : undefined}>
+                <div
+                  className={cn(
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-all',
+                    isActive
+                      ? 'bg-[hsl(var(--step-active))] text-white'
+                      : 'bg-muted text-[hsl(var(--step-inactive))]'
+                  )}
+                >
+                  {isComplete ? <Check className="h-3.5 w-3.5" /> : step.number}
+                </div>
+                <span
+                  className={cn(
+                    'whitespace-nowrap text-sm font-medium transition-colors',
+                    compact && !isCurrent && 'sr-only',
+                    isActive
+                      ? 'text-[hsl(var(--step-active))]'
+                      : 'text-[hsl(var(--step-inactive))]'
+                  )}
+                >
+                  {step.label}
+                </span>
               </div>
-              <span
-                className={cn(
-                  'text-sm font-medium transition-colors',
-                  isActive
-                    ? 'text-[hsl(var(--step-active))]'
-                    : 'text-[hsl(var(--step-inactive))]'
-                )}
-              >
-                {step.label}
-              </span>
-            </div>
-          </React.Fragment>
-        );
-      })}
+            </React.Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }
