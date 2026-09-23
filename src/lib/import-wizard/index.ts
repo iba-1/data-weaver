@@ -109,6 +109,8 @@ export {
   countEditedCells,
 } from './search';
 
+export { parseCalendarDate, formatCalendarDate, type DateOrder } from './dates';
+
 // ============================================================
 // EXPORT
 // ============================================================

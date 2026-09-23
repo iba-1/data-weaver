@@ -1,14 +1,24 @@
 import type { FieldConfig, RowEdit, RowValidation } from './types';
 import { parseNumber } from './values';
+import { parseCalendarDate } from './dates';
 
 /**
  * Turn a value typed or proposed during review into the field's type:
- * numbers lose currency symbols and separators, empty strings become null.
+ * numbers lose currency symbols and separators, dates become UTC calendar
+ * dates (text that isn't a date is kept, for validation to flag), and empty
+ * strings become null.
  * Every review change (cell edits, find/replace, AI Edit) goes through here.
  */
-export function coerceEditedValue(value: unknown, field?: Pick<FieldConfig, 'type'>): unknown {
+export function coerceEditedValue(
+  value: unknown,
+  field?: Pick<FieldConfig, 'type' | 'dateOrder'>
+): unknown {
   if (field?.type === 'number' && typeof value === 'string') {
     return parseNumber(value);
+  }
+  if (field?.type === 'date' && typeof value === 'string') {
+    const text = value.trim();
+    return text === '' ? null : (parseCalendarDate(text, field.dateOrder) ?? text);
   }
   if (value === '') return null;
   return value;

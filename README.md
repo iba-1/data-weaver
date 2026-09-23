@@ -300,6 +300,8 @@ interface FieldConfig<TKey extends string = string> {
   required?: boolean;
   /** How the cell text is converted (see below) */
   type: 'string' | 'number' | 'date' | 'boolean';
+  /** For `date` fields: read 01/02/2024 day-first ('DMY', default) or month-first ('MDY') */
+  dateOrder?: 'DMY' | 'MDY';
   /** Keywords used to auto-match source column names to this field */
   matchKeywords?: string[];
   /** Field-level validation: null if valid, otherwise an error or warning */
@@ -320,7 +322,25 @@ Empty cells become `null`.
 | `string`  | `"  Hello World  "`                                  | `"Hello World"` (trimmed)                  |
 | `number`  | `"$1,234.56"`                                        | `1234.56` (`, $ € £ ¥` and spaces removed) |
 | `boolean` | `"yes"`, `"true"`, `"1"`, `"on"` / `"no"`, `"false"`, `"0"`, `"off"` | `true` / `false`       |
-| `date`    | `"2024-01-15"`                                       | `Date` (via `new Date(text)`)              |
+| `date`    | `"15/01/2024"`, `"2024-01-15"`                       | `Date` at midnight UTC of 15 January 2024 (see below) |
+
+#### Dates
+
+A date field holds a calendar day, and every Importer gets the same day whatever their computer's time zone. It reaches the Host App as a `Date` at midnight UTC of that day: read it with `getUTCFullYear()`, `getUTCMonth()` and `getUTCDate()` (or `toISOString().slice(0, 10)`), never with the local-time getters. Nothing is parsed in local time.
+
+| Cell text                                              | Read as                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------- |
+| `2024-01-15`, `2024/01/15`, `2024.01.15`               | Year-month-day, always                                               |
+| `2024-01-15T23:30:00Z`, `2024-01-15 10:30`             | The day written (15 January); the time and any offset are ignored     |
+| `15/01/2024`, `15.01.2024`, `15-01-2024`, `5/1/2024`   | **Day first** (15 January, 5 January)                                |
+| `01/02/2024`                                           | **1 February 2024**; with `dateOrder: 'MDY'`, 2 January 2024          |
+| Excel date cells                                       | The day the cell holds, whatever its display format or locale        |
+| Empty cell                                             | `null`                                                               |
+| `31/02/2024`, `15/01/24`, `Jan 15 2024`, anything else | A cell error: *"… is not a valid date (use DD/MM/YYYY or YYYY-MM-DD)"* |
+
+Ambiguous numeric dates are read **day-first** by default, as written by the Importers of the first Host App (Italian gallery and archive staff). Set `dateOrder: 'MDY'` on a field whose spreadsheets are written month-first. Numeric dates need a four-digit year: `15/01/24` could be 1924 or 2024, so it is flagged rather than guessed. A date that can't be read is never shifted or silently emptied: the cell keeps its text, shows the error, and is fixed by editing it.
+
+To check dates under other time zones, run `npm run test:tz` (the test suite in `America/New_York` and `Asia/Tokyo`).
 
 ### Events
 
