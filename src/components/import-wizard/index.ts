@@ -56,6 +56,9 @@ export { AiEditChat } from './AiEditChat';
 /** Editable cell with keyboard support */
 export { EditableCell } from './EditableCell';
 
+/** Choice field cell edited with a picker of its options */
+export { ChoiceCell } from './ChoiceCell';
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -63,6 +66,9 @@ export { EditableCell } from './EditableCell';
 export type {
   // Field Configuration
   FieldConfig,
+  FieldType,
+  ChoiceOption,
+  ChoiceOptionsLoader,
   DataRecord,
   ValidationResult,
   
@@ -149,8 +155,25 @@ export {
   type DateOrder,
 } from '@/lib/import-wizard/dates';
 
+// Normalised Match & choice fields
+export {
+  /** Normalise a value for comparing: accents stripped, lowercased, whitespace collapsed and trimmed */
+  normaliseForMatch,
+  /** Whether two values are equal once case, extra spaces and accents are ignored */
+  isNormalisedMatch,
+} from '@/lib/import-wizard/normalise';
+
+export {
+  /** The canonical value of the option a value is a Normalised Match of, or null */
+  matchChoice,
+  /** Call every choice field's options loader once; resolves to the fields with their options */
+  loadChoiceOptions,
+  /** Whether any choice field still has an options loader */
+  hasOptionLoaders,
+} from '@/lib/import-wizard/choices';
+
 // Export
-export { 
+export {
   /** Export validated rows to CSV or Excel format */
   exportData, 
   /** Generate a blob for download */

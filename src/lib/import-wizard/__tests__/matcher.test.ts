@@ -158,6 +158,16 @@ describe('matcher', () => {
       expect(updated.find(m => m.sourceColumn === 'col1')?.targetField).toBe(null);
     });
 
+    it('auto-matches choice fields by their keywords, whether their options are a list or a loader', () => {
+      const fields: FieldConfig<'currency' | 'status'>[] = [
+        { key: 'currency', label: 'Currency', type: 'choice', options: [{ value: 'EUR' }], matchKeywords: ['currency', 'valuta'] },
+        { key: 'status', label: 'Status', type: 'choice', options: async () => [], matchKeywords: ['status', 'stato'] },
+      ];
+      const mappings = autoMatchColumns(['Valuta', 'Stato'], fields);
+
+      expect(mappings.map((m) => m.targetField)).toEqual(['currency', 'status']);
+    });
+
     it('should set confidence to 1 and isAutoMatched to false for manual updates', () => {
       const mappings: ColumnMapping<'name' | 'email'>[] = [
         { sourceColumn: 'col1', targetField: null, confidence: 0, isAutoMatched: false },

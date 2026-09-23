@@ -1,18 +1,23 @@
 import type { FieldConfig, RowEdit, RowValidation } from './types';
 import { parseNumber } from './values';
 import { parseCalendarDate } from './dates';
+import { coerceChoice } from './choices';
 
 /**
  * Turn a value typed or proposed during review into the field's type:
  * numbers lose currency symbols and separators, dates become UTC calendar
- * dates (text that isn't a date is kept, for validation to flag), and empty
- * strings become null.
+ * dates (text that isn't a date is kept, for validation to flag), choices
+ * become the canonical value of the option they are a Normalised Match of
+ * (other text is kept, for validation to flag), and empty strings become null.
  * Every review change (cell edits, find/replace, AI Edit) goes through here.
  */
 export function coerceEditedValue(
   value: unknown,
-  field?: Pick<FieldConfig, 'type' | 'dateOrder'>
+  field?: Pick<FieldConfig, 'type' | 'dateOrder' | 'options'>
 ): unknown {
+  if (field?.type === 'choice') {
+    return coerceChoice(value, field);
+  }
   if (field?.type === 'number' && typeof value === 'string') {
     return parseNumber(value);
   }

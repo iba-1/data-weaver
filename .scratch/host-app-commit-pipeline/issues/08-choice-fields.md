@@ -8,9 +8,9 @@
 
 Spec: `../spec.md`
 
-- [ ] The Normalised Match rule (Unicode-decompose, strip diacritics, lowercase, collapse whitespace, trim) exists in core with its own tests
-- [ ] Options load once when review starts; a loader failure is shown to the Importer and blocks completion
-- [ ] A cell whose value is a Normalised Match of an option (e.g. `eur` for `EUR`) becomes the option's canonical value
-- [ ] Any other value is an error on that cell
-- [ ] Choice cells are edited with a picker listing the options
-- [ ] Tests drive this through the wizard with a fake Host App loader
+- [x] The Normalised Match rule (Unicode-decompose, strip diacritics, lowercase, collapse whitespace, trim) exists in core with its own tests
+- [x] Options load once when review starts; a loader failure is shown to the Importer and blocks completion
+- [x] A cell whose value is a Normalised Match of an option (e.g. `eur` for `EUR`) becomes the option's canonical value
+- [x] Any other value is an error on that cell
+- [x] Choice cells are edited with a picker listing the options
+- [x] Tests drive this through the wizard with a fake Host App loader

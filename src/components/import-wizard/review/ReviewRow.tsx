@@ -6,7 +6,9 @@ import { matchesSearch } from '@/lib/import-wizard/search';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { choiceOptions } from '@/lib/import-wizard/choices';
 import { EditableCell } from '../EditableCell';
+import { ChoiceCell } from '../ChoiceCell';
 
 interface ReviewRowProps<TRecord, TKey extends string> {
   row: RowValidation<TRecord>;
@@ -82,6 +84,24 @@ function ReviewRowView<TRecord, TKey extends string>({
         const value = data[field.key];
         const error = row.errors.find((e) => e.field === field.key);
         const warning = row.warnings.find((w) => w.field === field.key);
+
+        if (field.type === 'choice') {
+          return (
+            <TableCell key={field.key}>
+              <ChoiceCell
+                value={value}
+                options={choiceOptions(field) ?? []}
+                onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
+                aria-label={`${field.label}, row ${row.rowIndex + 1}`}
+                hasError={!!error && !row.excluded}
+                hasWarning={!!warning && !row.excluded}
+                message={(error ?? warning)?.message}
+                isHighlighted={matchesSearch(value, searchQuery)}
+                className={cn(row.excluded && 'line-through')}
+              />
+            </TableCell>
+          );
+        }
 
         return (
           <TableCell key={field.key} className={CELL}>

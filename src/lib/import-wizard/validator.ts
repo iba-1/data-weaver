@@ -11,6 +11,7 @@ import type {
 import { TARGET_FIELDS } from './types';
 import { parseNumber } from './values';
 import { invalidDateMessage, parseCalendarDate } from './dates';
+import { checkChoice, coerceChoice } from './choices';
 
 /**
  * Validate all rows using the column mappings
@@ -213,7 +214,9 @@ function validateRow<TRecord, TKey extends string>(
       const field = fields?.find((f) => f.key === mapping.targetField);
       const value = processValue(rawValue, field);
       // A cell that couldn't be read keeps its text, untransformed, and is flagged below
-      const unreadable = field?.type === 'date' && typeof value === 'string';
+      const unreadable =
+        (field?.type === 'date' && typeof value === 'string') ||
+        (field?.type === 'choice' && value !== null && checkChoice(value, field) !== null);
       
       // Apply transform if defined
       data[mapping.targetField] = field?.transform && !unreadable ? field.transform(value) : value;
@@ -302,7 +305,9 @@ function validateRow<TRecord, TKey extends string>(
 
 /**
  * Errors for values that are not of their field's type. A date field holds a
- * `Date`, nothing, or the text of a cell that could not be read as a date.
+ * `Date`, nothing, or the text of a cell that could not be read as a date. A
+ * choice field holds an option's canonical value, nothing, or the text of a
+ * cell that matched no option.
  */
 function checkFieldTypes<TKey extends string>(
   data: Record<string, unknown>,
@@ -311,9 +316,13 @@ function checkFieldTypes<TKey extends string>(
   const errors: ValidationError[] = [];
   for (const field of fields ?? []) {
     const value = data[field.key];
-    if (field.type !== 'date' || value === null || value === undefined || value === '') continue;
-    if (!parseCalendarDate(value, field.dateOrder)) {
+    if (value === null || value === undefined || value === '') continue;
+    if (field.type === 'date' && !parseCalendarDate(value, field.dateOrder)) {
       errors.push({ field: field.key, message: invalidDateMessage(field.label, field.dateOrder) });
+    }
+    if (field.type === 'choice') {
+      const message = checkChoice(value, field);
+      if (message) errors.push({ field: field.key, message });
     }
   }
   return errors;
@@ -344,6 +353,9 @@ function processValue(
       if (stringValue === '') return null;
       // Unreadable dates keep their text so the cell can be flagged and fixed
       return parseCalendarDate(value instanceof Date ? value : stringValue, field?.dateOrder) ?? stringValue;
+    case 'choice':
+      // Values that match no option keep their text so the cell can be flagged and fixed
+      return coerceChoice(stringValue, field ?? {});
     default:
       return stringValue;
   }

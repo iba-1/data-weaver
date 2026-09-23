@@ -10,6 +10,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import type { AiEditHandler, FieldConfig, RowEdit, RowValidation } from '@/lib/import-wizard/types';
+import { choiceOptions } from '@/lib/import-wizard/choices';
 
 interface AiEditChatProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   rows: RowValidation<TRecord>[];
@@ -59,7 +60,10 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
         rows: rows
           .filter((row) => !row.excluded)
           .map((row) => ({ rowIndex: row.rowIndex, data: row.data as Record<string, unknown> })),
-        fields: fields.map((f) => ({ key: f.key, label: f.label, type: f.type })),
+        fields: fields.map((f) => {
+          const options = f.type === 'choice' ? choiceOptions(f) : undefined;
+          return options ? { key: f.key, label: f.label, type: f.type, options } : { key: f.key, label: f.label, type: f.type };
+        }),
       });
 
       if (!edits || edits.length === 0) {
