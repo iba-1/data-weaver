@@ -34,6 +34,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:tz": "TZ=America/New_York vitest run && TZ=Asia/Tokyo vitest run",
     "build:lib": "vite build -c vite.lib.config.ts",
     "prepack": "npm run build:lib"
   },

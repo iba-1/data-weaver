@@ -2,6 +2,8 @@
  * Data Weaver - type definitions
  */
 
+import type { DateOrder } from './dates';
+
 // ============================================================
 // CONFIGURABLE IMPORT WIZARD TYPES
 // ============================================================
@@ -26,8 +28,18 @@ export interface FieldConfig<TKey extends string = string> {
   label: string;
   /** Whether this field is required for a valid row */
   required?: boolean;
-  /** Data type for parsing and validation */
+  /**
+   * Data type for parsing and validation. A `date` is a calendar day, given to
+   * the Host App as a `Date` at midnight UTC.
+   */
   type: 'string' | 'number' | 'date' | 'boolean';
+  /**
+   * For `date` fields: how numeric dates such as 01/02/2024 are read,
+   * day-first (`'DMY'`) or month-first (`'MDY'`). Year-first ISO dates are
+   * always read as year-month-day.
+   * @default 'DMY'
+   */
+  dateOrder?: DateOrder;
   /** Keywords for fuzzy auto-matching source columns */
   matchKeywords?: string[];
   /** Custom validation function */

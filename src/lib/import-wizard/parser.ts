@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { ParsedFileData } from './types';
+import { excelSerialToText } from './dates';
 
 /** File types the upload step accepts unless the Host App narrows them */
 export const DEFAULT_ACCEPTED_FILE_TYPES = ['.csv', '.xlsx', '.xls'];
@@ -19,7 +20,10 @@ export async function parseFile(file: File): Promise<ParsedFileData> {
 
 async function parseCSV(file: File, fileName: string): Promise<ParsedFileData> {
   const text = await file.text();
-  const workbook = XLSX.read(text, { type: 'string' });
+  // raw: keep every cell's text as written. Otherwise SheetJS guesses dates
+  // month-first in local time (01/02/2024 becomes 2 January) and drops
+  // leading zeros; values are typed later, per field, by the validator.
+  const workbook = XLSX.read(text, { type: 'string', raw: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
 
@@ -40,9 +44,11 @@ async function parseCSV(file: File, fileName: string): Promise<ParsedFileData> {
 
 async function parseExcel(file: File, fileName: string): Promise<ParsedFileData> {
   const arrayBuffer = await file.arrayBuffer();
-  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  // cellNF keeps each cell's number format, needed to tell dates from numbers
+  const workbook = XLSX.read(arrayBuffer, { type: 'array', cellNF: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
+  writeDatesAsIso(sheet, Boolean(workbook.Workbook?.WBProps?.date1904));
 
   const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
@@ -63,6 +69,23 @@ async function parseExcel(file: File, fileName: string): Promise<ParsedFileData>
 function getExtension(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
   return dot === -1 ? '' : fileName.slice(dot + 1).toLowerCase();
+}
+
+/**
+ * Excel stores a date as a serial number and shows it through a number
+ * format; Excel's default one renders month-first with a two-digit year
+ * (1/15/24). Replace the shown text of every date cell with an unambiguous
+ * ISO date computed from the serial, so it reads the same in every locale
+ * and time zone.
+ */
+function writeDatesAsIso(sheet: XLSX.WorkSheet, date1904: boolean): void {
+  for (const [address, cell] of Object.entries(sheet)) {
+    if (address.startsWith('!')) continue;
+    const { t, v, z } = cell as XLSX.CellObject;
+    if (t !== 'n' || typeof v !== 'number' || z === undefined || !XLSX.SSF.is_date(z)) continue;
+    const text = excelSerialToText(v, date1904);
+    if (text !== null) (cell as XLSX.CellObject).w = text;
+  }
 }
 
 export function getFileTypeFromName(fileName: string): ParsedFileData['fileType'] | null {

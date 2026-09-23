@@ -3,14 +3,21 @@ import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { formatCalendarDate } from '@/lib/import-wizard/dates';
 
 interface EditableCellProps {
-  value: string | number | null;
+  value: string | number | Date | null;
   onSave: (value: string) => void;
   hasError?: boolean;
   hasWarning?: boolean;
   isHighlighted?: boolean;
   className?: string;
+}
+
+/** Dates show as their calendar day (YYYY-MM-DD), never in local time */
+function cellText(value: EditableCellProps['value'] | undefined): string {
+  if (value === null || value === undefined) return '';
+  return value instanceof Date ? formatCalendarDate(value) : String(value);
 }
 
 export function EditableCell({
@@ -34,7 +41,7 @@ export function EditableCell({
   }, [isEditing]);
 
   const handleStartEdit = () => {
-    setEditValue(value !== null && value !== undefined ? String(value) : '');
+    setEditValue(cellText(value));
     setIsEditing(true);
   };
 
@@ -128,7 +135,7 @@ export function EditableCell({
       role="gridcell"
     >
       {value !== null && value !== undefined ? (
-        <span className="max-w-[180px] truncate block text-sm">{String(value)}</span>
+        <span className="max-w-[180px] truncate block text-sm">{cellText(value)}</span>
       ) : (
         <span className="text-muted-foreground/60 italic text-sm">empty</span>
       )}

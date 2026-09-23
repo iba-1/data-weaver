@@ -10,6 +10,7 @@ import type {
 } from './types';
 import { TARGET_FIELDS } from './types';
 import { parseNumber } from './values';
+import { invalidDateMessage, parseCalendarDate } from './dates';
 
 /**
  * Validate all rows using the column mappings
@@ -94,9 +95,6 @@ export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = Tar
   const warnings: ValidationWarning[] = [];
   const data = row.data as Record<string, unknown>;
   
-  // Use provided fields or infer from data
-  const fieldKeys = fields?.map((f) => f.key) || Object.keys(data);
-  
   // Check required fields
   for (const fieldKey of requiredFields) {
     const value = data[fieldKey];
@@ -109,6 +107,8 @@ export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = Tar
     }
   }
   
+  errors.push(...checkFieldTypes(data, fields));
+
   // Run field-level validators
   if (fields) {
     for (const field of fields) {
@@ -212,9 +212,11 @@ function validateRow<TRecord, TKey extends string>(
       const rawValue = row[mapping.sourceColumn];
       const field = fields?.find((f) => f.key === mapping.targetField);
       const value = processValue(rawValue, field);
+      // A cell that couldn't be read keeps its text, untransformed, and is flagged below
+      const unreadable = field?.type === 'date' && typeof value === 'string';
       
       // Apply transform if defined
-      data[mapping.targetField] = field?.transform ? field.transform(value) : value;
+      data[mapping.targetField] = field?.transform && !unreadable ? field.transform(value) : value;
     }
   }
   
@@ -231,6 +233,8 @@ function validateRow<TRecord, TKey extends string>(
     }
   }
   
+  errors.push(...checkFieldTypes(data, fields));
+
   // Run field-level validators
   if (fields) {
     for (const field of fields) {
@@ -296,6 +300,25 @@ function validateRow<TRecord, TKey extends string>(
   };
 }
 
+/**
+ * Errors for values that are not of their field's type. A date field holds a
+ * `Date`, nothing, or the text of a cell that could not be read as a date.
+ */
+function checkFieldTypes<TKey extends string>(
+  data: Record<string, unknown>,
+  fields?: FieldConfig<TKey>[]
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  for (const field of fields ?? []) {
+    const value = data[field.key];
+    if (field.type !== 'date' || value === null || value === undefined || value === '') continue;
+    if (!parseCalendarDate(value, field.dateOrder)) {
+      errors.push({ field: field.key, message: invalidDateMessage(field.label, field.dateOrder) });
+    }
+  }
+  return errors;
+}
+
 function processValue(
   value: unknown,
   field?: FieldConfig
@@ -317,10 +340,10 @@ function processValue(
       if (['false', 'no', '0', 'off'].includes(lower)) return false;
       return null;
     }
-    case 'date': {
-      const date = new Date(stringValue);
-      return isNaN(date.getTime()) ? null : date;
-    }
+    case 'date':
+      if (stringValue === '') return null;
+      // Unreadable dates keep their text so the cell can be flagged and fixed
+      return parseCalendarDate(value instanceof Date ? value : stringValue, field?.dateOrder) ?? stringValue;
     default:
       return stringValue;
   }

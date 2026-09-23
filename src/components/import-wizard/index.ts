@@ -140,6 +140,15 @@ export {
   resolveRequiredKeys,
 } from '@/lib/import-wizard/validator';
 
+// Dates
+export {
+  /** Read a cell value as a calendar date (a Date at midnight UTC) */
+  parseCalendarDate,
+  /** Show a calendar date as YYYY-MM-DD */
+  formatCalendarDate,
+  type DateOrder,
+} from '@/lib/import-wizard/dates';
+
 // Export
 export { 
   /** Export validated rows to CSV or Excel format */
