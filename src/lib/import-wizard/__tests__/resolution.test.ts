@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   collectRelatedValues,
+  decisionForRow,
+  isValueDecided,
   lookupRelated,
   preferredSpelling,
   relatedValueKey,
@@ -10,6 +12,8 @@ import {
   resolveValues,
   settleLookup,
   type LookupResults,
+  type RelatedDecision,
+  type ResolvedValue,
 } from '../resolution';
 import { createRelatedRecords, planRelatedCreations, substituteRelatedIds } from '../related';
 import type { FieldConfig, ImportRow, RelatedCandidate } from '../types';
@@ -242,6 +246,127 @@ describe('resolving values', () => {
       answer
     );
     expect(resolutionBlockers(ready)).toEqual({ pending: 0, undecided: 0, unnamed: 0 });
+  });
+});
+
+describe('Homonyms: a decision per value, with per-row overrides', () => {
+  // Four rows by "Mario Rossi": the Registry holds two, b. 1950 and b. 1987
+  const file = [
+    row(0, { title: 'Achrome', author: 'Mario Rossi' }),
+    row(1, { title: 'Linea', author: 'mario rossi', owner: 'Mario Rossi' }),
+    row(2, { title: 'Bozza', author: 'Mario Rossi' }),
+    row(3, { title: 'Senza titolo', author: 'Mario  Rossi' }),
+  ];
+  const key = relatedValueKey('registry', 'mario rossi');
+  const answer = lookups({
+    registry: {
+      'mario rossi': [
+        { id: 'r-1950', name: 'Mario Rossi', description: 'b. 1950', match: 'normalised' },
+        { id: 'r-1987', name: 'Mario Rossi', description: 'b. 1987', match: 'normalised' },
+      ],
+    },
+  });
+  const values = collectRelatedValues(file, FIELDS);
+  const link1950 = { action: 'link', id: 'r-1950', name: 'Mario Rossi' } as const;
+  const link1987 = { action: 'link', id: 'r-1987', name: 'Mario Rossi' } as const;
+  const createNew = (name = 'Mario Rossi') => ({ action: 'create', name }) as const;
+  const importRows: ImportRow<Rec>[] = file.map((r) => ({ importKey: `key-${r.rowIndex}`, rowIndex: r.rowIndex, record: r.data }));
+
+  function resolve(
+    decision: RelatedDecision | undefined,
+    overrides: Array<[number, RelatedDecision]> = []
+  ): ResolvedValue[] {
+    return resolveValues(values, answer, {
+      decisions: decision ? new Map([[key, decision]]) : undefined,
+      rowDecisions: new Map([[key, new Map(overrides)]]),
+    });
+  }
+
+  it('keeps each row’s override, trimmed, only for rows using the value, and falls back to the value’s decision', () => {
+    const [mario] = resolve(link1950, [
+      [1, link1987],
+      [2, createNew('  Mario Rossi ')],
+      // Row 9 does not use the value (e.g. it was edited or excluded): its override is ignored
+      [9, link1987],
+    ]);
+
+    expect(mario.group).toBe('homonyms');
+    expect(mario.decision).toEqual(link1950);
+    expect([...mario.rowDecisions]).toEqual([
+      [1, link1987],
+      [2, createNew('Mario Rossi')],
+    ]);
+    expect([0, 1, 2, 3].map((r) => decisionForRow(mario, r))).toEqual([link1950, link1987, createNew(), link1950]);
+  });
+
+  it('blocks Commit until every row of a Homonym has a decision, and while a new record has no name', () => {
+    expect(resolutionBlockers(resolve(undefined))).toEqual({ pending: 0, undecided: 1, unnamed: 0 });
+    // Some rows chosen individually, the rest not
+    expect(resolutionBlockers(resolve(undefined, [[0, link1950], [1, link1987]]))).toEqual({
+      pending: 0,
+      undecided: 1,
+      unnamed: 0,
+    });
+    // Every row chosen individually: decided, with no value-level choice
+    const everyRow = resolve(undefined, [0, 1, 2, 3].map((r) => [r, link1987]));
+    expect(everyRow[0].decision).toBeNull();
+    expect(isValueDecided(everyRow[0])).toBe(true);
+    expect(resolutionBlockers(everyRow)).toEqual({ pending: 0, undecided: 0, unnamed: 0 });
+    // A value-level choice covers the rows without an override
+    expect(resolutionBlockers(resolve(link1950, [[2, link1987]]))).toEqual({ pending: 0, undecided: 0, unnamed: 0 });
+    // A row creating a new record needs its name
+    expect(resolutionBlockers(resolve(link1950, [[2, createNew(' ')]]))).toEqual({ pending: 0, undecided: 0, unnamed: 1 });
+    // A value-level "create" overridden on every row creates nothing, so its empty name does not block
+    expect(resolutionBlockers(resolve(createNew(''), [0, 1, 2, 3].map((r) => [r, link1950])))).toEqual({
+      pending: 0,
+      undecided: 0,
+      unnamed: 0,
+    });
+  });
+
+  it('creates one new record per value for all its rows assigned to "create new", and none when no row is', () => {
+    expect(planRelatedCreations(resolve(link1950, [[1, createNew()], [3, createNew()]]))).toEqual([
+      { kind: 'registry', name: 'Mario Rossi', keys: [key] },
+    ]);
+    expect(planRelatedCreations(resolve(createNew(), [[2, link1987]]))).toEqual([
+      { kind: 'registry', name: 'Mario Rossi', keys: [key] },
+    ]);
+    expect(planRelatedCreations(resolve(createNew(), [0, 1, 2, 3].map((r) => [r, link1950])))).toEqual([]);
+    expect(planRelatedCreations(resolve(link1987))).toEqual([]);
+  });
+
+  it('gives each row the ID of its own choice', () => {
+    const resolved = resolve(link1950, [
+      [1, link1987],
+      [3, createNew()],
+    ]);
+    const created = planRelatedCreations(resolved).map((c) => ({ ...c, id: 'r-new' }));
+    const { ready, rejected } = substituteRelatedIds(importRows, FIELDS, resolved, created);
+
+    expect(rejected).toEqual([]);
+    expect(ready.map((r) => [r.record.title, r.record.author, r.record.owner])).toEqual([
+      ['Achrome', 'r-1950', null],
+      // The override covers every field of the row using the value
+      ['Linea', 'r-1987', 'r-1987'],
+      ['Bozza', 'r-1950', null],
+      ['Senza titolo', 'r-new', null],
+    ]);
+  });
+
+  it('rejects only the rows assigned to a new record that could not be created', () => {
+    const resolved = resolve(link1950, [[3, createNew()]]);
+    const created = planRelatedCreations(resolved).map((c) => ({ ...c, reason: 'Registry is read-only' }));
+    const { ready, rejected } = substituteRelatedIds(importRows, FIELDS, resolved, created);
+
+    expect(ready.map((r) => r.rowIndex)).toEqual([0, 1, 2]);
+    expect(rejected.map((r) => [r.rowIndex, r.reason])).toEqual([
+      [3, 'The record "Mario Rossi" could not be created: Registry is read-only'],
+    ]);
+  });
+
+  it('refuses to substitute a row with no decision', () => {
+    const resolved = resolve(undefined, [[0, link1950]]);
+    expect(() => substituteRelatedIds(importRows, FIELDS, resolved, [])).toThrow(/row 2 was not resolved/);
   });
 });
 
