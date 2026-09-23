@@ -4,21 +4,34 @@ import { cn } from '@/lib/utils';
 import { isValidFileType } from '@/lib/import-wizard/parser';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { TARGET_FIELDS } from '@/lib/import-wizard/types';
+import { TARGET_FIELDS, type FieldConfig } from '@/lib/import-wizard/types';
+import { WizardRoot } from './WizardRoot';
 
 interface FileUploaderProps {
   onFileSelected: (file: File) => void;
   isLoading?: boolean;
   error?: string | null;
   helpText?: string;
+  /** Fields shown as the expected columns in the preview; defaults to the artwork fields */
+  fields?: Pick<FieldConfig, 'key' | 'label'>[];
   className?: string;
 }
 
-export function FileUploader({
+/** Upload step: drop or pick a spreadsheet */
+export function FileUploader(props: FileUploaderProps) {
+  return (
+    <WizardRoot>
+      <FileUploaderContent {...props} />
+    </WizardRoot>
+  );
+}
+
+function FileUploaderContent({
   onFileSelected,
   isLoading = false,
   error = null,
   helpText = 'Drag and drop the sample file. You can customize this help text. It even supports HTML so you can style it, embed videos, etc.',
+  fields = TARGET_FIELDS,
   className,
 }: FileUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -133,7 +146,7 @@ export function FileUploader({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  {TARGET_FIELDS.map((field) => (
+                  {fields.map((field) => (
                     <th
                       key={field.key}
                       className="px-4 py-2 text-left font-medium text-muted-foreground"
@@ -146,7 +159,7 @@ export function FileUploader({
               <tbody>
                 {[1, 2, 3].map((row) => (
                   <tr key={row} className="border-b last:border-0">
-                    {TARGET_FIELDS.map((field) => (
+                    {fields.map((field) => (
                       <td key={field.key} className="px-4 py-2">
                         <Skeleton className="h-4 w-16" />
                       </td>

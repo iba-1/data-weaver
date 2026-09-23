@@ -147,6 +147,8 @@ export interface RowValidation<TRecord = ArtworkRecord> {
   isValid: boolean;
   errors: ValidationError[];
   warnings: ValidationWarning[];
+  /** Set when the Importer deliberately left this row out of the import */
+  excluded?: boolean;
 }
 
 export interface ValidationError {
@@ -157,6 +159,36 @@ export interface ValidationError {
 export interface ValidationWarning {
   field: string;
   message: string;
+}
+
+// ============================================================
+// EDITS
+// ============================================================
+
+/** A set of field changes to apply to one row */
+export interface RowEdit {
+  rowIndex: number;
+  changes: Record<string, unknown>;
+}
+
+/** What Data Weaver sends to the Host App's AI endpoint */
+export interface AiEditRequest {
+  /** The Importer's natural-language instruction */
+  command: string;
+  rows: Array<{ rowIndex: number; data: Record<string, unknown> }>;
+  fields: Array<Pick<FieldConfig, 'key' | 'label' | 'type'>>;
+}
+
+/**
+ * Host App-supplied AI Edit endpoint. Resolves to the edits to propose to the
+ * Importer; rejects with an Error whose message is shown to the Importer.
+ */
+export type AiEditHandler = (request: AiEditRequest) => Promise<RowEdit[]>;
+
+/** Everything besides the imported records that the Host App learns on completion */
+export interface ImportResult<TRecord = ArtworkRecord> {
+  /** Rows the Importer deliberately left out of the import */
+  excludedRows: RowValidation<TRecord>[];
 }
 
 // ============================================================
@@ -208,7 +240,7 @@ export type ImportWizardEvent<TRecord = ArtworkRecord> =
   | { type: 'ROW_PARSED'; event: RowParseEvent<TRecord> }
   | { type: 'ROW_COMPLETE'; event: RowCompleteEvent<TRecord> }
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
-  | { type: 'IMPORT_COMPLETED'; data: TRecord[] }
+  | { type: 'IMPORT_COMPLETED'; data: TRecord[]; excludedRows: RowValidation<TRecord>[] }
   | { type: 'ERROR'; error: string };
 
 // ============================================================
@@ -226,15 +258,18 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
   fields?: FieldConfig<TKey>[];
   
   /**
-   * Required field keys. Rows missing these are marked invalid.
-   * @default ['title', 'artist']
+   * Extra required field keys, on top of fields marked `required: true`.
+   * Rows missing a required field are invalid.
+   * @default []
    */
   requiredFields?: TKey[];
   
   /**
-   * Called when import is complete with valid rows
+   * Called when the Importer completes the import, with the records of every
+   * row that was not excluded. Excluded Rows are reported in `result`.
+   * The import cannot complete while an included row is invalid.
    */
-  onComplete?: (data: TRecord[]) => void;
+  onComplete?: (data: TRecord[], result: ImportResult<TRecord>) => void;
   
   /**
    * Called for each lifecycle event
@@ -254,9 +289,15 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
   onRowComplete?: (event: RowCompleteEvent<TRecord>) => void;
   
   /**
-   * Custom validation function applied to each row
+   * Custom validation function applied to each row, initially and after every edit
    */
   validateRow?: (data: TRecord, rowIndex: number) => ValidationResult[];
+
+  /**
+   * Enables AI Edit. The Host App supplies its own AI endpoint; without it the
+   * AI Edit button is not shown.
+   */
+  aiEdit?: AiEditHandler;
   
   /**
    * Title shown at the top of the wizard

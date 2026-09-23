@@ -93,25 +93,22 @@ Building data import functionality is **hard**. Users expect Excel-like editing,
 
 ### Installation
 
+The package is not on a registry yet. Build a tarball from this repository and install it:
+
 ```bash
-npm install react-import-wizard
-# or
-yarn add react-import-wizard
-# or
-pnpm add react-import-wizard
+npm pack                              # in this repo: builds dist-lib/ and writes data-weaver-0.1.0.tgz
+npm install ../data-weaver/data-weaver-0.1.0.tgz   # in your app
 ```
 
 ### Peer Dependencies
 
-```bash
-npm install react react-dom xlsx lucide-react
-```
+React 18 (`react`, `react-dom`). Everything else ships with the package. Your app does **not** need Tailwind: the stylesheet is precompiled and scoped to the wizard, so it neither needs nor touches your own styles.
 
 ### Basic Usage
 
 ```tsx
-import { ImportWizard } from 'react-import-wizard';
-import 'react-import-wizard/styles.css';
+import { ImportWizard } from 'data-weaver';
+import 'data-weaver/styles.css';
 
 function App() {
   return (
@@ -121,9 +118,9 @@ function App() {
         { key: 'email', label: 'Email', type: 'string' },
         { key: 'age', label: 'Age', type: 'number' },
       ]}
-      requiredFields={['name']}
-      onComplete={(data) => {
+      onComplete={(data, { excludedRows }) => {
         console.log('Imported:', data);
+        console.log('Left out by the Importer:', excludedRows.length);
         // Send to your API, update state, etc.
       }}
     />
@@ -140,7 +137,7 @@ That's it! You now have a fully functional data import wizard. 🎉
 ### E-commerce Product Import
 
 ```tsx
-import { ImportWizard, type FieldConfig } from 'react-import-wizard';
+import { ImportWizard, type FieldConfig } from 'data-weaver';
 
 type ProductField = 'sku' | 'name' | 'price' | 'stock' | 'category';
 
@@ -212,7 +209,7 @@ function ProductImport() {
 ### User Import with Email Validation
 
 ```tsx
-import { ImportWizard, type FieldConfig } from 'react-import-wizard';
+import { ImportWizard, type FieldConfig } from 'data-weaver';
 
 const userFields: FieldConfig<'email' | 'name' | 'role' | 'department'>[] = [
   { 
@@ -265,7 +262,7 @@ function UserImport() {
 ### Real-Time Progress Tracking
 
 ```tsx
-import { ImportWizard } from 'react-import-wizard';
+import { ImportWizard } from 'data-weaver';
 import { useState } from 'react';
 
 function ImportWithProgress() {
@@ -301,23 +298,15 @@ function ImportWithProgress() {
 
 ### Custom Styling with CSS Variables
 
-```tsx
-import { ImportWizard } from 'react-import-wizard';
+The wizard's theme tokens live on its root element, `.dw-root`. Override them there:
 
-function ThemedImport() {
-  return (
-    <div style={{
-      '--primary': '260 100% 60%',        // Purple theme
-      '--success': '160 84% 39%',          // Teal success
-      '--step-active': '260 100% 60%',     // Purple steps
-      '--dropzone-active': '260 60% 95%',  // Light purple dropzone
-    } as React.CSSProperties}>
-      <ImportWizard
-        fields={[/* your fields */]}
-        onComplete={(data) => console.log(data)}
-      />
-    </div>
-  );
+```css
+/* your app's CSS, loaded after data-weaver/styles.css */
+.dw-root {
+  --primary: 260 100% 60%;        /* Purple theme */
+  --success: 160 84% 39%;         /* Teal success */
+  --step-active: 260 100% 60%;    /* Purple steps */
+  --dropzone-active: 260 60% 95%; /* Light purple dropzone */
 }
 ```
 
@@ -334,12 +323,13 @@ The main component that orchestrates the complete 3-step import flow.
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `fields` | `FieldConfig<TKey>[]` | Required | Column/field configuration array |
-| `requiredFields` | `TKey[]` | `[]` | Array of field keys that must have values |
-| `onComplete` | `(data: TRecord[]) => void` | - | Called with valid rows when user clicks "Complete Import" |
+| `requiredFields` | `TKey[]` | `[]` | Extra required field keys, on top of fields with `required: true` |
+| `onComplete` | `(data: TRecord[], result: ImportResult) => void` | - | Called on "Complete Import" with the records of every row that was not excluded; `result.excludedRows` lists the Excluded Rows. Completing is blocked while an included row is invalid. |
 | `onEvent` | `(event: ImportWizardEvent) => void` | - | Lifecycle event handler for all wizard events |
 | `onRowParse` | `(event: RowParseEvent) => TRecord \| void` | - | Called for each row during parsing. Return modified data to transform. |
 | `onRowComplete` | `(event: RowCompleteEvent) => void` | - | Called when a row passes validation or is edited |
-| `validateRow` | `(data, rowIndex) => ValidationResult[]` | - | Custom row-level validation function |
+| `validateRow` | `(data, rowIndex) => ValidationResult[]` | - | Custom row-level validation, applied initially and after every edit |
+| `aiEdit` | `(request: AiEditRequest) => Promise<RowEdit[]>` | - | Enables AI Edit with your own AI endpoint. Without it, AI Edit is hidden. Only configured fields of existing rows can be changed. |
 | `title` | `string` | `'Import Data'` | Title displayed at the top |
 | `description` | `string` | - | Optional description below the title |
 | `acceptedFileTypes` | `string[]` | `['.csv', '.xlsx', '.xls']` | Accepted file extensions |
@@ -407,7 +397,7 @@ type ImportWizardEvent<TRecord> =
   | { type: 'ROW_PARSED'; event: RowParseEvent<TRecord> }
   | { type: 'ROW_COMPLETE'; event: RowCompleteEvent<TRecord> }
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
-  | { type: 'IMPORT_COMPLETED'; data: TRecord[] }
+  | { type: 'IMPORT_COMPLETED'; data: TRecord[]; excludedRows: RowValidation<TRecord>[] }
   | { type: 'ERROR'; error: string };
 ```
 
@@ -443,12 +433,14 @@ interface RowCompleteEvent<TRecord> {
 
 Use these for custom implementations or when you only need specific functionality.
 
+Each step component brings its own `WizardRoot` (styling scope, tooltips and portals), so it works on its own. To compose several building blocks under one scope, wrap them in `<WizardRoot>` yourself.
+
 #### `<FileUploader />`
 
 Drag-and-drop file upload with validation.
 
 ```tsx
-import { FileUploader } from 'react-import-wizard';
+import { FileUploader } from 'data-weaver';
 
 <FileUploader
   onFileSelected={(file: File) => handleFile(file)}
@@ -473,7 +465,7 @@ import { FileUploader } from 'react-import-wizard';
 Column mapping interface with auto-matching.
 
 ```tsx
-import { ColumnMapper } from 'react-import-wizard';
+import { ColumnMapper } from 'data-weaver';
 
 <ColumnMapper
   mappings={columnMappings}
@@ -499,7 +491,7 @@ import { ColumnMapper } from 'react-import-wizard';
 Data review with editing, search, and export.
 
 ```tsx
-import { DataValidator } from 'react-import-wizard';
+import { DataValidator } from 'data-weaver';
 
 <DataValidator
   validatedRows={rows}
@@ -529,7 +521,7 @@ import { DataValidator } from 'react-import-wizard';
 Single editable cell with keyboard support.
 
 ```tsx
-import { EditableCell } from 'react-import-wizard';
+import { EditableCell } from 'data-weaver';
 
 <EditableCell
   value="Cell content"
@@ -547,7 +539,7 @@ import { EditableCell } from 'react-import-wizard';
 Search input with match counter.
 
 ```tsx
-import { SearchBar } from 'react-import-wizard';
+import { SearchBar } from 'data-weaver';
 
 <SearchBar
   value={searchQuery}
@@ -563,7 +555,7 @@ import { SearchBar } from 'react-import-wizard';
 Find and replace dialog with options.
 
 ```tsx
-import { FindReplaceDialog } from 'react-import-wizard';
+import { FindReplaceDialog } from 'data-weaver';
 
 <FindReplaceDialog
   onReplace={(find, replace, options) => replaceAll(find, replace, options)}
@@ -579,7 +571,7 @@ import { FindReplaceDialog } from 'react-import-wizard';
 #### Parsing
 
 ```typescript
-import { parseFile, isValidFileType, getFileTypeFromName } from 'react-import-wizard';
+import { parseFile, isValidFileType, getFileTypeFromName } from 'data-weaver';
 
 // Parse a file
 const data = await parseFile(file);
@@ -594,7 +586,7 @@ getFileTypeFromName('data.xlsx');   // 'excel'
 #### Column Matching
 
 ```typescript
-import { autoMatchColumns, updateMapping, getUnmappedTargetFields } from 'react-import-wizard';
+import { autoMatchColumns, updateMapping, getUnmappedTargetFields } from 'data-weaver';
 
 // Auto-match columns
 const mappings = autoMatchColumns(headers, fields);
@@ -609,7 +601,7 @@ const unmapped = getUnmappedTargetFields(mappings, fields);
 #### Validation
 
 ```typescript
-import { validateRows, revalidateRow, getValidationSummary } from 'react-import-wizard';
+import { validateRows, revalidateRow, getValidationSummary } from 'data-weaver';
 
 // Validate all rows
 const validated = validateRows(rows, mappings, {
@@ -630,7 +622,7 @@ const summary = getValidationSummary(validated);
 #### Export
 
 ```typescript
-import { exportData, exportToBlob } from 'react-import-wizard';
+import { exportData, exportToBlob } from 'data-weaver';
 
 // Download directly
 exportData(rows, fields, {
@@ -745,10 +737,10 @@ The library uses tree-shaking, so importing only what you need keeps your bundle
 
 ```typescript
 // Full wizard
-import { ImportWizard } from 'react-import-wizard';
+import { ImportWizard } from 'data-weaver';
 
 // Just utilities (smaller)
-import { parseFile, validateRows, exportData } from 'react-import-wizard';
+import { parseFile, validateRows, exportData } from 'data-weaver';
 ```
 
 ---

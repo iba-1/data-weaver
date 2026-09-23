@@ -1,10 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileUploader } from './FileUploader';
 import { ColumnMapper } from './ColumnMapper';
 import { DataValidator } from './DataValidator';
+import { WizardRoot } from './WizardRoot';
 import { parseFile } from '@/lib/import-wizard/parser';
 import { autoMatchColumns, updateMapping } from '@/lib/import-wizard/matcher';
-import { validateRows } from '@/lib/import-wizard/validator';
+import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator';
 import type {
   ArtworkRecord,
   ColumnMapping,
@@ -12,12 +13,12 @@ import type {
   ImportWizardEvent,
   ImportWizardProps,
   ImportWizardState,
-  ParsedFileData,
+  RowCompleteEvent,
   RowValidation,
   TargetField,
   WizardStep,
 } from '@/lib/import-wizard/types';
-import { ARTWORK_FIELD_CONFIGS, TARGET_FIELDS } from '@/lib/import-wizard/types';
+import { ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types';
 import { cn } from '@/lib/utils';
 import { Check } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   onRowParse,
   onRowComplete,
   validateRow: customValidator,
+  aiEdit,
   title = 'Import Data',
   description,
   acceptedFileTypes = ['.csv', '.xlsx', '.xls'],
@@ -47,9 +49,12 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 }: ImportWizardProps<TRecord, TKey>) {
   const [state, setState] = useState<ImportWizardState<TRecord>>(INITIAL_STATE as ImportWizardState<TRecord>);
 
-  // Use provided fields or default to artwork fields
-  const fieldConfigs = (fields || ARTWORK_FIELD_CONFIGS) as FieldConfig<TKey>[];
-  const requiredFieldKeys = requiredFields || (['title', 'artist'] as TKey[]);
+  // Use provided fields or default to artwork fields. `requiredFields` is
+  // folded into the fields so every step reads one source of truth.
+  const fieldConfigs = useMemo(
+    () => markRequiredFields((fields || ARTWORK_FIELD_CONFIGS) as FieldConfig<TKey>[], requiredFields),
+    [fields, requiredFields]
+  );
 
   const emit = useCallback(
     (event: ImportWizardEvent<TRecord>) => {
@@ -57,6 +62,30 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     },
     [onEvent]
   );
+
+  // Latest callback, so a Host App passing inline functions doesn't retrigger work
+  const onRowCompleteRef = useRef(onRowComplete);
+  useEffect(() => {
+    onRowCompleteRef.current = onRowComplete;
+  });
+
+  const reportRowComplete = useCallback(
+    (row: RowValidation<TRecord>) => {
+      const event: RowCompleteEvent<TRecord> = {
+        rowIndex: row.rowIndex,
+        data: row.data,
+        isValid: row.isValid,
+        errors: row.errors,
+        warnings: row.warnings,
+      };
+      emit({ type: 'ROW_COMPLETE', event });
+      onRowCompleteRef.current?.(event);
+    },
+    [emit]
+  );
+
+  // Rows as last reported, to tell which rows an update actually changed
+  const reportedRowsRef = useRef<RowValidation<TRecord>[]>([]);
 
   const handleFileSelected = useCallback(
     async (file: File) => {
@@ -125,7 +154,6 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       columnMappings as ColumnMapping<TKey>[],
       {
         fields: fieldConfigs,
-        requiredFields: requiredFieldKeys,
         customValidator,
         onRowParse: onRowParse
           ? (rowIndex, rawData, parsedData) => {
@@ -137,20 +165,8 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       }
     );
 
-    // Emit row complete events
-    if (onRowComplete) {
-      for (const row of validatedRows) {
-        const event = {
-          rowIndex: row.rowIndex,
-          data: row.data,
-          isValid: row.isValid,
-          errors: row.errors,
-          warnings: row.warnings,
-        };
-        emit({ type: 'ROW_COMPLETE', event });
-        onRowComplete(event);
-      }
-    }
+    reportedRowsRef.current = validatedRows;
+    validatedRows.forEach(reportRowComplete);
 
     setState((s) => ({
       ...s,
@@ -161,7 +177,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
     emit({ type: 'COLUMNS_MAPPED', mappings: columnMappings });
     emit({ type: 'DATA_VALIDATED', rows: validatedRows });
-  }, [state, fieldConfigs, requiredFieldKeys, customValidator, onRowParse, onRowComplete, emit]);
+  }, [state, fieldConfigs, customValidator, onRowParse, reportRowComplete, emit]);
 
   const handleBack = useCallback(() => {
     setState((s) => ({ ...s, step: 'mapping' }));
@@ -169,35 +185,32 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
   const handleRowsChange = useCallback(
     (updatedRows: RowValidation<TRecord>[]) => {
+      const previous = new Map(reportedRowsRef.current.map((row) => [row.rowIndex, row]));
+      reportedRowsRef.current = updatedRows;
       setState((s) => ({ ...s, validatedRows: updatedRows }));
 
-      // Emit row complete events for changed rows
-      if (onRowComplete) {
-        for (const row of updatedRows) {
-          const event = {
-            rowIndex: row.rowIndex,
-            data: row.data,
-            isValid: row.isValid,
-            errors: row.errors,
-            warnings: row.warnings,
-          };
-          emit({ type: 'ROW_COMPLETE', event });
-          onRowComplete(event);
-        }
+      // Edits replace a row object; untouched rows keep their identity
+      for (const row of updatedRows) {
+        if (previous.get(row.rowIndex) !== row) reportRowComplete(row);
       }
     },
-    [onRowComplete, emit]
+    [reportRowComplete]
   );
 
   const handleComplete = useCallback(() => {
-    const validRows = state.validatedRows.filter((r) => r.isValid).map((r) => r.data);
+    const includedRows = state.validatedRows.filter((r) => !r.excluded);
+    // Never drop a row silently: every row is either valid or excluded
+    if (includedRows.some((r) => !r.isValid)) return;
 
-    emit({ type: 'IMPORT_COMPLETED', data: validRows });
-    onComplete?.(validRows);
+    const data = includedRows.map((r) => r.data);
+    const excludedRows = state.validatedRows.filter((r) => r.excluded);
+
+    emit({ type: 'IMPORT_COMPLETED', data, excludedRows });
+    onComplete?.(data, { excludedRows });
   }, [state.validatedRows, emit, onComplete]);
 
   return (
-    <div className={cn('w-full max-w-4xl mx-auto', className)}>
+    <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)}>
       {/* Step indicator */}
       <StepIndicator currentStep={state.step} />
 
@@ -206,6 +219,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
         {state.step === 'upload' && (
           <FileUploader
             onFileSelected={handleFileSelected}
+            fields={fieldConfigs}
             isLoading={state.isLoading}
             error={state.error}
           />
@@ -225,7 +239,8 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
           <DataValidator
             validatedRows={state.validatedRows}
             fields={fieldConfigs}
-            requiredFields={requiredFieldKeys}
+            validateRow={customValidator}
+            aiEdit={aiEdit}
             onComplete={handleComplete}
             onBack={handleBack}
             onRowsChange={handleRowsChange}
@@ -233,7 +248,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
           />
         )}
       </div>
-    </div>
+    </WizardRoot>
   );
 }
 

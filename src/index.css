@@ -42,26 +42,6 @@
 
     --radius: 0.5rem;
 
-    /* Import Wizard specific tokens */
-    --dropzone-bg: 210 40% 98%;
-    --dropzone-border: 210 30% 88%;
-    --dropzone-hover: 210 50% 96%;
-    --dropzone-active: 210 60% 94%;
-    
-    --info-bg: 210 100% 97%;
-    --info-border: 210 100% 85%;
-    --info-foreground: 210 100% 40%;
-    
-    --step-inactive: 220 10% 60%;
-    --step-active: 210 100% 45%;
-    
-    --mapping-source: 220 14% 96%;
-    --mapping-target: 210 30% 95%;
-    --mapping-matched: 142 50% 95%;
-    
-    --validation-valid: 142 76% 95%;
-    --validation-warning: 38 92% 95%;
-    --validation-error: 0 72% 95%;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -108,25 +88,6 @@
     --input: 220 20% 18%;
     --ring: 187 80% 50%;
 
-    --dropzone-bg: 220 20% 12%;
-    --dropzone-border: 220 20% 22%;
-    --dropzone-hover: 210 50% 18%;
-    --dropzone-active: 210 50% 22%;
-    
-    --info-bg: 210 50% 15%;
-    --info-border: 210 50% 30%;
-    --info-foreground: 210 100% 70%;
-    
-    --step-inactive: 220 10% 50%;
-    --step-active: 210 100% 60%;
-    
-    --mapping-source: 220 20% 15%;
-    --mapping-target: 210 30% 18%;
-    --mapping-matched: 142 30% 15%;
-    
-    --validation-valid: 142 40% 15%;
-    --validation-warning: 38 50% 15%;
-    --validation-error: 0 40% 15%;
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -149,36 +110,3 @@
   }
 }
 
-@layer components {
-  .dropzone {
-    @apply bg-[hsl(var(--dropzone-bg))] border-2 border-dashed border-[hsl(var(--dropzone-border))] rounded-xl transition-all duration-200;
-  }
-  
-  .dropzone:hover {
-    @apply bg-[hsl(var(--dropzone-hover))] border-[hsl(var(--primary))];
-  }
-  
-  .dropzone.active {
-    @apply bg-[hsl(var(--dropzone-active))] border-[hsl(var(--primary))] scale-[1.02];
-  }
-  
-  .mapping-card {
-    @apply bg-card border rounded-lg p-3 transition-all duration-200 hover:shadow-md;
-  }
-  
-  .mapping-matched {
-    @apply bg-[hsl(var(--mapping-matched))] border-[hsl(var(--success)/0.3)];
-  }
-  
-  .validation-row-valid {
-    @apply bg-[hsl(var(--validation-valid))];
-  }
-  
-  .validation-row-warning {
-    @apply bg-[hsl(var(--validation-warning))];
-  }
-  
-  .validation-row-error {
-    @apply bg-[hsl(var(--validation-error))];
-  }
-}

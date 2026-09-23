@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local environment (never committed)
+.env
+.env.*
+dist-lib
+*.tgz

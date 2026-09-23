@@ -9,19 +9,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { supabase } from '@/integrations/supabase/client';
-import type { RowValidation, FieldConfig } from '@/lib/import-wizard/types';
+import type { AiEditHandler, FieldConfig, RowEdit, RowValidation } from '@/lib/import-wizard/types';
 
 interface AiEditChatProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   rows: RowValidation<TRecord>[];
   fields: FieldConfig<TKey>[];
-  onApplyEdits: (edits: Array<{ rowIndex: number; changes: Record<string, unknown> }>) => void;
+  /** Host App-supplied AI endpoint */
+  onRequestEdits: AiEditHandler;
+  onApplyEdits: (edits: RowEdit[]) => void;
   className?: string;
-}
-
-interface PendingEdit {
-  rowIndex: number;
-  changes: Record<string, unknown>;
 }
 
 type ChatStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -29,6 +25,7 @@ type ChatStatus = 'idle' | 'loading' | 'success' | 'error';
 export function AiEditChat<TRecord = Record<string, unknown>, TKey extends string = string>({
   rows,
   fields,
+  onRequestEdits,
   onApplyEdits,
   className,
 }: AiEditChatProps<TRecord, TKey>) {
@@ -36,7 +33,7 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
   const [command, setCommand] = useState('');
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [pendingEdits, setPendingEdits] = useState<PendingEdit[] | null>(null);
+  const [pendingEdits, setPendingEdits] = useState<RowEdit[] | null>(null);
   const [lastCommand, setLastCommand] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -56,39 +53,15 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
     setLastCommand(command);
 
     try {
-      // Prepare row data for the API
-      const rowData = rows.map((row) => ({
-        rowIndex: row.rowIndex,
-        data: row.data as Record<string, unknown>,
-      }));
-
-      const fieldData = fields.map((f) => ({
-        key: f.key,
-        label: f.label,
-        type: f.type,
-      }));
-
-      console.log('Sending AI edit request:', { command, rowCount: rowData.length });
-
-      const { data, error: fnError } = await supabase.functions.invoke('ai-edit-rows', {
-        body: {
-          command: command.trim(),
-          rows: rowData,
-          fields: fieldData,
-        },
+      const edits = await onRequestEdits({
+        command: command.trim(),
+        // Excluded Rows are out of the import, so they are not edited
+        rows: rows
+          .filter((row) => !row.excluded)
+          .map((row) => ({ rowIndex: row.rowIndex, data: row.data as Record<string, unknown> })),
+        fields: fields.map((f) => ({ key: f.key, label: f.label, type: f.type })),
       });
 
-      if (fnError) {
-        console.error('Function invocation error:', fnError);
-        throw new Error(fnError.message || 'Failed to process command');
-      }
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
-
-      const edits = data?.edits as PendingEdit[];
-      
       if (!edits || edits.length === 0) {
         setStatus('success');
         setError('No changes needed for this command.');
@@ -100,11 +73,10 @@ export function AiEditChat<TRecord = Record<string, unknown>, TKey extends strin
 
       setCommand('');
     } catch (err) {
-      console.error('AI edit error:', err);
       setStatus('error');
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     }
-  }, [command, rows, fields, status]);
+  }, [command, rows, fields, status, onRequestEdits]);
 
   const handleApply = useCallback(() => {
     if (pendingEdits && pendingEdits.length > 0) {

@@ -36,6 +36,12 @@ export type {
   RowCompleteEvent,
   ImportWizardEvent,
   
+  // Edits & results
+  RowEdit,
+  AiEditRequest,
+  AiEditHandler,
+  ImportResult,
+
   // Component Props
   ImportWizardProps,
   
@@ -75,7 +81,11 @@ export {
   validateRows,
   revalidateRow,
   getValidationSummary,
+  resolveRequiredKeys,
+  markRequiredFields,
 } from './validator';
+
+export { applyRowEdits, coerceEditedValue } from './edits';
 
 // ============================================================
 // EXPORT
