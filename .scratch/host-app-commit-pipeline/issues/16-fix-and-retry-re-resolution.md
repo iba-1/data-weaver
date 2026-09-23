@@ -8,7 +8,7 @@
 
 Spec: `../spec.md`
 
-- [ ] Changing a Relationship Field value in Fix & Retry triggers Resolution for that value only
-- [ ] Previously resolved values are not asked again
-- [ ] Unchanged Rejected Rows keep their earlier Related Record decisions
-- [ ] Tests cover a rejected row fixed by renaming its author
+- [x] Changing a Relationship Field value in Fix & Retry triggers Resolution for that value only
+- [x] Previously resolved values are not asked again
+- [x] Unchanged Rejected Rows keep their earlier Related Record decisions
+- [x] Tests cover a rejected row fixed by renaming its author
