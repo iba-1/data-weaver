@@ -94,7 +94,7 @@ export {
 // REVIEW: VALUES, EDITS, SEARCH
 // ============================================================
 
-export { parseNumber } from './values';
+export { cellText, parseNumber } from './values';
 
 export { applyRowEdits, coerceEditedValue } from './edits';
 

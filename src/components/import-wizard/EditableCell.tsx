@@ -3,7 +3,7 @@ import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { formatCalendarDate } from '@/lib/import-wizard/dates';
+import { cellText } from '@/lib/import-wizard/values';
 
 interface EditableCellProps {
   value: string | number | Date | null;
@@ -12,12 +12,6 @@ interface EditableCellProps {
   hasWarning?: boolean;
   isHighlighted?: boolean;
   className?: string;
-}
-
-/** Dates show as their calendar day (YYYY-MM-DD), never in local time */
-function cellText(value: EditableCellProps['value'] | undefined): string {
-  if (value === null || value === undefined) return '';
-  return value instanceof Date ? formatCalendarDate(value) : String(value);
 }
 
 export function EditableCell({

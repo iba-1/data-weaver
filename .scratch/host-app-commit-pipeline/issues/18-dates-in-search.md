@@ -8,6 +8,6 @@
 
 Spec: `../spec.md`
 
-- [ ] Search matches date cells by their `YYYY-MM-DD` text
-- [ ] Find/replace on a date cell reads and writes the `YYYY-MM-DD` text, and the result is parsed back as a calendar date
-- [ ] Core tests for search and find/replace on date cells pass in UTC, America/New_York and Asia/Tokyo
+- [x] Search matches date cells by their `YYYY-MM-DD` text
+- [x] Find/replace on a date cell reads and writes the `YYYY-MM-DD` text, and the result is parsed back as a calendar date
+- [x] Core tests for search and find/replace on date cells pass in UTC, America/New_York and Asia/Tokyo
