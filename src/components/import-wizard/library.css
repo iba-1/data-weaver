@@ -1,0 +1,84 @@
+/**
+ * Data Weaver - stylesheet shipped with the package.
+ *
+ * Utilities are compiled with `important: '.dw-root'`, so they only apply
+ * inside WizardRoot and win over a Host App's own utility classes. The Host
+ * App needs no Tailwind setup and its styles are never touched.
+ */
+@import './styles.css';
+
+/* Minimal reset, scoped: Tailwind's preflight is disabled for the package */
+.dw-root,
+.dw-root *,
+.dw-root ::before,
+.dw-root ::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: hsl(var(--border));
+}
+
+.dw-root {
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dw-root button,
+.dw-root input,
+.dw-root select,
+.dw-root textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  background-color: transparent;
+  background-image: none;
+}
+
+.dw-root button,
+.dw-root [role='button'] {
+  cursor: pointer;
+}
+
+.dw-root :disabled {
+  cursor: default;
+}
+
+.dw-root input::placeholder,
+.dw-root textarea::placeholder {
+  opacity: 1;
+  color: hsl(var(--muted-foreground));
+}
+
+.dw-root h1,
+.dw-root h2,
+.dw-root h3,
+.dw-root h4,
+.dw-root p {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
+}
+
+.dw-root ol,
+.dw-root ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dw-root table {
+  border-collapse: collapse;
+  text-indent: 0;
+}
+
+.dw-root svg {
+  display: block;
+  vertical-align: middle;
+}
+
+@tailwind components;
+@tailwind utilities;

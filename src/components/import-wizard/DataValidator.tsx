@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   AlertCircle,
+  Ban,
   AlertTriangle,
   Check,
   CheckCircle,
@@ -10,11 +11,19 @@ import {
   FileSpreadsheet,
   ListChecks,
   Redo2,
+  RotateCcw,
   Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { RowValidation, FieldConfig } from '@/lib/import-wizard/types';
-import { getValidationSummary, revalidateRow } from '@/lib/import-wizard/validator';
+import type {
+  AiEditHandler,
+  FieldConfig,
+  RowEdit,
+  RowValidation,
+  ValidationResult,
+} from '@/lib/import-wizard/types';
+import { getValidationSummary, resolveRequiredKeys, revalidateRow } from '@/lib/import-wizard/validator';
+import { applyRowEdits, coerceEditedValue } from '@/lib/import-wizard/edits';
 import { exportData } from '@/lib/import-wizard/exporter';
 import { useHistory } from '@/hooks/useHistory';
 import {
@@ -43,11 +52,17 @@ import { EditableCell } from './EditableCell';
 import { SearchBar } from './SearchBar';
 import { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
 import { AiEditChat } from './AiEditChat';
+import { WizardRoot } from './WizardRoot';
 
 interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends string = string> {
   validatedRows: RowValidation<TRecord>[];
   fields: FieldConfig<TKey>[];
+  /** Extra required field keys, on top of fields marked `required: true` */
   requiredFields?: TKey[];
+  /** Host App row validator, re-applied after every edit */
+  validateRow?: (data: TRecord, rowIndex: number) => ValidationResult[];
+  /** Host App AI endpoint; AI Edit is hidden without it */
+  aiEdit?: AiEditHandler;
   onComplete: () => void;
   onBack: () => void;
   onRowsChange?: (rows: RowValidation<TRecord>[]) => void;
@@ -57,10 +72,23 @@ interface DataValidatorProps<TRecord = Record<string, unknown>, TKey extends str
 
 const ROWS_PER_PAGE = 10;
 
-export function DataValidator<TRecord = Record<string, unknown>, TKey extends string = string>({
+/** Review step: edit, search, exclude and fix rows before completing the import */
+export function DataValidator<TRecord = Record<string, unknown>, TKey extends string = string>(
+  props: DataValidatorProps<TRecord, TKey>
+) {
+  return (
+    <WizardRoot>
+      <DataValidatorContent {...props} />
+    </WizardRoot>
+  );
+}
+
+function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends string = string>({
   validatedRows,
   fields,
-  requiredFields = [],
+  requiredFields,
+  validateRow,
+  aiEdit,
   onComplete,
   onBack,
   onRowsChange,
@@ -83,6 +111,14 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
 
   const summary = getValidationSummary(localRows);
 
+  const requiredKeys = useMemo(() => resolveRequiredKeys(fields, requiredFields), [fields, requiredFields]);
+
+  const revalidate = useCallback(
+    (row: RowValidation<TRecord>) =>
+      revalidateRow<TRecord, TKey>(row, { fields, requiredFields, customValidator: validateRow }),
+    [fields, requiredFields, validateRow]
+  );
+
   // Keyboard shortcuts for undo/redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -104,10 +140,19 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo]);
 
-  // Sync with parent when rows change
+  // Tell the parent about changes (edits, undo/redo), but not the initial rows it gave us
+  const onRowsChangeRef = useRef(onRowsChange);
   useEffect(() => {
-    onRowsChange?.(localRows);
-  }, [localRows, onRowsChange]);
+    onRowsChangeRef.current = onRowsChange;
+  });
+  const isInitialRowsRef = useRef(true);
+  useEffect(() => {
+    if (isInitialRowsRef.current) {
+      isInitialRowsRef.current = false;
+      return;
+    }
+    onRowsChangeRef.current?.(localRows);
+  }, [localRows]);
 
   // Helper to check if a value matches search
   const matchesSearch = useCallback((value: unknown, query: string): boolean => {
@@ -209,20 +254,14 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
           }
 
           if (newValue !== strValue) {
-            if (field.type === 'number') {
-              const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
-              const parsed = parseFloat(cleaned);
-              updatedData[field.key] = isNaN(parsed) ? null : parsed;
-            } else {
-              updatedData[field.key] = newValue || null;
-            }
+            updatedData[field.key] = coerceEditedValue(newValue, field);
             modified = true;
             replacedCount++;
           }
         });
 
         if (modified) {
-          return revalidateRow({ ...row, data: updatedData as TRecord }, { fields, requiredFields });
+          return revalidate({ ...row, data: updatedData as TRecord });
         }
         return row;
       });
@@ -230,7 +269,7 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
       setLocalRows(updatedRows);
       return replacedCount;
     },
-    [localRows, fields, requiredFields, getMatchingValue, setLocalRows]
+    [localRows, fields, revalidate, getMatchingValue, setLocalRows]
   );
 
   const handleCellEdit = useCallback(
@@ -241,51 +280,50 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
 
           const field = fields.find((f) => f.key === fieldKey);
           const updatedData = { ...(row.data as Record<string, unknown>) };
+          updatedData[fieldKey] = coerceEditedValue(newValue, field);
 
-          if (field?.type === 'number') {
-            const cleaned = newValue.replace(/[,$€£¥\s]/g, '');
-            const parsed = parseFloat(cleaned);
-            updatedData[fieldKey] = isNaN(parsed) ? null : parsed;
-          } else {
-            updatedData[fieldKey] = newValue || null;
-          }
-
-          return revalidateRow({ ...row, data: updatedData as TRecord }, { fields, requiredFields });
+          return revalidate({ ...row, data: updatedData as TRecord });
         });
       });
     },
-    [fields, requiredFields, setLocalRows]
+    [fields, revalidate, setLocalRows]
   );
 
-  // AI Edit handler
+  // AI Edit handler: only configured fields of existing rows can change
   const handleAiEdits = useCallback(
-    (edits: Array<{ rowIndex: number; changes: Record<string, unknown> }>) => {
+    (edits: RowEdit[]) => {
       setLocalRows((prevRows) => {
-        const updatedRows = prevRows.map((row) => {
-          const edit = edits.find((e) => e.rowIndex === row.rowIndex);
-          if (!edit) return row;
-
-          const updatedData = { ...(row.data as Record<string, unknown>) };
-
-          // Apply each change
-          Object.entries(edit.changes).forEach(([key, value]) => {
-            const field = fields.find((f) => f.key === key);
-            if (field?.type === 'number' && typeof value === 'string') {
-              const cleaned = value.replace(/[,$€£¥\s]/g, '');
-              const parsed = parseFloat(cleaned);
-              updatedData[key] = isNaN(parsed) ? null : parsed;
-            } else {
-              updatedData[key] = value;
-            }
-          });
-
-          return revalidateRow({ ...row, data: updatedData as TRecord }, { fields, requiredFields });
+        const changed = applyRowEdits(prevRows, edits, fields);
+        if (changed.size === 0) return prevRows;
+        return prevRows.map((row) => {
+          const edited = changed.get(row.rowIndex);
+          return edited ? revalidate(edited) : row;
         });
-
-        return updatedRows;
       });
     },
-    [fields, requiredFields, setLocalRows]
+    [fields, revalidate, setLocalRows]
+  );
+
+  // Exclusion: the Importer deliberately leaves rows out of the import
+  const setExcluded = useCallback(
+    (shouldExclude: (row: RowValidation<TRecord>) => boolean, excluded: boolean) => {
+      setLocalRows((prevRows) =>
+        prevRows.map((row) =>
+          shouldExclude(row) && !!row.excluded !== excluded ? { ...row, excluded } : row
+        )
+      );
+    },
+    [setLocalRows]
+  );
+
+  const handleToggleExcluded = useCallback(
+    (rowIndex: number, excluded: boolean) => setExcluded((row) => row.rowIndex === rowIndex, excluded),
+    [setExcluded]
+  );
+
+  const handleExcludeInvalid = useCallback(
+    () => setExcluded((row) => !row.isValid, true),
+    [setExcluded]
   );
 
   // Export handlers
@@ -304,12 +342,12 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
   // Fill empty required fields with placeholder values
   const handleFillEmptyRequired = useCallback(() => {
     const updatedRows = localRows.map((row) => {
-      if (row.isValid) return row;
+      if (row.isValid || row.excluded) return row;
 
       const data = { ...(row.data as Record<string, unknown>) };
       let modified = false;
 
-      for (const fieldKey of requiredFields) {
+      for (const fieldKey of requiredKeys) {
         const value = data[fieldKey];
         if (value === null || value === undefined || value === '') {
           const field = fields.find((f) => f.key === fieldKey);
@@ -323,19 +361,19 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
       }
 
       if (modified) {
-        return revalidateRow({ ...row, data: data as TRecord }, { fields, requiredFields });
+        return revalidate({ ...row, data: data as TRecord });
       }
       return row;
     });
 
     setLocalRows(updatedRows);
-  }, [localRows, fields, requiredFields, setLocalRows]);
+  }, [localRows, fields, requiredKeys, revalidate, setLocalRows]);
 
   // Filter and search
   const filteredRows = useMemo(() => {
     return localRows.filter((row) => {
-      if (filter === 'errors' && row.isValid) return false;
-      if (filter === 'warnings' && (!row.isValid || row.warnings.length === 0)) return false;
+      if (filter === 'errors' && (row.isValid || row.excluded)) return false;
+      if (filter === 'warnings' && (!row.isValid || row.excluded || row.warnings.length === 0)) return false;
       if (searchQuery && !rowMatchesSearch(row, searchQuery)) return false;
       return true;
     });
@@ -346,11 +384,6 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
     currentPage * ROWS_PER_PAGE,
     (currentPage + 1) * ROWS_PER_PAGE
   );
-
-  // Sync local rows with prop changes (only on initial load)
-  useEffect(() => {
-    // This is handled by the useHistory hook initialization
-  }, []);
 
   // Reset page when filters change
   useEffect(() => {
@@ -430,15 +463,35 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
               className="flex-1 max-w-sm"
             />
             <FindReplaceDialog onReplace={handleFindReplace} getPreviewCount={getPreviewCount} fields={fields} />
-            <AiEditChat
-              rows={localRows}
-              fields={fields}
-              onApplyEdits={handleAiEdits}
-            />
+            {aiEdit && (
+              <AiEditChat
+                rows={localRows}
+                fields={fields}
+                onRequestEdits={aiEdit}
+                onApplyEdits={handleAiEdits}
+              />
+            )}
           </div>
 
           {/* Undo/Redo, Fill & Export */}
           <div className="flex items-center gap-2">
+            {/* Exclude every row that still has errors */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExcludeInvalid}
+                  disabled={summary.withErrors === 0}
+                  className="gap-1.5"
+                >
+                  <Ban className="h-4 w-4" />
+                  Exclude Errors
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Leave every row that still has errors out of the import</TooltipContent>
+            </Tooltip>
+
             {/* Fill empty required fields */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -517,12 +570,12 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
         <Table>
           <TableHeader className="sticky top-0 bg-background z-10">
             <TableRow>
-              <TableHead className="w-12">#</TableHead>
+              <TableHead className="w-20">#</TableHead>
               <TableHead className="w-12">Status</TableHead>
               {fields.map((field) => (
                 <TableHead key={field.key} className="min-w-[140px]">
                   {field.label}
-                  {field.required && <span className="text-destructive ml-1">*</span>}
+                  {requiredKeys.includes(field.key) && <span className="text-destructive ml-1">*</span>}
                 </TableHead>
               ))}
             </TableRow>
@@ -544,6 +597,7 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
                   row={row}
                   fields={fields}
                   onCellEdit={handleCellEdit}
+                  onToggleExcluded={handleToggleExcluded}
                   searchQuery={searchQuery}
                 />
               ))
@@ -591,10 +645,15 @@ export function DataValidator<TRecord = Record<string, unknown>, TKey extends st
             <ChevronLeft className="mr-2 h-4 w-4" />
             Back to Mapping
           </Button>
-          <Button onClick={onComplete} disabled={summary.withErrors > 0} size="lg">
-            <Download className="mr-2 h-4 w-4" />
-            Complete Import ({summary.valid + summary.withWarnings} rows)
-          </Button>
+          <div className="flex items-center gap-3">
+            {summary.excluded > 0 && (
+              <span className="text-sm text-muted-foreground">{summary.excluded} excluded</span>
+            )}
+            <Button onClick={onComplete} disabled={summary.withErrors > 0} size="lg">
+              <Download className="mr-2 h-4 w-4" />
+              Complete Import ({summary.valid + summary.withWarnings} rows)
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -605,6 +664,7 @@ interface ValidationRowProps<TRecord, TKey extends string> {
   row: RowValidation<TRecord>;
   fields: FieldConfig<TKey>[];
   onCellEdit: (rowIndex: number, fieldKey: TKey, newValue: string) => void;
+  onToggleExcluded: (rowIndex: number, excluded: boolean) => void;
   searchQuery: string;
 }
 
@@ -612,9 +672,11 @@ function ValidationRow<TRecord, TKey extends string>({
   row,
   fields,
   onCellEdit,
+  onToggleExcluded,
   searchQuery,
 }: ValidationRowProps<TRecord, TKey>) {
   const getRowClass = () => {
+    if (row.excluded) return 'opacity-50';
     if (!row.isValid) return 'validation-row-error';
     if (row.warnings.length > 0) return 'validation-row-warning';
     return '';
@@ -632,9 +694,31 @@ function ValidationRow<TRecord, TKey extends string>({
 
   return (
     <TableRow className={getRowClass()}>
-      <TableCell className="font-mono text-xs text-muted-foreground">{row.rowIndex + 1}</TableCell>
+      <TableCell className="font-mono text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                aria-label={`${row.excluded ? 'Include' : 'Exclude'} row ${row.rowIndex + 1}`}
+                onClick={() => onToggleExcluded(row.rowIndex, !row.excluded)}
+              >
+                {row.excluded ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {row.excluded ? 'Include this row in the import again' : 'Leave this row out of the import'}
+            </TooltipContent>
+          </Tooltip>
+          {row.rowIndex + 1}
+        </div>
+      </TableCell>
       <TableCell>
-        {!row.isValid ? (
+        {row.excluded ? (
+          <Ban className="h-4 w-4 text-muted-foreground" aria-label="Excluded" />
+        ) : !row.isValid ? (
           <Tooltip>
             <TooltipTrigger>
               <AlertCircle className="h-4 w-4 text-destructive" />
@@ -663,9 +747,10 @@ function ValidationRow<TRecord, TKey extends string>({
             <EditableCell
               value={value as string | number | null}
               onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
-              hasError={!!error}
-              hasWarning={!!warning}
+              hasError={!!error && !row.excluded}
+              hasWarning={!!warning && !row.excluded}
               isHighlighted={highlighted}
+              className={cn(row.excluded && 'line-through')}
             />
           </TableCell>
         );

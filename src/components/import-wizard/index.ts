@@ -31,6 +31,9 @@
 /** Main wizard component - orchestrates the 3-step import flow */
 export { ImportWizard } from './ImportWizard';
 
+/** Styling scope, tooltips and portals; wrap sub-components used on their own */
+export { WizardRoot } from './WizardRoot';
+
 /** Drag-and-drop file upload with validation */
 export { FileUploader } from './FileUploader';
 
@@ -74,6 +77,12 @@ export type {
   ValidationError,
   ValidationWarning,
   
+  // Edits & results
+  RowEdit,
+  AiEditRequest,
+  AiEditHandler,
+  ImportResult,
+
   // State & Props
   WizardStep,
   ImportWizardState,
@@ -119,7 +128,9 @@ export {
   /** Revalidate a single row (after editing) */
   revalidateRow, 
   /** Get validation summary statistics */
-  getValidationSummary 
+  getValidationSummary,
+  /** Resolve which field keys a row must fill in */
+  resolveRequiredKeys,
 } from '@/lib/import-wizard/validator';
 
 // Export

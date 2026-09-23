@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WizardRoot } from './WizardRoot';
 
 interface ColumnMapperProps<TKey extends string = string> {
   mappings: ColumnMapping<TKey>[];
@@ -17,7 +18,16 @@ interface ColumnMapperProps<TKey extends string = string> {
   className?: string;
 }
 
-export function ColumnMapper<TKey extends string = string>({
+/** Mapping step: match the file's columns to the Output Shape's fields */
+export function ColumnMapper<TKey extends string = string>(props: ColumnMapperProps<TKey>) {
+  return (
+    <WizardRoot>
+      <ColumnMapperContent {...props} />
+    </WizardRoot>
+  );
+}
+
+function ColumnMapperContent<TKey extends string = string>({
   mappings,
   fields,
   onMappingChange,

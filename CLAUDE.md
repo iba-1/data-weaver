@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**React Import Wizard** — a reusable React component library for CSV/Excel data import with a 3-step wizard flow: file upload → column mapping → data validation/editing. The demo app is an artwork data importer.
+**Data Weaver** — a reusable React component library for CSV/Excel data import with a 3-step wizard flow: file upload → column mapping → data validation/editing. SpeakArt is the first Host App; the demo app (GitHub Pages) is an artwork data importer. Purpose, scope and vocabulary: `docs/product/`, `CONTEXT.md`, `docs/adr/`.
 
 ## Commands
 
 ```bash
 npm run dev          # Start dev server on port 8080
-npm run build        # Production build
+npm run build        # Demo site build (GitHub Pages)
+npm run build:lib    # Package build into dist-lib/ (vite.lib.config.ts); `npm pack` runs it
 npm run lint         # ESLint (flat config, TS + React hooks + react-refresh)
 npm test             # Run tests once (vitest run)
 npm run test:watch   # Watch mode (vitest)
@@ -21,7 +22,6 @@ npm run test:watch   # Watch mode (vitest)
 - **React 18** + **TypeScript** + **Vite** (SWC plugin)
 - **Tailwind CSS** with CSS variables for theming (HSL-based color tokens in `src/index.css`)
 - **shadcn/ui** (Radix primitives) — components in `src/components/ui/`, configured via `components.json`
-- **Supabase** — client at `src/integrations/supabase/client.ts`, edge function `ai-edit-rows` for AI-powered bulk edits
 - **TanStack React Query** for async state
 - **React Router v6** for routing
 - **SheetJS (xlsx)** for CSV/Excel parsing and export
@@ -47,7 +47,8 @@ The import wizard is split into pure logic and React components, both barrel-exp
   - `DataValidator.tsx` — Data table with inline editing, search, find/replace, export
   - `EditableCell.tsx` — Single cell editor with keyboard navigation
   - `SearchBar.tsx` / `FindReplaceDialog.tsx` — Search and bulk replace
-  - `AiEditChat.tsx` — AI-powered inline chat (calls Supabase edge function `ai-edit-rows`)
+  - `AiEditChat.tsx` — AI Edit chat; calls the Host App-supplied `aiEdit` handler (hidden without one)
+  - `WizardRoot.tsx` — `.dw-root` styling scope + TooltipProvider + portal container; every step component wraps itself in one
 
 ### Generic type system with legacy compat
 
@@ -57,15 +58,28 @@ The library uses `FieldConfig<TKey>` for generic field definitions. Legacy `Artw
 
 - **`useHistory` hook** (`src/hooks/useHistory.ts`) — Generic undo/redo with 50-level stack, used by DataValidator
 - **Path alias**: `@/` maps to `src/` (configured in tsconfig and vite)
-- **Theming**: Tailwind uses `hsl(var(--token))` pattern; custom wizard tokens (dropzone, validation, mapping colors) defined in `src/index.css`
+- **Theming**: Tailwind uses `hsl(var(--token))` pattern; the wizard's tokens and component classes live in `src/components/import-wizard/styles.css`, scoped to `.dw-root`
+- **Package CSS**: `library.css` + `tailwind.lib.config.ts` compile utilities with `important: '.dw-root'` and no global preflight, so Host Apps need no Tailwind. Radix portals render into WizardRoot's container (`src/components/ui/portal-container.tsx`) so they stay styled
 - **Dark mode**: Class-based (`darkMode: ["class"]` in tailwind config)
 
 ## Environment Variables
 
-Required in `.env`:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
+None. The library has no backend; AI Edit uses an endpoint the Host App supplies.
 
 ## Testing
 
-Tests live alongside source in `src/lib/import-wizard/__tests__/`. Four test files cover the core logic modules (parser, matcher, validator, exporter). Test environment is jsdom with `@testing-library/jest-dom` matchers.
+Logic tests live in `src/lib/import-wizard/__tests__/`, component tests in `src/components/import-wizard/__tests__/` (Testing Library; the parser is mocked). Test environment is jsdom with `@testing-library/jest-dom` matchers.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.

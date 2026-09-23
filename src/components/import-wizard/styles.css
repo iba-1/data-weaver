@@ -1,8 +1,9 @@
 /**
- * React Import Wizard - Styles
- * 
- * Include this CSS file in your application or use it as a reference
- * for the CSS custom properties the library expects.
+ * Data Weaver - theme tokens and component styles
+ *
+ * Everything is scoped to `.dw-root`, the element WizardRoot renders, so
+ * nothing leaks into the Host App. Host Apps theme the wizard by overriding
+ * these custom properties on `.dw-root`.
  */
 
 /* ============================================================
@@ -10,10 +11,10 @@
    ============================================================
    
    The library uses semantic CSS custom properties for theming.
-   Override these values to match your application's design system.
+   Override these values on `.dw-root` to match your design system.
 */
 
-:root {
+.dw-root {
   /* Core Colors */
   --background: 0 0% 100%;
   --foreground: 220 20% 10%;
@@ -86,7 +87,8 @@
    Dark Mode Support
    ============================================================ */
 
-.dark {
+.dark .dw-root,
+.dw-root.dark {
   --background: 220 20% 8%;
   --foreground: 220 14% 96%;
   --card: 220 20% 10%;
@@ -144,26 +146,26 @@
    ============================================================ */
 
 /* Dropzone */
-.dropzone {
+.dw-root .dropzone {
   background: hsl(var(--dropzone-bg));
   border: 2px dashed hsl(var(--dropzone-border));
   border-radius: 0.75rem;
   transition: all 0.2s ease;
 }
 
-.dropzone:hover {
+.dw-root .dropzone:hover {
   background: hsl(var(--dropzone-hover));
   border-color: hsl(var(--primary));
 }
 
-.dropzone.active {
+.dw-root .dropzone.active {
   background: hsl(var(--dropzone-active));
   border-color: hsl(var(--primary));
   transform: scale(1.02);
 }
 
 /* Mapping cards */
-.mapping-card {
+.dw-root .mapping-card {
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
@@ -171,24 +173,24 @@
   transition: all 0.2s ease;
 }
 
-.mapping-card:hover {
+.dw-root .mapping-card:hover {
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
 }
 
-.mapping-matched {
+.dw-root .mapping-matched {
   background: hsl(var(--mapping-matched));
   border-color: hsl(var(--success) / 0.3);
 }
 
 /* Validation rows */
-.validation-row-valid {
+.dw-root .validation-row-valid {
   background: hsl(var(--validation-valid));
 }
 
-.validation-row-warning {
+.dw-root .validation-row-warning {
   background: hsl(var(--validation-warning));
 }
 
-.validation-row-error {
+.dw-root .validation-row-error {
   background: hsl(var(--validation-error));
 }

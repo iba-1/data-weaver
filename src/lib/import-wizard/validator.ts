@@ -46,6 +46,36 @@ export function validateRows<TRecord = ArtworkRecord, TKey extends string = Targ
 }
 
 /**
+ * The field keys a row must fill in to be valid.
+ *
+ * A field is required when its `FieldConfig.required` is set or it appears in
+ * `requiredFields`. Only when no `fields` are given at all does the legacy
+ * artwork configuration apply.
+ */
+export function resolveRequiredKeys<TKey extends string>(
+  fields?: FieldConfig<TKey>[],
+  requiredFields?: TKey[]
+): TKey[] {
+  const fromFields = fields
+    ? fields.filter((f) => f.required).map((f) => f.key)
+    : (TARGET_FIELDS.filter((f) => f.required).map((f) => f.key) as string[] as TKey[]);
+  const keys = requiredFields ? [...fromFields, ...requiredFields] : fromFields;
+  return Array.from(new Set(keys));
+}
+
+/**
+ * Mark every field in `requiredFields` as required, so the fields are the
+ * single source of truth for what a valid row needs.
+ */
+export function markRequiredFields<TKey extends string>(
+  fields: FieldConfig<TKey>[],
+  requiredFields?: TKey[]
+): FieldConfig<TKey>[] {
+  if (!requiredFields?.length) return fields;
+  return fields.map((f) => (requiredFields.includes(f.key) ? { ...f, required: true } : f));
+}
+
+/**
  * Revalidate a single row (after editing)
  */
 export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = TargetField>(
@@ -56,7 +86,8 @@ export function revalidateRow<TRecord = ArtworkRecord, TKey extends string = Tar
     customValidator?: (data: TRecord, rowIndex: number) => ValidationResult[];
   } = {}
 ): RowValidation<TRecord> {
-  const { fields, requiredFields = ['title', 'artist'] as TKey[], customValidator } = options;
+  const { fields, customValidator } = options;
+  const requiredFields = resolveRequiredKeys(fields, options.requiredFields);
   
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
@@ -150,7 +181,8 @@ function validateRow<TRecord, TKey extends string>(
     rowIndex: number;
   }
 ): RowValidation<TRecord> {
-  const { fields, requiredFields = ['title', 'artist'] as TKey[], customValidator, rowIndex } = options;
+  const { fields, customValidator, rowIndex } = options;
+  const requiredFields = resolveRequiredKeys(fields, options.requiredFields);
   
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
@@ -304,11 +336,14 @@ export function getValidationSummary<TRecord>(validations: RowValidation<TRecord
   valid: number;
   withErrors: number;
   withWarnings: number;
+  excluded: number;
 } {
+  const included = validations.filter((v) => !v.excluded);
   return {
     total: validations.length,
-    valid: validations.filter((v) => v.isValid && v.warnings.length === 0).length,
-    withErrors: validations.filter((v) => !v.isValid).length,
-    withWarnings: validations.filter((v) => v.isValid && v.warnings.length > 0).length,
+    valid: included.filter((v) => v.isValid && v.warnings.length === 0).length,
+    withErrors: included.filter((v) => !v.isValid).length,
+    withWarnings: included.filter((v) => v.isValid && v.warnings.length > 0).length,
+    excluded: validations.length - included.length,
   };
 }
