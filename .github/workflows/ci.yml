@@ -32,6 +32,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # Dates must mean the same calendar day in every time zone
+      - run: npm run test:tz
       - run: npx tsc --noEmit -p tsconfig.app.json
 
       - name: Build demo site
