@@ -32,7 +32,8 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 ### Import (Commit) and the Import Report
 - Data Weaver saves the rows itself, through a small adapter your app supplies: `saveBatch(rows)`. Rows are sent in batches (100 by default, `batchSize` to change it), one batch at a time. Excluded Rows are never sent.
 - Every row carries an **Import Key**, so your app can recognise a row it has already saved and not save it twice. Your app answers each batch with one outcome per row: created, or rejected with a reason and, when known, the field. See [The Host App adapter](#the-host-app-adapter).
-- The Importer sees the progress while rows are saved; the review can't be changed meanwhile.
+- A batch that fails in transit (a network error, a timeout, a server error) is retried automatically, with the same Import Keys, so a batch that was saved but whose answer was lost is not saved twice. Rows still not sent after the last attempt are reported as rejected.
+- The Importer sees the progress while rows are saved, including when a batch is being retried; the review can't be changed meanwhile.
 - Afterwards, the **Import Report** shows how many rows were imported, rejected and excluded, each Rejected Row with its row number, your reason and the field, and the Excluded Rows as a separate list. Your app receives the same report through `onImportFinished`.
 - The Importer can download the Rejected Rows as a spreadsheet (the file's own columns plus an error column) to fix and import again. The report is not kept, so leaving while it shows Rejected Rows asks for confirmation. See [Leaving with Rejected Rows](#leaving-with-rejected-rows).
 
@@ -299,6 +300,7 @@ The complete flow: upload, column matching, review, Commit and the Import Report
 | `requiredFields`    | `TKey[]`                                          | `[]`                        | Extra required field keys, on top of fields with `required: true`. |
 | `adapter`           | `HostAppAdapter<TRecord>`                         | Required                    | How rows are saved: `{ saveBatch }`. See [The Host App adapter](#the-host-app-adapter). The import can't start while an included row is invalid. |
 | `batchSize`         | `number`                                          | `100`                       | Most rows per `saveBatch` call. Values below 1 fall back to the default; fractions are rounded down. |
+| `retry`             | `{ attempts?, baseDelayMs?, maxDelayMs? }`        | `{ attempts: 3, baseDelayMs: 1000, maxDelayMs: 8000 }` | How a batch whose `saveBatch` promise rejects is sent again. `attempts` counts the first one (`1` turns retrying off). See [Retries](#retries). |
 | `onImportFinished`  | `(report: ImportReport<TRecord>) => void`         | -                           | Called once when Commit is over, with the Import Report. |
 | `onLeaveWarningChange` | `(warn: boolean) => void`                      | -                           | `true` while leaving should be confirmed (the Import Report shows Rejected Rows), `false` after. Guard your router with it. See [Leaving with Rejected Rows](#leaving-with-rejected-rows). |
 | `onEvent`           | `(event: ImportWizardEvent) => void`              | -                           | Called for every lifecycle event. |
@@ -454,13 +456,26 @@ Your `saveBatch` must:
 1. **Answer every row exactly once**, matched by `importKey` (in any order): `created`, or `rejected` with a `reason` the Importer can act on, in their language, and the `field` key at fault when you know it. Save every row you can; one bad row must not stop the others.
 2. **Honour Import Keys.** If a row's `importKey` was already saved, don't save it again: answer `created`. This makes sending a row again always safe.
 3. **Only create.** A Commit never updates existing records (reject a row that would duplicate one, with a reason).
-4. **Reject the promise** (throw) only when nothing is known about the batch, e.g. a network error.
+4. **Reject the promise** (throw) only when nothing is known about the batch, e.g. a network error, a timeout or a server error without per-row outcomes. Data Weaver will send the same rows again.
 
 What Data Weaver does with the answer:
 
 - Batches are sent one at a time, in file order, `batchSize` rows each (default 100). The next batch is sent when the previous one has its answer.
 - A row counts as imported **only** with exactly one valid `created` outcome for its key. A row with no outcome, several outcomes or an unknown status is an adapter bug: it becomes a Rejected Row (*"No clear answer was received for this row, so it was not counted as imported."*), and the problem is logged with `console.error` for your developers. Outcomes for keys that weren't in the batch are ignored (and logged). A rejection without a reason is shown with `commit.noReason`.
-- A batch whose promise rejects is not retried yet: its rows become Rejected Rows (*"This row could not be sent. Try importing it again later."*) and the next batch is sent.
+- A batch whose promise rejects is retried (see [Retries](#retries)). After the last attempt its rows become Rejected Rows with `cause: 'notSent'` and the reason `commit.notSent` (*"This row could not be sent: the server could not be reached, even after 3 tries. Try importing it again later."*), and the next batch is sent.
+
+#### Retries
+
+A batch **fails in transit** when its `saveBatch` promise rejects (or the call throws): nothing is known about it. It may never have arrived, or your app may have saved it and the answer was lost on the way back. Data Weaver then:
+
+- sends **the same rows with the same Import Keys** again, so rows your app already saved are answered `created` and not saved twice (rule 2 above is what makes this safe);
+- makes at most `retry.attempts` attempts in total (default 3), waiting between them with exponential backoff and jitter: the wait before retry *n* is a random time between half and all of `min(maxDelayMs, baseDelayMs × 2^(n−1))`. With the defaults: about 0.5-1 s, then 1-2 s;
+- shows the Importer *"Connection problem, retrying… (attempt 2 of 3)"* (`commit.retrying`) under the progress, and emits a `BATCH_RETRY` event per retry;
+- gives up after the last attempt: the batch's rows become Rejected Rows (`notSent`) and the Commit carries on with the next batch. The Importer can import them again later; their Import Keys still protect against duplicates.
+
+**An answer that arrives is never retried, even an invalid one** (`invalidAnswer`: not an array, missing or repeated outcomes, an unknown status). Your app did answer, so sending the batch again would only repeat the adapter's bug; the rows are rejected and the problem is logged for your developers instead. Likewise, rows you reject are not retried.
+
+If the wizard is unmounted while a batch is waiting to be retried, the wait ends at once and no further attempt is made.
 
 **Import Keys** are random UUIDs (`crypto.randomUUID`, or built from `crypto.getRandomValues` where that isn't available, e.g. on pages not served over HTTPS). One is made for each data row when the file is parsed, and stays tied to that row of the file for the whole import: editing, undo and redo, excluding and including, and going back to column matching (which validates the file's rows again) all keep it. Uploading a file, even the same one, makes new keys. Store the key with each saved record, or in a table of keys already imported, and check it before saving.
 
@@ -478,7 +493,7 @@ interface ImportReport<TRecord> {
 interface RejectedRow<TRecord> extends ImportRow<TRecord> {
   reason: string;  // your reason as given, or Data Weaver's (from the message catalogue)
   field?: string;  // the field key you gave
-  cause: 'host' | 'notSent' | 'invalidAnswer'; // rejected by you, batch not sent, or no valid outcome
+  cause: 'host' | 'notSent' | 'invalidAnswer'; // rejected by you, server unreachable after every retry, or no valid outcome
 }
 ```
 
@@ -532,6 +547,7 @@ type ImportWizardEvent<TRecord> =
   | { type: 'ROW_COMPLETE'; event: RowCompleteEvent<TRecord> }
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
   | { type: 'COMMIT_STARTED'; rows: number; batches: number; excluded: number }
+  | { type: 'BATCH_RETRY'; retry: BatchRetry }
   | { type: 'BATCH_SETTLED'; progress: CommitProgress; created: ImportRow<TRecord>[]; rejected: RejectedRow<TRecord>[] }
   | { type: 'IMPORT_FINISHED'; report: ImportReport<TRecord> }
   | { type: 'ERROR'; error: string };
@@ -541,6 +557,15 @@ interface CommitProgress {
   total: number;   // rows being committed
   batch: number;   // batches with an outcome so far
   batches: number;
+}
+
+interface BatchRetry {
+  batch: number;    // the batch that failed in transit, from 1
+  batches: number;
+  attempt: number;  // the attempt about to be made, from 2
+  attempts: number; // attempts allowed in total
+  delayMs: number;  // the wait before it
+  error: unknown;   // what the failed attempt rejected with
 }
 
 interface RowParseEvent<TRecord> {
@@ -560,7 +585,7 @@ interface RowCompleteEvent<TRecord> {
 
 `ERROR` is emitted when a file that passed the upload checks can't be parsed, and when a choice field's options fail to load. Its `error` is written with the wizard's message catalogue.
 
-`BATCH_SETTLED` is emitted once per batch, whether your app answered or the batch could not be sent; `created` and `rejected` are that batch's rows. `IMPORT_FINISHED` carries the report `onImportFinished` receives.
+`BATCH_RETRY` is emitted each time a batch failed in transit and is about to be sent again, before the wait; log its `error` to see what went wrong. `BATCH_SETTLED` is emitted once per batch, after any retries, whether your app answered or the batch could not be sent; `created` and `rejected` are that batch's rows. `IMPORT_FINISHED` carries the report `onImportFinished` receives.
 
 **Breaking change (before 1.0):** `onComplete` and the `IMPORT_COMPLETED` event are gone. The wizard no longer hands the records over for your app to save: pass an `adapter` and read the outcome from `onImportFinished`.
 
@@ -736,11 +761,14 @@ const rows = validated
 const { created, rejected } = await commitRows(rows, {
   saveBatch: adapter.saveBatch,
   batchSize: 100,
+  retry: { attempts: 3 },
+  onBatchRetry: (retry) => console.warn(`Batch ${retry.batch}: attempt ${retry.attempt} in ${retry.delayMs} ms`, retry.error),
   onBatchSettled: (batch, progress) => console.log(`${progress.done} of ${progress.total}`),
+  signal: abortController.signal, // optional: stop sending batches and retries
 });
 ```
 
-`settleBatch(rows, answer)` is the check applied to each answer. `DEFAULT_BATCH_SIZE` is 100.
+`settleBatch(rows, answer)` is the check applied to each answer. `DEFAULT_BATCH_SIZE` is 100; `DEFAULT_RETRY` is `{ attempts: 3, baseDelayMs: 1000, maxDelayMs: 8000 }`. For tests, `commitRows` also takes `sleep(ms, signal)` and `random()` to replace the real waits and the jitter.
 
 #### Export
 
@@ -829,7 +857,7 @@ const italian: PartialMessageCatalogue = {
 
 **Field labels and options** are part of your Output Shape, not of the catalogue: give them in the Importer's language in `fields`.
 
-**Rejection reasons** from your `saveBatch` are your own text and are shown as you give them. Only the reasons Data Weaver gives itself (a batch that could not be sent, an answer with no valid outcome, a rejection without a reason) come from the catalogue.
+**Rejection reasons** from your `saveBatch` are your own text and are shown as you give them. Only the reasons Data Weaver gives itself (a batch that could not be sent even after retries, an answer with no valid outcome, a rejection without a reason) come from the catalogue.
 
 ### Keys
 
@@ -895,7 +923,8 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `commit.progress` | done, total | `0 of 1 row processed`, `100 of 250 rows processed` |
 | `commit.progressLabel` | - | `Import progress` |
 | `commit.keepOpen` | - | `Keep this page open until the import finishes.` |
-| `commit.notSent` | - | `This row could not be sent. Try importing it again later.` |
+| `commit.retrying` | attempt, attempts | `Connection problem, retrying… (attempt {attempt} of {attempts})` |
+| `commit.notSent` | attempts | `This row could not be sent: the server could not be reached, even after 3 tries. Try importing it again later.` (with 1 attempt: `…could not be reached. Try importing it again later.`) |
 | `commit.invalidAnswer` | - | `No clear answer was received for this row, so it was not counted as imported.` |
 | `commit.noReason` | - | `Refused without a reason.` |
 | `report.title` | - | `Import finished` |

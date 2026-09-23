@@ -100,6 +100,8 @@ export type {
   RejectedRow,
   RejectionCause,
   CommitProgress,
+  RetryOptions,
+  BatchRetry,
   ImportReport,
 
   // State & Props
@@ -212,6 +214,7 @@ export {
   /** One Import Key per row */
   createImportKeys,
   DEFAULT_BATCH_SIZE,
+  DEFAULT_RETRY,
   type BatchResult,
   type CommitOptions,
   type CommitOutcome,

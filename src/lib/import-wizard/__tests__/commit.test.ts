@@ -1,16 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   commitRows,
   createImportKey,
   createImportKeys,
   DEFAULT_BATCH_SIZE,
+  DEFAULT_RETRY,
   normaliseBatchSize,
+  normaliseRetry,
+  retryDelay,
   settleBatch,
   toBatches,
   type BatchResult,
 } from '../commit';
 import { resolveMessages } from '../messages';
-import type { CommitProgress, ImportRow } from '../types';
+import type { BatchRetry, CommitProgress, ImportRow } from '../types';
 import { createFakeHostApp } from '@/test/fakeHostApp';
 
 type Rec = { title: string };
@@ -184,37 +187,6 @@ describe('commitRows', () => {
     expect(host.calls.map((c) => c.length)).toEqual([2, 2, 1]);
   });
 
-  it('turns a batch whose promise rejects into Rejected Rows and carries on with the next batch', async () => {
-    const host = createFakeHostApp<Rec>();
-    const network = new TypeError('Failed to fetch');
-    host.onCall(2, { fail: network });
-    const results: BatchResult<Rec>[] = [];
-
-    const outcome = await commitRows(rows(5), {
-      saveBatch: host.adapter.saveBatch,
-      batchSize: 2,
-      onBatchSettled: (result) => results.push(result),
-    });
-
-    expect(host.calls).toHaveLength(3);
-    expect(outcome.created.map((r) => r.rowIndex)).toEqual([0, 1, 4]);
-    expect(outcome.rejected).toEqual([
-      { ...rows(5)[2], reason: 'This row could not be sent. Try importing it again later.', cause: 'notSent' },
-      { ...rows(5)[3], reason: 'This row could not be sent. Try importing it again later.', cause: 'notSent' },
-    ]);
-    expect(results[1].error).toBe(network);
-  });
-
-  it('treats a saveBatch that throws instead of rejecting the same way', async () => {
-    const outcome = await commitRows(rows(2), {
-      saveBatch: () => {
-        throw new Error('adapter bug');
-      },
-    });
-    expect(outcome.created).toEqual([]);
-    expect(outcome.rejected.map((r) => r.cause)).toEqual(['notSent', 'notSent']);
-  });
-
   it('reports the Host App’s rejections per row and does not save a row twice when sent again', async () => {
     const host = createFakeHostApp<Rec>({
       reject: (row) => (row.record.title === 'Opera 2' ? { reason: 'Titolo già presente', field: 'title' } : null),
@@ -235,5 +207,270 @@ describe('commitRows', () => {
     const saveBatch = vi.fn();
     expect(await commitRows([], { saveBatch })).toEqual({ created: [], rejected: [] });
     expect(saveBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('commitRows: retrying a batch that fails in transit', () => {
+  const unreachable = (attempts: number) =>
+    `This row could not be sent: the server could not be reached, even after ${attempts} tries. Try importing it again later.`;
+
+  /** A sleep that returns at once and remembers how long it was asked to wait */
+  function instantSleep() {
+    const waits: number[] = [];
+    const sleep = vi.fn(async (ms: number) => {
+      waits.push(ms);
+    });
+    return { sleep, waits };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('retries a batch whose promise rejects, and counts it once it succeeds', async () => {
+    const host = createFakeHostApp<Rec>();
+    const network = new TypeError('Failed to fetch');
+    host.onCall(1, { fail: network });
+    const { sleep, waits } = instantSleep();
+    const retries: BatchRetry[] = [];
+    const settled: BatchResult<Rec>[] = [];
+
+    const outcome = await commitRows(rows(3), {
+      saveBatch: host.adapter.saveBatch,
+      batchSize: 2,
+      sleep,
+      random: () => 1,
+      onBatchRetry: (retry) => retries.push(retry),
+      onBatchSettled: (result) => settled.push(result),
+    });
+
+    expect(host.calls.map((call) => call.map((row) => row.rowIndex))).toEqual([[0, 1], [0, 1], [2]]);
+    expect(outcome.created.map((row) => row.rowIndex)).toEqual([0, 1, 2]);
+    expect(outcome.rejected).toEqual([]);
+    expect(waits).toEqual([1000]);
+    expect(retries).toEqual([{ batch: 1, batches: 2, attempt: 2, attempts: 3, delayMs: 1000, error: network }]);
+    // A batch that eventually succeeded settles once, with no error
+    expect(settled).toHaveLength(2);
+    expect(settled[0].error).toBeUndefined();
+  });
+
+  it('resends the same rows with the same Import Keys, so a batch saved but whose answer was lost is not saved twice', async () => {
+    const host = createFakeHostApp<Rec>();
+    host.onCall(1, { lose: new Error('Connection reset') });
+    const { sleep } = instantSleep();
+
+    const outcome = await commitRows(rows(4), { saveBatch: host.adapter.saveBatch, sleep });
+
+    expect(host.calls).toHaveLength(2);
+    expect(host.calls[1]).toEqual(host.calls[0]);
+    expect(outcome.created.map((row) => row.rowIndex)).toEqual([0, 1, 2, 3]);
+    expect(host.store.size).toBe(4);
+    expect(host.writes).toBe(4);
+  });
+
+  it('gives up after the last attempt: the rows become Rejected Rows and the next batch is sent', async () => {
+    const host = createFakeHostApp<Rec>();
+    const errors = [new Error('503'), new Error('504'), new TypeError('Failed to fetch')];
+    errors.forEach((fail, i) => host.onCall(i + 1, { fail }));
+    const { sleep, waits } = instantSleep();
+    const settled: BatchResult<Rec>[] = [];
+    const progress: CommitProgress[] = [];
+
+    const outcome = await commitRows(rows(3), {
+      saveBatch: host.adapter.saveBatch,
+      batchSize: 2,
+      sleep,
+      random: () => 1,
+      onBatchSettled: (result, p) => {
+        settled.push(result);
+        progress.push(p);
+      },
+    });
+
+    expect(host.calls.map((call) => call.map((row) => row.rowIndex))).toEqual([[0, 1], [0, 1], [0, 1], [2]]);
+    expect(waits).toEqual([1000, 2000]);
+    expect(outcome.created.map((row) => row.rowIndex)).toEqual([2]);
+    expect(outcome.rejected).toEqual([
+      { ...rows(3)[0], reason: unreachable(3), cause: 'notSent' },
+      { ...rows(3)[1], reason: unreachable(3), cause: 'notSent' },
+    ]);
+    expect(settled[0].error).toBe(errors[2]);
+    expect(progress.map((p) => p.done)).toEqual([2, 3]);
+    expect(host.store.size).toBe(1);
+  });
+
+  it('treats a saveBatch that throws instead of rejecting the same way', async () => {
+    const saveBatch = vi.fn(() => {
+      throw new Error('adapter bug');
+    });
+    const outcome = await commitRows(rows(2), { saveBatch, sleep: instantSleep().sleep });
+
+    expect(saveBatch).toHaveBeenCalledTimes(3);
+    expect(outcome.created).toEqual([]);
+    expect(outcome.rejected.map((r) => [r.cause, r.reason])).toEqual([
+      ['notSent', unreachable(3)],
+      ['notSent', unreachable(3)],
+    ]);
+  });
+
+  it('does not retry an answer that arrived but is invalid: the Host App answered, so sending again would not fix it', async () => {
+    const host = createFakeHostApp<Rec>();
+    host.onCall(1, { answer: () => ({ ok: true }) });
+    const { sleep } = instantSleep();
+    const onBatchRetry = vi.fn();
+
+    const outcome = await commitRows(rows(2), { saveBatch: host.adapter.saveBatch, sleep, onBatchRetry });
+
+    expect(host.calls).toHaveLength(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(onBatchRetry).not.toHaveBeenCalled();
+    expect(outcome.rejected.map((row) => row.cause)).toEqual(['invalidAnswer', 'invalidAnswer']);
+  });
+
+  it('does not retry the Host App’s rejections', async () => {
+    const host = createFakeHostApp<Rec>({ reject: () => ({ reason: 'Titolo già presente' }) });
+    const { sleep } = instantSleep();
+
+    const outcome = await commitRows(rows(2), { saveBatch: host.adapter.saveBatch, sleep });
+
+    expect(host.calls).toHaveLength(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(outcome.rejected.map((row) => row.cause)).toEqual(['host', 'host']);
+  });
+
+  it('uses the attempts and delays given; one attempt turns retrying off', async () => {
+    const always = vi.fn(async () => {
+      throw new Error('offline');
+    });
+
+    const { sleep, waits } = instantSleep();
+    await commitRows(rows(1), {
+      saveBatch: always,
+      sleep,
+      random: () => 1,
+      retry: { attempts: 5, baseDelayMs: 100, maxDelayMs: 300 },
+    });
+    expect(always).toHaveBeenCalledTimes(5);
+    expect(waits).toEqual([100, 200, 300, 300]);
+
+    always.mockClear();
+    const once = instantSleep();
+    const outcome = await commitRows(rows(1), { saveBatch: always, sleep: once.sleep, retry: { attempts: 1 } });
+    expect(always).toHaveBeenCalledTimes(1);
+    expect(once.sleep).not.toHaveBeenCalled();
+    expect(outcome.rejected[0].reason).toBe(
+      'This row could not be sent: the server could not be reached. Try importing it again later.'
+    );
+  });
+
+  it('gives the unreachable reason in the catalogue’s language', async () => {
+    const italian = resolveMessages({ commit: { notSent: 'Server irraggiungibile dopo {attempts} tentativi.' } });
+    const outcome = await commitRows(rows(1), {
+      saveBatch: async () => {
+        throw new Error('offline');
+      },
+      sleep: instantSleep().sleep,
+      messages: italian,
+    });
+    expect(outcome.rejected[0].reason).toBe('Server irraggiungibile dopo 3 tentativi.');
+  });
+
+  it('waits the backoff on real timers before each retry', async () => {
+    vi.useFakeTimers();
+    const host = createFakeHostApp<Rec>();
+    host.onCall(1, { fail: new Error('offline') });
+    host.onCall(2, { fail: new Error('offline') });
+
+    const committing = commitRows(rows(1), { saveBatch: host.adapter.saveBatch, random: () => 0 });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(host.calls).toHaveLength(1);
+    // First retry after 500-1000 ms (random 0: 500)
+    await vi.advanceTimersByTimeAsync(499);
+    expect(host.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(host.calls).toHaveLength(2);
+    // Second retry after 1000-2000 ms (random 0: 1000)
+    await vi.advanceTimersByTimeAsync(999);
+    expect(host.calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(host.calls).toHaveLength(3);
+
+    const outcome = await committing;
+    expect(outcome.created).toHaveLength(1);
+  });
+
+  it('stops waiting and retrying once aborted: the waiting batch becomes Rejected Rows and no batch is sent after it', async () => {
+    const host = createFakeHostApp<Rec>();
+    host.onCall(1, { fail: new Error('offline') });
+    const abort = new AbortController();
+    const settled = vi.fn();
+    const started = Date.now();
+
+    const outcome = await commitRows(rows(3), {
+      saveBatch: host.adapter.saveBatch,
+      batchSize: 2,
+      signal: abort.signal,
+      // A wait far longer than the test's timeout: only the abort can end it
+      retry: { baseDelayMs: 600_000, maxDelayMs: 600_000 },
+      onBatchRetry: () => abort.abort(),
+      onBatchSettled: settled,
+    });
+
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(host.calls).toHaveLength(1);
+    expect(outcome.created).toEqual([]);
+    expect(outcome.rejected.map((row) => [row.rowIndex, row.cause])).toEqual([
+      [0, 'notSent'],
+      [1, 'notSent'],
+    ]);
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes no retry once aborted while an attempt was on its way', async () => {
+    const host = createFakeHostApp<Rec>();
+    host.onCall(1, { fail: new Error('offline') });
+    host.onCall(2, { fail: new Error('offline') });
+    const abort = new AbortController();
+    const second = host.hold(2);
+    const { sleep } = instantSleep();
+
+    const committing = commitRows(rows(2), { saveBatch: host.adapter.saveBatch, signal: abort.signal, sleep });
+    await second.reached;
+    abort.abort();
+    second.release();
+    const outcome = await committing;
+
+    expect(host.calls).toHaveLength(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(outcome.rejected.map((row) => row.cause)).toEqual(['notSent', 'notSent']);
+  });
+});
+
+describe('retry policy', () => {
+  it('defaults to 3 attempts, 1 s before the first retry, doubling, at most 8 s', () => {
+    expect(DEFAULT_RETRY).toEqual({ attempts: 3, baseDelayMs: 1000, maxDelayMs: 8000 });
+    expect(normaliseRetry(undefined)).toEqual(DEFAULT_RETRY);
+    expect(normaliseRetry({ attempts: 5 })).toEqual({ ...DEFAULT_RETRY, attempts: 5 });
+  });
+
+  it('falls back to the default for values that make no sense', () => {
+    expect(normaliseRetry({ attempts: 0, baseDelayMs: -1, maxDelayMs: NaN })).toEqual(DEFAULT_RETRY);
+    expect(normaliseRetry({ attempts: Infinity })).toEqual(DEFAULT_RETRY);
+    expect(normaliseRetry({ attempts: 2.7, baseDelayMs: 0 })).toEqual({ ...DEFAULT_RETRY, attempts: 2, baseDelayMs: 0 });
+    // The longest wait is never shorter than the first
+    expect(normaliseRetry({ baseDelayMs: 5000, maxDelayMs: 100 })).toEqual({
+      ...DEFAULT_RETRY,
+      baseDelayMs: 5000,
+      maxDelayMs: 5000,
+    });
+  });
+
+  it('backs off exponentially, capped, with jitter between half and all of the wait', () => {
+    const policy = normaliseRetry({ baseDelayMs: 1000, maxDelayMs: 3000 });
+    expect([1, 2, 3, 4].map((retry) => retryDelay(retry, policy, () => 1))).toEqual([1000, 2000, 3000, 3000]);
+    expect([1, 2, 3, 4].map((retry) => retryDelay(retry, policy, () => 0))).toEqual([500, 1000, 1500, 1500]);
+    expect(retryDelay(2, policy, () => 0.5)).toBe(1500);
+    expect(retryDelay(1, normaliseRetry({ baseDelayMs: 0 }), () => 1)).toBe(0);
   });
 });

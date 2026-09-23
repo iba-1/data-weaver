@@ -8,7 +8,7 @@
 
 Spec: `../spec.md`
 
-- [ ] A batch that fails in transit (network error, timeout, server error without per-row outcomes) is retried a small number of times with backoff
-- [ ] A batch saved by the Host App but whose answer was lost is retried with the same Import Keys and produces no duplicates (fake adapter test: lose a batch after saving it)
-- [ ] After the last retry, the batch's rows become Rejected Rows with an 'unreachable' reason
-- [ ] Retry count and backoff are covered by core tests
+- [x] A batch that fails in transit (network error, timeout, server error without per-row outcomes) is retried a small number of times with backoff
+- [x] A batch saved by the Host App but whose answer was lost is retried with the same Import Keys and produces no duplicates (fake adapter test: lose a batch after saving it)
+- [x] After the last retry, the batch's rows become Rejected Rows with an 'unreachable' reason
+- [x] Retry count and backoff are covered by core tests

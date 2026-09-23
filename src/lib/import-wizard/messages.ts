@@ -102,8 +102,16 @@ export interface MessageParams {
     progress: { done: number; total: number };
     progressLabel: void;
     keepOpen: void;
-    /** A Rejected Row's reason when its batch could not be sent */
-    notSent: void;
+    /**
+     * Shown while a batch that failed in transit is being sent again.
+     * `attempt` is the attempt being made (from 2) of `attempts` in total.
+     */
+    retrying: { attempt: number; attempts: number };
+    /**
+     * A Rejected Row's reason when its batch could not be sent: the server
+     * could not be reached on any of the `attempts` made (1 when retrying is off)
+     */
+    notSent: { attempts: number };
     /** A Rejected Row's reason when the Host App's answer had no valid outcome for it */
     invalidAnswer: void;
     /** A Rejected Row's reason when the Host App rejected it without one */
@@ -318,7 +326,11 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     progress: (p) => `${count(p.done)} of ${plural(p.total, 'row', 'rows')} processed`,
     progressLabel: 'Import progress',
     keepOpen: 'Keep this page open until the import finishes.',
-    notSent: 'This row could not be sent. Try importing it again later.',
+    retrying: 'Connection problem, retrying… (attempt {attempt} of {attempts})',
+    notSent: (p) =>
+      p.attempts > 1
+        ? `This row could not be sent: the server could not be reached, even after ${count(p.attempts)} tries. Try importing it again later.`
+        : 'This row could not be sent: the server could not be reached. Try importing it again later.',
     invalidAnswer: 'No clear answer was received for this row, so it was not counted as imported.',
     noReason: 'Refused without a reason.',
   },

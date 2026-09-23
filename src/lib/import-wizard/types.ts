@@ -278,7 +278,8 @@ export type RowOutcome =
  * matched by `importKey` (in any order), and must honour Import Keys: a row
  * whose key was already saved is not saved again and is answered `created`.
  * Rejecting the promise (e.g. a network error) means no outcome is known for
- * any row of the batch.
+ * any row of the batch: Data Weaver sends the same rows, with the same Import
+ * Keys, again (see `RetryOptions`).
  */
 export type SaveBatch<TRecord = ArtworkRecord> = (rows: ImportRow<TRecord>[]) => Promise<RowOutcome[]>;
 
@@ -290,7 +291,8 @@ export interface HostAppAdapter<TRecord = ArtworkRecord> {
 /**
  * Why a row became a Rejected Row:
  * - `host`: the Host App answered `rejected`;
- * - `notSent`: its batch's promise rejected, so the row may not have reached the Host App;
+ * - `notSent`: its batch's promise rejected on every attempt (the server could
+ *   not be reached), so the row may not have reached the Host App;
  * - `invalidAnswer`: the Host App's answer had no valid outcome for the row
  *   (missing, repeated or malformed), so it is not counted as imported.
  */
@@ -317,6 +319,36 @@ export interface CommitProgress {
   /** Batches with an outcome so far */
   batch: number;
   batches: number;
+}
+
+/**
+ * How a batch that fails in transit (its `saveBatch` promise rejects, or the
+ * call throws) is sent again. Retrying is safe because the rows keep their
+ * Import Keys (ADR-0002). An answer that arrives but is invalid is never
+ * retried: the Host App did answer, and asking again would not fix its adapter.
+ */
+export interface RetryOptions {
+  /** Attempts per batch in total, the first included; `1` turns retrying off. @default 3 */
+  attempts?: number;
+  /** The wait before the first retry, in milliseconds; it doubles for each retry after it. @default 1000 */
+  baseDelayMs?: number;
+  /** The longest wait between two attempts, in milliseconds. @default 8000 */
+  maxDelayMs?: number;
+}
+
+/** A batch failed in transit and will be sent again after `delayMs` */
+export interface BatchRetry {
+  /** The batch, from 1 */
+  batch: number;
+  batches: number;
+  /** The attempt about to be made, from 2 */
+  attempt: number;
+  /** Attempts allowed in total */
+  attempts: number;
+  /** The wait before it, in milliseconds */
+  delayMs: number;
+  /** What the failed attempt rejected (or threw) with */
+  error: unknown;
 }
 
 /**
@@ -384,6 +416,8 @@ export type ImportWizardEvent<TRecord = ArtworkRecord> =
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
   /** Commit began: `rows` will be sent in `batches`; `excluded` rows will not */
   | { type: 'COMMIT_STARTED'; rows: number; batches: number; excluded: number }
+  /** A batch failed in transit and will be sent again, with the same Import Keys */
+  | { type: 'BATCH_RETRY'; retry: BatchRetry }
   /** A batch has its outcome, whether the Host App answered or the batch could not be sent */
   | {
       type: 'BATCH_SETTLED';
@@ -429,6 +463,13 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
    * @default 100
    */
   batchSize?: number;
+
+  /**
+   * How a batch whose `saveBatch` promise rejects is retried: by default 3
+   * attempts in total, waiting about 1 s, then about 2 s (with jitter).
+   * After the last attempt its rows become Rejected Rows (`notSent`).
+   */
+  retry?: RetryOptions;
 
   /**
    * Called once when Commit is over, with the Import Report: the rows the
