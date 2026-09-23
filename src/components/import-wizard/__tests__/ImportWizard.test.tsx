@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
@@ -393,5 +393,53 @@ describe('ImportWizard title and description', () => {
 
     // The drop zone's "Drag and drop a file here" is the only heading
     expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Drag and drop a file here']);
+  });
+});
+
+describe('step indicator in a narrow container', () => {
+  /** The container's width, and the full row's natural width, as a browser would lay them out */
+  let containerWidth = 0;
+  const FULL_ROW_WIDTH = 880;
+  let resize: () => void = () => {};
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      }
+    );
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-step-indicator') ? containerWidth : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.parentElement?.hasAttribute('data-step-indicator') ? FULL_ROW_WIDTH : 0;
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('keeps only the current step’s label visible when the full indicator does not fit, and all of them again when it does', () => {
+    containerWidth = 400;
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
+
+    // Narrow: the other steps' labels are only for screen readers
+    expect(screen.getByText('Upload')).not.toHaveClass('sr-only');
+    expect(screen.getByText('Match columns')).toHaveClass('sr-only');
+
+    containerWidth = 1000;
+    act(() => resize());
+    expect(screen.getByText('Match columns')).not.toHaveClass('sr-only');
+
+    containerWidth = 400;
+    act(() => resize());
+    expect(screen.getByText('Match columns')).toHaveClass('sr-only');
   });
 });

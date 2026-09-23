@@ -12,7 +12,7 @@ Spec: `../spec.md`
 - [x] The demo offers switches to reject a chosen row and to lose a batch
 - [x] The demo has no AI Edit
 - [x] A sample spreadsheet exercising every path is downloadable from the demo
-- [ ] Checked by hand on the deployed demo; findings noted on the ticket (checked on the local dev server only, see Notes; the deployed site can only be checked after merge to main)
+- [x] Checked by hand on the deployed demo; findings noted on the ticket
 
 ## Notes
 
@@ -33,3 +33,13 @@ Spec: `../spec.md`
 - The deployed GitHub Pages demo (needs the merge; check the `/data-weaver/` base path and Google Fonts load there).
 - At 390 px the wizard's own step indicator is wider than the screen (page scrolls sideways to 493 px). That is the library's layout, not the demo page's; left alone per "do not restyle the library". Worth a ticket.
 - "Refuse a title" is an exact (normalised) title match rather than "contains", so the refused row can be fixed in Fix & Retry by retitling it.
+
+### Deployed demo (2026-09-23, after PR #18)
+
+Walked on https://iba-1.github.io/data-weaver/ in Chromium at 1280×900, with no console errors:
+- **Sample file:** downloaded from the page and uploaded to the wizard.
+- **Review:** day-first dates became ISO dates, `eur`/`Euro` became `EUR`, and row 11 (no title) was excluded with Exclude Errors.
+- **Resolution:** picked Mario Rossi (b. 1950), merged L. Fontana with the existing Lucio Fontana, and merged "Manzoni, Piero" with Piero Manzoni.
+- **Commit:** with "Refuse a title" and "Lose the next batch's answer" armed, the result was 10 imported · 1 rejected · 1 excluded. The store showed "No artwork saved twice: 3 repeated rows were recognised by Import Key" and the registry grew from 8 to 10 (+2 new).
+- **Fix & Retry:** retitled row 8 "Senza titolo (blu)" and pressed "Retry import (1 row)". The result was 11 imported · 0 rejected. The store held 11 artworks, and the registry stayed at 10 (nothing created twice).
+
