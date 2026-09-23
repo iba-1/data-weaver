@@ -167,5 +167,10 @@ export {
 export {
   exportData,
   exportToBlob,
+  rejectedRowsSheet,
+  rejectedRowsFormat,
+  sheetToBlob,
   type ExportOptions,
+  type RejectedRowsSheetInput,
+  type SheetFormat,
 } from './exporter';

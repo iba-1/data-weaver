@@ -122,6 +122,20 @@ export interface MessageParams {
     rowHeader: void;
     fieldHeader: void;
     reasonHeader: void;
+    /** The button that downloads the Rejected Rows as a spreadsheet */
+    download: void;
+    /** Next to the download button: the report is not kept, so unfixed Rejected Rows are lost on leaving */
+    downloadHint: void;
+    /** The downloaded file's name without extension; `fileName` is the uploaded file's, without extension */
+    downloadFileName: { fileName: string };
+    /** The downloaded workbook's sheet (Excel keeps at most 31 characters and drops `: \ / ? * [ ]`) */
+    downloadSheetName: void;
+    /** The header of the downloaded file's error column */
+    downloadErrorHeader: void;
+    /** A Rejected Row's error in the downloaded file, when the Host App gave no field */
+    downloadError: { reason: string };
+    /** A Rejected Row's error in the downloaded file; `field` is the field's label */
+    downloadFieldError: { reason: string; field: string };
   };
   /** A cell of the review grid */
   cell: {
@@ -320,6 +334,14 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     rowHeader: 'Row',
     fieldHeader: 'Field',
     reasonHeader: 'Reason',
+    download: 'Download rejected rows',
+    downloadHint:
+      'This report is not kept once you leave. Download the rejected rows to fix them in your spreadsheet and import them again.',
+    downloadFileName: '{fileName} - rejected rows',
+    downloadSheetName: 'Rejected rows',
+    downloadErrorHeader: 'Error',
+    downloadError: '{reason}',
+    downloadFieldError: '{field}: {reason}',
   },
   cell: {
     empty: 'empty',

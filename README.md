@@ -34,6 +34,7 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 - Every row carries an **Import Key**, so your app can recognise a row it has already saved and not save it twice. Your app answers each batch with one outcome per row: created, or rejected with a reason and, when known, the field. See [The Host App adapter](#the-host-app-adapter).
 - The Importer sees the progress while rows are saved; the review can't be changed meanwhile.
 - Afterwards, the **Import Report** shows how many rows were imported, rejected and excluded, each Rejected Row with its row number, your reason and the field, and the Excluded Rows as a separate list. Your app receives the same report through `onImportFinished`.
+- The Importer can download the Rejected Rows as a spreadsheet (the file's own columns plus an error column) to fix and import again. The report is not kept, so leaving while it shows Rejected Rows asks for confirmation. See [Leaving with Rejected Rows](#leaving-with-rejected-rows).
 
 ### Language
 - Every piece of text the Importer sees comes from a message catalogue. English is built in. Your app passes its own entries for the Importer's language, and anything it leaves out falls back to English. See [Messages and translation](#messages-and-translation).
@@ -299,6 +300,7 @@ The complete flow: upload, column matching, review, Commit and the Import Report
 | `adapter`           | `HostAppAdapter<TRecord>`                         | Required                    | How rows are saved: `{ saveBatch }`. See [The Host App adapter](#the-host-app-adapter). The import can't start while an included row is invalid. |
 | `batchSize`         | `number`                                          | `100`                       | Most rows per `saveBatch` call. Values below 1 fall back to the default; fractions are rounded down. |
 | `onImportFinished`  | `(report: ImportReport<TRecord>) => void`         | -                           | Called once when Commit is over, with the Import Report. |
+| `onLeaveWarningChange` | `(warn: boolean) => void`                      | -                           | `true` while leaving should be confirmed (the Import Report shows Rejected Rows), `false` after. Guard your router with it. See [Leaving with Rejected Rows](#leaving-with-rejected-rows). |
 | `onEvent`           | `(event: ImportWizardEvent) => void`              | -                           | Called for every lifecycle event. |
 | `onRowParse`        | `(event: RowParseEvent) => TRecord \| void`       | -                           | Called for each row as it is converted to a record. Return a record to replace it. |
 | `onRowComplete`     | `(event: RowCompleteEvent) => void`               | -                           | Called for each row when the review step opens, then for each edited row. |
@@ -481,6 +483,40 @@ interface RejectedRow<TRecord> extends ImportRow<TRecord> {
 ```
 
 Every row of the file is in exactly one list, in file order. The report is not kept after the Importer leaves.
+
+#### Downloading the Rejected Rows
+
+When there are Rejected Rows, the report offers **Download rejected rows**: a spreadsheet the Importer can fix in Excel (or hand to a colleague) and upload again.
+
+- **Columns:** the uploaded file's own columns, in its order and under its own headers, including the columns that were not imported. Last comes an **Error** column: the reason, preceded by the field's label when your app gave one (*"Title: Already in the collection"*).
+- **Cells:** each cell as it was uploaded, except the fields the Importer edited in review before importing: those are written, as text, into the column they came from (dates as `YYYY-MM-DD`, choices as their `value`). A field that no column fed but that the Importer filled in gets its own column after the file's, headed by the field's label. So the file holds exactly what the Importer would need to import those rows again.
+- **Rows:** only the Rejected Rows, in file order.
+- **Format:** Excel (`.xlsx`) whenever `acceptedFileTypes` includes it, with every cell stored as text so Excel keeps leading zeros and doesn't re-read dates. If your upload step doesn't accept `.xlsx`, the file is CSV (UTF-8, readable by Excel), or `.xls` if that is all it accepts, so it can always be uploaded again.
+- **Names:** the file is `report.downloadFileName` (by default *"artworks - rejected rows.xlsx"* for `artworks.csv`), the sheet `report.downloadSheetName`, the error column's header `report.downloadErrorHeader`.
+
+#### Leaving with Rejected Rows
+
+Because the report is not kept, leaving the wizard while it shows Rejected Rows asks the Importer to confirm. No confirmation is asked when there are none.
+
+- **Closing or reloading the tab** is guarded by the wizard itself, with the browser's own `beforeunload` prompt (browsers show their own text).
+- **Navigation inside your app** can't be blocked by Data Weaver, since it doesn't own your router. The wizard calls `onLeaveWarningChange(true)` when leaving should be confirmed and `onLeaveWarningChange(false)` when that is over, including when it unmounts. Guard your router with it. With React Router's `useBlocker` (it needs a data router, e.g. `createBrowserRouter`):
+
+```tsx
+import { useBlocker } from 'react-router-dom';
+
+function ImportPage() {
+  const [warnOnLeave, setWarnOnLeave] = useState(false);
+  const blocker = useBlocker(warnOnLeave);
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (window.confirm('Some rows were not imported and this report will be lost. Leave anyway?')) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
+
+  return <ImportWizard fields={fields} adapter={adapter} onLeaveWarningChange={setWarnOnLeave} />;
+}
+```
 
 **If the wizard is unmounted during Commit** (the Importer navigates away), no further batch is sent and `onImportFinished` is not called. A batch already sent may have been saved; its rows keep their Import Keys, so importing the same file again cannot duplicate them.
 
@@ -723,6 +759,24 @@ exportData(rows, fields, {
 const blob = exportToBlob(rows, fields, { format: 'csv' });
 ```
 
+The Rejected Rows download, for flows built from the individual components:
+
+```typescript
+import { rejectedRowsSheet, rejectedRowsFormat, sheetToBlob } from 'data-weaver';
+
+const sheet = rejectedRowsSheet({
+  file: parsed,                        // the parser's ParsedFileData
+  mappings,                            // the column matching
+  fields,
+  rejected: report.rejected,
+  unedited: firstValidated.map((row) => row.data), // records as the review opened, by rowIndex
+});
+const format = rejectedRowsFormat(['.csv', '.xlsx']); // 'xlsx'
+const blob = sheetToBlob(sheet, { sheetName: 'Rejected rows', format });
+```
+
+Without `unedited`, every imported column is written from the reviewed records instead of the uploaded text.
+
 `data-weaver` (not `data-weaver/core`) also exports `useHistory`, the undo/redo hook the review step uses.
 
 ---
@@ -855,6 +909,13 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `report.rowHeader` | - | `Row` |
 | `report.fieldHeader` | - | `Field` |
 | `report.reasonHeader` | - | `Reason` |
+| `report.download` | - | `Download rejected rows` |
+| `report.downloadHint` | - | `This report is not kept once you leave. Download the rejected rows to fix them in your spreadsheet and import them again.` |
+| `report.downloadFileName` | fileName | `{fileName} - rejected rows` |
+| `report.downloadSheetName` | - | `Rejected rows` |
+| `report.downloadErrorHeader` | - | `Error` |
+| `report.downloadError` | reason | `{reason}` |
+| `report.downloadFieldError` | reason, field | `{field}: {reason}` |
 | `cell.empty` | - | `empty` |
 | `cell.clear` | - | `Clear` |
 | `cell.save` | - | `Save` |
@@ -964,7 +1025,7 @@ The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a si
 
 ## Planned
 
-From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, automatic retries of batches lost in transit, downloading the Rejected Rows, and Fix & Retry.
+From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, automatic retries of batches lost in transit, and Fix & Retry.
 
 ## License
 

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
 import { createFakeHostApp, type FakeHostApp } from '@/test/fakeHostApp';
+import { readSheet } from '@/test/spreadsheet';
 import { WizardRoot } from '../WizardRoot';
 import { FileUploader } from '../FileUploader';
 import { DEFAULT_MESSAGES, type PartialMessageCatalogue } from '@/lib/import-wizard/messages';
@@ -77,6 +78,10 @@ const THREE_ROWS = [
 
 beforeEach(() => {
   vi.mocked(parseFile).mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('message catalogue', () => {
@@ -493,6 +498,24 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expect(screen.getByText('Opera già presente')).toBeInTheDocument();
     expect(screen.getByText('⟦commit.notSent⟧')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '⟦report.excludedTitle⟧' })).toBeInTheDocument();
+    expect(screen.getByText('⟦report.downloadHint⟧')).toBeInTheDocument();
     expectAllMarked();
+
+    // The downloaded Rejected Rows: file name, sheet name, error column header and text
+    const downloads: { fileName: string; blob: Blob }[] = [];
+    URL.createObjectURL = vi.fn(() => 'blob:test');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push({ fileName: this.download, blob: vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob });
+    });
+    fireEvent.click(screen.getByRole('button', { name: '⟦report.download⟧' }));
+    expect(downloads.map((d) => d.fileName)).toEqual(['⟦report.downloadFileName⟧.xlsx']);
+    const { sheetName, rows } = await readSheet(downloads[0].blob);
+    expect(sheetName).toBe('⟦report.downloadSheetName⟧');
+    expect(rows.map((row) => row.at(-1))).toEqual([
+      '⟦report.downloadErrorHeader⟧',
+      '⟦report.downloadFieldError⟧',
+      '⟦report.downloadError⟧',
+    ]);
   });
 });

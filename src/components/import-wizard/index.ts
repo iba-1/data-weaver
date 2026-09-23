@@ -222,8 +222,16 @@ export {
   /** Export validated rows to CSV or Excel format */
   exportData, 
   /** Generate a blob for download */
-  exportToBlob, 
-  type ExportOptions 
+  exportToBlob,
+  type ExportOptions,
+  /** The Rejected Rows as a sheet to fix and import again */
+  rejectedRowsSheet,
+  /** The format to download the Rejected Rows in */
+  rejectedRowsFormat,
+  /** Write a sheet as an Excel or CSV file */
+  sheetToBlob,
+  type RejectedRowsSheetInput,
+  type SheetFormat,
 } from '@/lib/import-wizard/exporter';
 
 // Hooks

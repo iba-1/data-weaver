@@ -437,6 +437,16 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
   onImportFinished?: (report: ImportReport<TRecord>) => void;
 
   /**
+   * Called with `true` when leaving the wizard should be confirmed: the
+   * Import Report shows Rejected Rows not yet fixed, and it is not kept once
+   * the Importer leaves. Called with `false` when that is no longer so,
+   * including when the wizard unmounts. Guard your router's navigation with
+   * it (e.g. React Router's `useBlocker`); closing or reloading the tab is
+   * already guarded by the wizard (`beforeunload`).
+   */
+  onLeaveWarningChange?: (warn: boolean) => void;
+
+  /**
    * Called for each lifecycle event
    */
   onEvent?: (event: ImportWizardEvent<TRecord>) => void;

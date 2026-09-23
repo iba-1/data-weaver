@@ -12,6 +12,7 @@ import { commitRows, createImportKeys, normaliseBatchSize, toBatches } from '@/l
 import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptionsStatus';
 import { CommitProgress } from './commit/CommitProgress';
 import { ImportReportView } from './commit/ImportReportView';
+import { RejectedRowsDownload } from './commit/RejectedRowsDownload';
 import { MessagesContext, useMessages } from './messages';
 import type {
   ArtworkRecord,
@@ -71,6 +72,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   adapter,
   batchSize,
   onImportFinished,
+  onLeaveWarningChange,
   onEvent,
   onRowParse,
   onRowComplete,
@@ -116,10 +118,31 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   // Latest callback, so a Host App passing inline functions doesn't retrigger work
   const onRowCompleteRef = useRef(onRowComplete);
   const onImportFinishedRef = useRef(onImportFinished);
+  const onLeaveWarningChangeRef = useRef(onLeaveWarningChange);
   useEffect(() => {
     onRowCompleteRef.current = onRowComplete;
     onImportFinishedRef.current = onImportFinished;
+    onLeaveWarningChangeRef.current = onLeaveWarningChange;
   });
+
+  // The Import Report is not kept: while it shows Rejected Rows, leaving asks
+  // to confirm. The wizard guards closing or reloading the tab; the Host App
+  // is told so it can guard its own router's navigation.
+  const warnOnLeave = state.step === 'report' && (report?.rejected.length ?? 0) > 0;
+  useEffect(() => {
+    if (!warnOnLeave) return;
+    const confirmLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // For browsers that predate preventDefault() here (e.g. Chrome before 119)
+      event.returnValue = true;
+    };
+    window.addEventListener('beforeunload', confirmLeaving);
+    callHost('onLeaveWarningChange', () => onLeaveWarningChangeRef.current?.(true));
+    return () => {
+      window.removeEventListener('beforeunload', confirmLeaving);
+      callHost('onLeaveWarningChange', () => onLeaveWarningChangeRef.current?.(false));
+    };
+  }, [warnOnLeave]);
 
   const reportRowComplete = useCallback(
     (row: RowValidation<TRecord>) => {
@@ -138,6 +161,9 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
   // Rows as last reported, to tell which rows an update actually changed
   const reportedRowsRef = useRef<RowValidation<TRecord>[]>([]);
+  // Each row's record as the review opened, by rowIndex, before any edit: the
+  // download of the Rejected Rows writes a field back only if it was edited
+  const [uneditedRecords, setUneditedRecords] = useState<TRecord[]>([]);
 
   const handleFileSelected = useCallback(
     async (file: File) => {
@@ -207,6 +233,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       );
 
       reportedRowsRef.current = validatedRows;
+      setUneditedRecords(validatedRows.map((row) => row.data));
       validatedRows.forEach(reportRowComplete);
 
       setReview({ status: 'ready', fields });
@@ -384,7 +411,25 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
         {state.step === 'commit' && <CommitProgress done={commitProgress.done} total={commitProgress.total} />}
 
-        {state.step === 'report' && report && <ImportReportView report={report} fields={fieldConfigs} />}
+        {state.step === 'report' && report && (
+          <ImportReportView
+            report={report}
+            fields={fieldConfigs}
+            actions={
+              report.rejected.length > 0 &&
+              state.parsedData && (
+                <RejectedRowsDownload
+                  file={state.parsedData}
+                  mappings={state.columnMappings}
+                  fields={fieldConfigs}
+                  rejected={report.rejected}
+                  unedited={uneditedRecords}
+                  acceptedFileTypes={acceptedFileTypes}
+                />
+              )
+            }
+          />
+        )}
       </div>
     </WizardRoot>
   );
