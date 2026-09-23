@@ -246,7 +246,17 @@ export {
   type ResolutionGroup,
   type RelatedDecision,
   type LookupResults,
+  type PossibleMatch,
+  type MergeTarget,
 } from '@/lib/import-wizard/resolution';
+
+export {
+  /** Pairs of values of the file that might be the same Related Record (word order, punctuation, initials) */
+  findPossibleMatches,
+  /** Whether two values might be the same Related Record without being a Normalised Match */
+  isPossibleMatch,
+  type PossiblePair,
+} from '@/lib/import-wizard/possible';
 
 export {
   /** The new Related Records a Commit creates, once each */

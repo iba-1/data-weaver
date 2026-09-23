@@ -8,6 +8,7 @@
 
 import type { FieldConfig, FindRelated, RelatedCandidate, RelatedRecordId } from './types';
 import { normaliseForMatch } from './normalise';
+import { findPossibleMatches, type PossiblePair } from './possible';
 import { cellText } from './values';
 
 /** The Relationship Fields of one kind of Related Record, in Output Shape order */
@@ -276,8 +277,8 @@ export async function lookupRelated(
  * - `matched`: exactly one Normalised Match, linked automatically;
  * - `create`: nothing matched, so a new Related Record will be created;
  * - `homonyms`: several Normalised Matches: the Importer must choose;
- * - `possible`: no Normalised Match but Possible Matches: the Importer must
- *   choose between one of them and a new record.
+ * - `possible`: no Normalised Match but Possible Matches: a new record will be
+ *   created (kept separate) unless the Importer merges it with one of them.
  */
 export type ResolutionGroup = 'pending' | 'matched' | 'create' | 'homonyms' | 'possible';
 
@@ -295,6 +296,10 @@ export interface ResolvedValue extends RelatedValue {
    * while the value still needs the Importer (or the lookup)
    */
   decision: RelatedDecision | null;
+  /** What the value might be the same as, for the Importer to merge it with; empty when nothing */
+  possibleMatches: PossibleMatch[];
+  /** The Importer's merge that applies to the value, or null: kept separate (the default) */
+  merge: MergeTarget | null;
   /**
    * The Importer's decisions for individual rows (by `rowIndex`), overriding
    * `decision` for those rows (Homonyms, Q27). Only rows using the value.
@@ -318,6 +323,21 @@ export function isValueDecided(value: ResolvedValue): boolean {
   return value.group !== 'pending' && decisionsInEffect(value).every((decision) => decision !== null);
 }
 
+/**
+ * Something a value might be the same Related Record as (a Possible Match):
+ * another value of the file (`name` is its stored-name default, for showing),
+ * or an existing record the Host App's lookup flagged as `possible`.
+ */
+export type PossibleMatch =
+  | { source: 'file'; value: string; name: string }
+  | { source: 'host'; candidate: RelatedCandidate };
+
+/**
+ * The Importer's choice to merge a value with one of its Possible Matches:
+ * another value of the file (of the same kind), or an existing record by ID.
+ */
+export type MergeTarget = { source: 'file'; value: string } | { source: 'host'; id: RelatedRecordId };
+
 /** The group a value falls in, from its lookup candidates (undefined: not looked up) */
 export function classifyCandidates(candidates: RelatedCandidate[] | undefined): ResolutionGroup {
   if (candidates === undefined) return 'pending';
@@ -330,7 +350,7 @@ export function classifyCandidates(candidates: RelatedCandidate[] | undefined): 
 export interface ResolveOptions {
   /** Names the Importer gave new records, by `relatedValueKey`; the default name otherwise */
   names?: ReadonlyMap<string, string>;
-  /** Decisions the Importer made, by `relatedValueKey`; they override the automatic ones */
+  /** Decisions the Importer made, by `relatedValueKey`; they override the automatic ones and merges */
   decisions?: ReadonlyMap<string, RelatedDecision>;
   /**
    * Decisions the Importer made for individual rows, by `relatedValueKey`
@@ -338,6 +358,10 @@ export interface ResolveOptions {
    * no longer using the value are ignored.
    */
   rowDecisions?: ReadonlyMap<string, ReadonlyMap<number, RelatedDecision>>;
+  /** Values the Importer merged with one of their Possible Matches, by `relatedValueKey` */
+  merges?: ReadonlyMap<string, MergeTarget>;
+  /** The file's Possible Matches, `findPossibleMatches(values)`: found here when not given */
+  possibleMatches?: PossiblePair[];
 }
 
 /** A new record's name is stored trimmed */
@@ -345,40 +369,151 @@ const trimName = (decision: RelatedDecision): RelatedDecision =>
   decision.action === 'create' ? { action: 'create', name: decision.name.trim() } : decision;
 
 /**
- * Decide what can be decided without the Importer: a value with exactly one
- * Normalised Match links to it, a value with no candidates will be created
- * (with the Importer's name for it, or its default name). Homonyms and
- * Possible Matches are never decided here: they stay `null` until the
- * Importer decides (`decisions`, and `rowDecisions` for individual rows).
+ * Decide what can be decided without the Importer, and apply the Importer's
+ * choices:
+ * - a value with exactly one Normalised Match links to it;
+ * - a value with no Normalised Match (no candidates, or only Possible
+ *   Matches) will be created, with the Importer's name for it or its default
+ *   name: it is kept separate from its Possible Matches unless merged;
+ * - Homonyms are never decided here: they stay `null` until the Importer
+ *   decides (`decisions`).
+ *
+ * A value merged (`merges`) with an existing record links to it. A value
+ * merged with another value of the file takes that value's decision, so
+ * merged values to be created make one record, whose default name is the
+ * preferred spelling across all of them (`preferredSpelling`). A merge with
+ * something no longer offered (see `possibleMatches`) is ignored.
+ *
+ * Decisions for individual rows (`rowDecisions`, Homonyms) override the
+ * value's decision for those rows; rows no longer using the value are ignored.
  */
 export function resolveValues(
   values: RelatedValue[],
   lookups: LookupResults,
-  { names, decisions, rowDecisions }: ResolveOptions = {}
+  { names, decisions, rowDecisions, merges, possibleMatches }: ResolveOptions = {}
 ): ResolvedValue[] {
-  return values.map((value) => {
-    const found = lookups.get(value.kind)?.get(value.value);
-    const group = classifyCandidates(found);
-    const key = relatedValueKey(value.kind, value.value);
-    const name = (names?.get(key) ?? value.defaultName).trim();
+  const found = values.map((value) => lookups.get(value.kind)?.get(value.value));
+  const groups = found.map(classifyCandidates);
+  const keys = values.map((value) => relatedValueKey(value.kind, value.value));
+  const offered = offerPossibleMatches(values, found, groups, possibleMatches ?? findPossibleMatches(values));
 
-    const chosen = decisions?.get(key);
-    let decision: RelatedDecision | null = chosen ? trimName(chosen) : null;
-    if (!decision && group === 'matched') {
-      const match = found!.find((c) => c.match === 'normalised')!;
-      decision = { action: 'link', id: match.id, name: match.name };
+  // The merges that apply: only with something offered, and never over a decision of the Importer
+  const merge = keys.map((key, i): MergeTarget | null => {
+    const target = merges?.get(key);
+    if (!target || decisions?.has(key)) return null;
+    const applies = offered[i].some((match) =>
+      match.source === 'file'
+        ? target.source === 'file' && match.value === target.value
+        : target.source === 'host' && match.candidate.id === target.id
+    );
+    return applies ? target : null;
+  });
+
+  // A value merged with a value of the file takes the decision of the value at the end of the chain.
+  // Values are only offered a value used more (or matched), so chains never loop; `seen` guards anyway
+  const indexOf = new Map(keys.map((key, i) => [key, i]));
+  const rootOf = (i: number, seen = new Set<number>()): number => {
+    const target = merge[i];
+    if (target?.source !== 'file' || seen.has(i)) return i;
+    seen.add(i);
+    return rootOf(indexOf.get(relatedValueKey(values[i].kind, target.value))!, seen);
+  };
+  const roots = values.map((_, i) => rootOf(i));
+
+  // A record created for merged values is named from all their spellings
+  const defaultNames = values.map((value, i) => {
+    const merged = values.filter((_, j) => j !== i && roots[j] === i);
+    return merged.length === 0 ? value.defaultName : preferredSpelling([value, ...merged].flatMap((v) => v.spellings));
+  });
+
+  const decide = (i: number): RelatedDecision | null => {
+    const decided = decisions?.get(keys[i]);
+    if (decided) return trimName(decided);
+    const target = merge[i];
+    if (target?.source === 'host') {
+      const candidate = found[i]!.find((c) => c.id === target.id)!;
+      return { action: 'link', id: candidate.id, name: candidate.name };
     }
-    if (!decision && group === 'create') decision = { action: 'create', name };
+    if (groups[i] === 'matched') {
+      const match = found[i]!.find((c) => c.match === 'normalised')!;
+      return { action: 'link', id: match.id, name: match.name };
+    }
+    if (mergeable(groups[i])) return { action: 'create', name: (names?.get(keys[i]) ?? defaultNames[i]).trim() };
+    return null;
+  };
+  const decided = values.map((_, i) => (roots[i] === i ? decide(i) : null));
 
-    const chosenForRows = rowDecisions?.get(key);
+  // The Importer's choices for individual rows, only for rows still using the value
+  const rowDecisionsOf = (value: RelatedValue, key: string): Map<number, RelatedDecision> => {
+    const chosen = rowDecisions?.get(key);
     const byRow = new Map<number, RelatedDecision>();
     for (const rowIndex of value.rows) {
-      const rowDecision = chosenForRows?.get(rowIndex);
+      const rowDecision = chosen?.get(rowIndex);
       if (rowDecision) byRow.set(rowIndex, trimName(rowDecision));
     }
+    return byRow;
+  };
 
-    return { ...value, group, candidates: found ?? [], decision, rowDecisions: byRow };
-  });
+  return values.map((value, i) => ({
+    ...value,
+    defaultName: defaultNames[i],
+    group: groups[i],
+    candidates: found[i] ?? [],
+    decision: decided[roots[i]],
+    rowDecisions: rowDecisionsOf(value, keys[i]),
+    possibleMatches: offered[i],
+    merge: merge[i],
+  }));
+}
+
+/** Whether a value was looked up and has no Normalised Match, so it may be merged with a Possible Match */
+const mergeable = (group: ResolutionGroup) => group === 'create' || group === 'possible';
+
+/**
+ * What each value is offered to merge with. Only values looked up and
+ * without a Normalised Match are offered anything: the lookup's Possible
+ * Matches, then the values of the file they might be. A pair of values of the
+ * file is offered one way only, so merges never go round in circles: into the
+ * value with a Normalised Match, else into the value used in more rows (the
+ * one seen first when equal). Two values that both have Normalised Matches
+ * are never offered, nor a value of the file matched to a record the lookup
+ * already offers.
+ */
+function offerPossibleMatches(
+  values: RelatedValue[],
+  found: Array<RelatedCandidate[] | undefined>,
+  groups: ResolutionGroup[],
+  pairs: PossiblePair[]
+): PossibleMatch[][] {
+  const fromHost: PossibleMatch[][] = values.map((_, i) =>
+    mergeable(groups[i])
+      ? found[i]!.filter((c) => c.match === 'possible').map((candidate) => ({ source: 'host' as const, candidate }))
+      : []
+  );
+  const fromFile: number[][] = values.map(() => []);
+
+  const indexOf = new Map(values.map((value, i) => [relatedValueKey(value.kind, value.value), i]));
+  const outranks = (a: number, b: number) =>
+    mergeable(groups[a]) !== mergeable(groups[b])
+      ? !mergeable(groups[a])
+      : values[a].rows.length > values[b].rows.length || (values[a].rows.length === values[b].rows.length && a < b);
+
+  for (const { kind, values: pair } of pairs) {
+    const [a, b] = pair.map((value) => indexOf.get(relatedValueKey(kind, value)));
+    if (a === undefined || b === undefined || groups[a] === 'pending' || groups[b] === 'pending') continue;
+    if (!mergeable(groups[a]) && !mergeable(groups[b])) continue;
+    const [from, into] = outranks(a, b) ? [b, a] : [a, b];
+    const matchedTo = groups[into] === 'matched' ? found[into]!.find((c) => c.match === 'normalised')!.id : undefined;
+    if (matchedTo !== undefined && fromHost[from].some((m) => m.source === 'host' && m.candidate.id === matchedTo)) continue;
+    fromFile[from].push(into);
+  }
+
+  return fromHost.map((host, i) => [
+    ...host,
+    ...fromFile[i]
+      .sort((x, y) => x - y)
+      .map((j): PossibleMatch => ({ source: 'file', value: values[j].value, name: values[j].defaultName })),
+  ]);
 }
 
 /**

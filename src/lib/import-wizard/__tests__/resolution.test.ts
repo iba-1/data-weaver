@@ -210,14 +210,15 @@ describe('resolving values', () => {
   });
   const byValue = (resolved: ReturnType<typeof resolveValues>) => Object.fromEntries(resolved.map((v) => [v.value, v]));
 
-  it('links a value with exactly one Normalised Match, creates one with none, and decides nothing else', () => {
+  it('links a value with exactly one Normalised Match, creates one with none or only Possible Matches, and decides nothing else', () => {
     const resolved = byValue(resolveValues(values, answer));
 
     expect(resolved['lucio fontana']).toMatchObject({ group: 'matched', decision: { action: 'link', id: 'r1', name: 'Lucio Fontana' } });
     expect(resolved['piero manzoni']).toMatchObject({ group: 'create', decision: { action: 'create', name: 'Piero Manzoni' } });
-    // Homonyms and Possible Matches wait for the Importer
+    // Homonyms wait for the Importer
     expect(resolved['anna bianchi']).toMatchObject({ group: 'homonyms', decision: null });
-    expect(resolved['l. fontana']).toMatchObject({ group: 'possible', decision: null });
+    // Possible Matches are kept separate unless the Importer merges them
+    expect(resolved['l. fontana']).toMatchObject({ group: 'possible', decision: { action: 'create', name: 'L. Fontana' } });
     // Not looked up yet
     expect(resolved['niccolo rossi']).toMatchObject({ group: 'pending', decision: null, candidates: [] });
   });
@@ -240,7 +241,7 @@ describe('resolving values', () => {
 
   it('counts what still blocks Commit', () => {
     const resolved = resolveValues(values, answer, { names: new Map([[relatedValueKey('registry', 'piero manzoni'), ' ']]) });
-    expect(resolutionBlockers(resolved)).toEqual({ pending: 1, undecided: 2, unnamed: 1 });
+    expect(resolutionBlockers(resolved)).toEqual({ pending: 1, undecided: 1, unnamed: 1 });
     const ready = resolveValues(
       values.filter((v) => ['lucio fontana', 'piero manzoni'].includes(v.value)),
       answer
