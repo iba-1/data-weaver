@@ -9,6 +9,7 @@ import type {
   ValidationWarning,
 } from './types';
 import { TARGET_FIELDS } from './types';
+import { parseNumber } from './values';
 
 /**
  * Validate all rows using the column mappings
@@ -308,11 +309,8 @@ function processValue(
   const type = field?.type || 'string';
   
   switch (type) {
-    case 'number': {
-      const cleaned = stringValue.replace(/[,$€£¥\s]/g, '');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? null : parsed;
-    }
+    case 'number':
+      return parseNumber(stringValue);
     case 'boolean': {
       const lower = stringValue.toLowerCase();
       if (['true', 'yes', '1', 'on'].includes(lower)) return true;

@@ -162,10 +162,21 @@ export interface ValidationWarning {
 // EDITS
 // ============================================================
 
-/** A set of field changes to apply to one row */
+/**
+ * A set of field changes to apply to one row. Every review change is one:
+ * cell edits, find/replace and AI Edit.
+ */
 export interface RowEdit {
   rowIndex: number;
   changes: Record<string, unknown>;
+}
+
+/** How find/replace matches cell text */
+export interface ReplaceOptions {
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  /** A field key, or 'all' for every field */
+  selectedColumn: string;
 }
 
 /** What Data Weaver sends to the Host App's AI endpoint */
