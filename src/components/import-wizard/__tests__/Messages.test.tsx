@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
+import { createFakeHostApp, type FakeHostApp } from '@/test/fakeHostApp';
 import { WizardRoot } from '../WizardRoot';
 import { FileUploader } from '../FileUploader';
 import { DEFAULT_MESSAGES, type PartialMessageCatalogue } from '@/lib/import-wizard/messages';
@@ -82,6 +83,7 @@ describe('message catalogue', () => {
   it('shows the Host App’s text in place of the English defaults, and English for the rest', () => {
     render(
       <ImportWizard
+        adapter={createFakeHostApp().adapter}
         fields={outputShape()}
         messages={{
           steps: { upload: 'Carica' },
@@ -103,6 +105,7 @@ describe('message catalogue', () => {
     const plural = (count: number, one: string, other: string) => (count === 1 ? one : `${count} ${other}`);
     render(
       <ImportWizard<Rec, Key>
+        adapter={createFakeHostApp().adapter}
         fields={outputShape()}
         messages={{
           review: {
@@ -136,6 +139,7 @@ describe('message catalogue', () => {
     const onEvent = vi.fn<(event: ImportWizardEvent<Rec>) => void>();
     render(
       <ImportWizard<Rec, Key>
+        adapter={createFakeHostApp().adapter}
         fields={outputShape()}
         validateRow={(data) => (data.title === 'Concetto spaziale' ? [{ type: 'error', message: 'Opera già presente' }] : [])}
         onEvent={onEvent}
@@ -167,6 +171,7 @@ describe('message catalogue', () => {
   it('refuses an upload in the Host App’s language', async () => {
     render(
       <ImportWizard
+        adapter={createFakeHostApp().adapter}
         fields={outputShape()}
         messages={{ upload: { unsupportedType: ({ fileName, types }) => `${fileName} non è supportato. Formati: ${types}` } }}
       />
@@ -182,6 +187,7 @@ describe('message catalogue', () => {
     const onEvent = vi.fn<(event: ImportWizardEvent<Rec>) => void>();
     render(
       <ImportWizard<Rec, Key>
+        adapter={createFakeHostApp().adapter}
         fields={outputShape(() => Promise.reject(new Error('503')))}
         onEvent={onEvent}
         messages={{ options: { loadFailed: 'Impossibile caricare le opzioni di {field} ({reason})', retry: 'Riprova' } }}
@@ -275,9 +281,13 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     { Titolo: 'Nature morte', Acquisito: '', Valuta: 'EUR' },
   ];
 
-  function renderMarked(props: { fields?: FieldConfig<Key>[]; aiEdit?: AiEditHandler } = {}) {
+  function renderMarked(
+    props: { fields?: FieldConfig<Key>[]; aiEdit?: AiEditHandler; host?: FakeHostApp<Rec>; batchSize?: number } = {}
+  ) {
     return render(
       <ImportWizard<Rec, Key>
+        adapter={(props.host ?? createFakeHostApp<Rec>()).adapter}
+        batchSize={props.batchSize}
         fields={props.fields ?? outputShape()}
         aiEdit={props.aiEdit}
         validateRow={(data) => (data.title === 'Nature morte' ? [{ type: 'warning', message: 'Opera già presente' }] : [])}
@@ -294,7 +304,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     await screen.findByText('⟦review.title⟧');
   }
 
-  it('in the upload step, including refused and unreadable files', { timeout: 20_000 }, async () => {
+  it('in the upload step, including refused and unreadable files', async () => {
     renderMarked();
     expectAllMarked();
 
@@ -313,7 +323,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('in column matching, with a required field unmatched and a picker open', { timeout: 20_000 }, async () => {
+  it('in column matching, with a required field unmatched and a picker open', async () => {
     mockFile([{ Acquisito: '2024-01-15', Valuta: 'Euro', Note: 'bozza' }]);
     renderMarked();
     await upload();
@@ -327,7 +337,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('while choice options load and when they fail', { timeout: 20_000 }, async () => {
+  it('while choice options load and when they fail', async () => {
     let rejectOptions!: (error: Error) => void;
     mockFile(REVIEW_ROWS);
     renderMarked({ fields: outputShape(() => new Promise((_, reject) => (rejectOptions = reject))) });
@@ -342,7 +352,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('in the review grid: counts, filters, row states, tooltips and cell editors', { timeout: 20_000 }, async () => {
+  it('in the review grid: counts, filters, row states, tooltips and cell editors', async () => {
     await reviewMarked();
     expectAllMarked();
 
@@ -402,7 +412,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('in Fill Required, find and replace, export and AI Edit', { timeout: 20_000 }, async () => {
+  it('in Fill Required, find and replace, export and AI Edit', async () => {
     const aiEdit = vi
       .fn<AiEditHandler>()
       .mockResolvedValueOnce(Array.from({ length: 7 }, (_, rowIndex) => ({ rowIndex, changes: { title: 'Achrome' } })))
@@ -455,5 +465,34 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
       expectAllMarked();
       fireEvent.click(screen.getAllByRole('button', { name: /⟦aiEdit\.(dismiss|cancel)⟧/ })[0]);
     }
+  });
+
+  it('while committing, and in the Import Report with the Host App’s reasons as written', async () => {
+    // One row per batch: Achrome is saved, Concetto spaziale is refused by the
+    // Host App (its reason is its own text), Nature morte's batch can't be sent
+    const host = createFakeHostApp<Rec>({
+      reject: (row) => (row.record.title === 'Concetto spaziale' ? { reason: 'Opera già presente', field: 'title' } : null),
+    });
+    const second = host.hold(2);
+    host.onCall(3, { fail: new Error('Servizio non disponibile') });
+    await reviewMarked({ host, batchSize: 1 });
+    // Row 2 has errors: leave it out, so the report has an Excluded Row too
+    fireEvent.click(screen.getByRole('button', { name: '⟦review.excludeErrors⟧' }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '⟦review.complete⟧' }));
+      await second.reached;
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('⟦commit.progress⟧');
+    expect(screen.getByText('⟦steps.import⟧')).toBeInTheDocument();
+    expectAllMarked();
+
+    await act(async () => second.release());
+    await screen.findByText('⟦report.title⟧');
+    expect(screen.getByText('⟦report.created⟧')).toBeInTheDocument();
+    expect(screen.getByText('Opera già presente')).toBeInTheDocument();
+    expect(screen.getByText('⟦commit.notSent⟧')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '⟦report.excludedTitle⟧' })).toBeInTheDocument();
+    expectAllMarked();
   });
 });

@@ -44,7 +44,16 @@ export type {
   ReplaceOptions,
   AiEditRequest,
   AiEditHandler,
-  ImportResult,
+
+  // Commit: the Host App adapter and the Import Report
+  HostAppAdapter,
+  SaveBatch,
+  ImportRow,
+  RowOutcome,
+  RejectedRow,
+  RejectionCause,
+  CommitProgress,
+  ImportReport,
 
   // Component Props
   ImportWizardProps,
@@ -135,6 +144,21 @@ export { parseCalendarDate, formatCalendarDate, type DateOrder } from './dates';
 export { normaliseForMatch, isNormalisedMatch } from './normalise';
 
 export { matchChoice, loadChoiceOptions, hasOptionLoaders, OptionsLoadError } from './choices';
+
+// ============================================================
+// COMMIT
+// ============================================================
+
+export {
+  commitRows,
+  settleBatch,
+  createImportKey,
+  createImportKeys,
+  DEFAULT_BATCH_SIZE,
+  type BatchResult,
+  type CommitOptions,
+  type CommitOutcome,
+} from './commit';
 
 // ============================================================
 // EXPORT

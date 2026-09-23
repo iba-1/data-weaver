@@ -24,6 +24,7 @@ export interface MessageParams {
     upload: void;
     mapping: void;
     review: void;
+    import: void;
   };
   /** The upload step */
   upload: {
@@ -93,6 +94,34 @@ export interface MessageParams {
     back: void;
     excludedCount: { count: number };
     complete: { count: number };
+  };
+  /** Saving the rows through the Host App (Commit) */
+  commit: {
+    title: void;
+    /** `done` counts rows with an outcome, saved or rejected */
+    progress: { done: number; total: number };
+    progressLabel: void;
+    keepOpen: void;
+    /** A Rejected Row's reason when its batch could not be sent */
+    notSent: void;
+    /** A Rejected Row's reason when the Host App's answer had no valid outcome for it */
+    invalidAnswer: void;
+    /** A Rejected Row's reason when the Host App rejected it without one */
+    noReason: void;
+  };
+  /** The Import Report after Commit */
+  report: {
+    title: void;
+    created: { count: number };
+    rejected: { count: number };
+    excluded: { count: number };
+    rejectedTitle: void;
+    rejectedDescription: void;
+    excludedTitle: void;
+    excludedDescription: void;
+    rowHeader: void;
+    fieldHeader: void;
+    reasonHeader: void;
   };
   /** A cell of the review grid */
   cell: {
@@ -210,6 +239,7 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     upload: 'Upload',
     mapping: 'Match columns',
     review: 'Review and edit',
+    import: 'Import',
   },
   upload: {
     helpText: 'Upload a spreadsheet with column names in the first row and one record per row after it.',
@@ -268,6 +298,28 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     back: 'Back to Mapping',
     excludedCount: '{count} excluded',
     complete: (p) => `Complete Import (${plural(p.count, 'row', 'rows')})`,
+  },
+  commit: {
+    title: 'Importing your rows',
+    progress: (p) => `${count(p.done)} of ${plural(p.total, 'row', 'rows')} processed`,
+    progressLabel: 'Import progress',
+    keepOpen: 'Keep this page open until the import finishes.',
+    notSent: 'This row could not be sent. Try importing it again later.',
+    invalidAnswer: 'No clear answer was received for this row, so it was not counted as imported.',
+    noReason: 'Refused without a reason.',
+  },
+  report: {
+    title: 'Import finished',
+    created: '{count} imported',
+    rejected: '{count} rejected',
+    excluded: '{count} excluded',
+    rejectedTitle: 'Rejected rows',
+    rejectedDescription: 'These rows were not imported.',
+    excludedTitle: 'Excluded rows',
+    excludedDescription: 'You left these rows out of the import, so they were not sent.',
+    rowHeader: 'Row',
+    fieldHeader: 'Field',
+    reasonHeader: 'Reason',
   },
   cell: {
     empty: 'empty',

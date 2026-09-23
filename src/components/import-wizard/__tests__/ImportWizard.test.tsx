@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
+import { createFakeHostApp } from '@/test/fakeHostApp';
+import { importRows } from '@/test/wizardDriver';
 import { DataValidator } from '../DataValidator';
 import type { FieldConfig, RowCompleteEvent, RowValidation } from '@/lib/import-wizard/types';
 
@@ -50,7 +52,7 @@ beforeEach(() => {
 describe('ImportWizard', () => {
   it('renders without the Host App providing a TooltipProvider or any backend config', async () => {
     mockFile([{ name: 'Ada', email: '' }]);
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
 
     await goToReview();
 
@@ -70,6 +72,7 @@ describe('ImportWizard', () => {
         <>
           <span data-testid="count">{count}</span>
           <ImportWizard<Rec, Key>
+            adapter={createFakeHostApp().adapter}
             fields={FIELDS}
             // Inline callback + setState: the README's progress-tracking pattern
             onRowComplete={(event) => {
@@ -95,7 +98,7 @@ describe('ImportWizard', () => {
     ]);
     const received: RowCompleteEvent<Rec>[] = [];
 
-    render(<ImportWizard<Rec, Key> fields={FIELDS} onRowComplete={(e) => received.push(e)} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={FIELDS} onRowComplete={(e) => received.push(e)} />);
     await goToReview();
     received.length = 0;
 
@@ -113,9 +116,9 @@ describe('ImportWizard', () => {
       { name: 'Ada', email: 'a@x.io' },
       { name: '', email: 'nobody@x.io' },
     ]);
-    const onComplete = vi.fn();
+    const host = createFakeHostApp<Rec>();
 
-    render(<ImportWizard<Rec, Key> fields={FIELDS} onComplete={onComplete} />);
+    render(<ImportWizard<Rec, Key> fields={FIELDS} adapter={host.adapter} />);
     await goToReview();
 
     const complete = screen.getByRole('button', { name: /complete import/i });
@@ -124,17 +127,16 @@ describe('ImportWizard', () => {
     fireEvent.click(within(rowFor('nobody@x.io')).getByRole('button', { name: /exclude row/i }));
 
     expect(complete).toBeEnabled();
-    fireEvent.click(complete);
+    await importRows();
 
-    expect(onComplete).toHaveBeenCalledTimes(1);
-    const [data, result] = onComplete.mock.calls[0];
-    expect(data).toEqual([{ name: 'Ada', email: 'a@x.io' }]);
-    expect(result.excludedRows.map((r: RowValidation<Rec>) => r.rowIndex)).toEqual([1]);
+    expect(host.records()).toEqual([{ name: 'Ada', email: 'a@x.io' }]);
+    const excluded = within(screen.getByRole('region', { name: 'Excluded rows' }));
+    expect(excluded.getAllByRole('cell').map((c) => c.textContent)).toEqual(['2', '']);
   });
 
   it('can include an Excluded Row again', async () => {
     mockFile([{ name: '', email: 'nobody@x.io' }]);
-    render(<ImportWizard<Rec, Key> fields={FIELDS} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={FIELDS} />);
     await goToReview();
 
     const row = () => rowFor('nobody@x.io');
@@ -146,7 +148,7 @@ describe('ImportWizard', () => {
 
   it('does not show AI Edit unless the Host App supplies an AI endpoint', async () => {
     mockFile([{ name: 'Ada', email: '' }]);
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
     await goToReview();
 
     expect(screen.queryByRole('button', { name: /ai edit/i })).not.toBeInTheDocument();
@@ -168,7 +170,7 @@ describe('ImportWizard with a date field', () => {
   });
 
   it('search finds a date by the YYYY-MM-DD text the grid shows, and highlights it', async () => {
-    render(<ImportWizard<Record<DatedKey, unknown>, DatedKey> fields={DATED_FIELDS} />);
+    render(<ImportWizard<Record<DatedKey, unknown>, DatedKey> adapter={createFakeHostApp().adapter} fields={DATED_FIELDS} />);
     await goToReview();
 
     fireEvent.change(screen.getByPlaceholderText(/search in data/i), { target: { value: '2024-01-15' } });
@@ -180,8 +182,8 @@ describe('ImportWizard with a date field', () => {
   });
 
   it('find/replace on a date keeps it a valid calendar date', async () => {
-    const onComplete = vi.fn();
-    render(<ImportWizard<Record<DatedKey, unknown>, DatedKey> fields={DATED_FIELDS} onComplete={onComplete} />);
+    const host = createFakeHostApp<Record<DatedKey, unknown>>();
+    render(<ImportWizard<Record<DatedKey, unknown>, DatedKey> fields={DATED_FIELDS} adapter={host.adapter} />);
     await goToReview();
 
     fireEvent.click(screen.getByRole('button', { name: /find & replace/i }));
@@ -193,9 +195,8 @@ describe('ImportWizard with a date field', () => {
     fireEvent.keyDown(dialog, { key: 'Escape' });
 
     expect(screen.getByText('2025-01-15')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
-    const [data] = onComplete.mock.calls[0];
-    expect(data[0].acquired).toEqual(new Date(Date.UTC(2025, 0, 15)));
+    await importRows();
+    expect(host.records()[0].acquired).toEqual(new Date(Date.UTC(2025, 0, 15)));
   });
 });
 
@@ -283,7 +284,7 @@ describe('DataValidator', () => {
 
 describe('FileUploader preview', () => {
   it("shows the Host App's fields, not the artwork defaults", () => {
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
 
     expect(screen.getByText('Email')).toBeInTheDocument();
     expect(screen.queryByText('Artist')).not.toBeInTheDocument();
@@ -314,7 +315,7 @@ describe('ImportWizard upload step', () => {
   }
 
   it('refuses a file over the default 10 MB limit with a message and stays on upload', async () => {
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
 
     await upload(fileOfSize('people.csv', 10 * MB + 1));
 
@@ -324,7 +325,7 @@ describe('ImportWizard upload step', () => {
 
   it('enforces a Host App maxFileSize and accepts a file exactly at the limit', async () => {
     mockFile([{ name: 'Ada', email: '' }]);
-    render(<ImportWizard fields={FIELDS} maxFileSize={2 * MB} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} maxFileSize={2 * MB} />);
 
     await upload(fileOfSize('people.csv', 3 * MB));
     expect(screen.getByText('people.csv is too large. The maximum file size is 2 MB.')).toBeInTheDocument();
@@ -335,7 +336,7 @@ describe('ImportWizard upload step', () => {
   });
 
   it('refuses a PDF by default, with a message naming the accepted types', async () => {
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
 
     await upload(fileOfSize('catalogue.pdf', 100));
 
@@ -346,7 +347,7 @@ describe('ImportWizard upload step', () => {
   });
 
   it('refuses a file type outside acceptedFileTypes and advertises only the accepted types', async () => {
-    render(<ImportWizard fields={FIELDS} acceptedFileTypes={['.csv']} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} acceptedFileTypes={['.csv']} />);
     const input = document.getElementById('file-input') as HTMLInputElement;
 
     expect(input.accept).toBe('.csv');
@@ -359,7 +360,7 @@ describe('ImportWizard upload step', () => {
   });
 
   it('refuses a dropped file the same way as a picked one', async () => {
-    render(<ImportWizard fields={FIELDS} acceptedFileTypes={['.csv']} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} acceptedFileTypes={['.csv']} />);
     const dropZone = document.getElementById('file-input')!.parentElement!;
 
     await act(async () => {
@@ -371,7 +372,7 @@ describe('ImportWizard upload step', () => {
   });
 
   it('advertises the default accepted types and size, with no HTML or placeholder help text', () => {
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
 
     expect((document.getElementById('file-input') as HTMLInputElement).accept).toBe('.csv,.xlsx,.xls');
     expect(screen.getByText('You can upload: .csv, .xlsx, .xls (up to 10 MB)')).toBeInTheDocument();
@@ -381,14 +382,14 @@ describe('ImportWizard upload step', () => {
 
 describe('ImportWizard title and description', () => {
   it('shows the title and description above the steps when given', () => {
-    render(<ImportWizard fields={FIELDS} title="Import artworks" description="One row per artwork." />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} title="Import artworks" description="One row per artwork." />);
 
     expect(screen.getByRole('heading', { name: 'Import artworks' })).toBeInTheDocument();
     expect(screen.getByText('One row per artwork.')).toBeInTheDocument();
   });
 
   it('shows no heading of its own when neither is given', () => {
-    render(<ImportWizard fields={FIELDS} />);
+    render(<ImportWizard adapter={createFakeHostApp().adapter} fields={FIELDS} />);
 
     // The drop zone's "Drag and drop a file here" is the only heading
     expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Drag and drop a file here']);
