@@ -1,117 +1,53 @@
-<p align="center">
-  <img src="https://img.shields.io/npm/v/react-import-wizard?style=flat-square&color=00b4d8" alt="npm version" />
-  <img src="https://img.shields.io/npm/dm/react-import-wizard?style=flat-square&color=00b4d8" alt="npm downloads" />
-  <img src="https://img.shields.io/bundlephobia/minzip/react-import-wizard?style=flat-square&color=00b4d8" alt="bundle size" />
-  <img src="https://img.shields.io/github/license/your-org/react-import-wizard?style=flat-square&color=00b4d8" alt="license" />
-  <img src="https://img.shields.io/badge/TypeScript-Ready-3178c6?style=flat-square" alt="TypeScript" />
-</p>
+# Data Weaver
 
-<h1 align="center">⚡ React Import Wizard</h1>
+A React library that lets non-technical people turn messy spreadsheets into clean, validated records. A 3-step wizard: **upload** a file, **match** its columns to your fields, then **review and fix** the rows before handing them to your app.
 
-<p align="center">
-  <strong>The most powerful data import experience for React applications.</strong>
-  <br />
-  <em>CSV & Excel parsing • Smart column matching • Inline editing • Undo/Redo • Export</em>
-</p>
-
-<p align="center">
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-features">Features</a> •
-  <a href="#-examples">Examples</a> •
-  <a href="#-api-reference">API Reference</a> •
-  <a href="#-customization">Customization</a>
-</p>
+Data Weaver is general-purpose: the app that embeds it (the **Host App**) defines the fields it accepts. SpeakArt is the first Host App. Vocabulary: [`CONTEXT.md`](CONTEXT.md). Purpose and scope: [`docs/product/2026-09-23-purpose-and-scope.md`](docs/product/2026-09-23-purpose-and-scope.md).
 
 ---
 
-## 🎯 Why React Import Wizard?
+## What it does today
 
-Building data import functionality is **hard**. Users expect Excel-like editing, smart column detection, validation feedback, and the ability to fix errors on the spot. React Import Wizard delivers all of this out of the box.
+### Upload
+- Drag and drop, or pick a file: **CSV** (read as UTF-8), **XLSX** and **XLS**, parsed with SheetJS. Only the first sheet of a workbook is read.
+- Files of the wrong type or over the size limit are refused with a message. Both limits are configurable (`acceptedFileTypes`, `maxFileSize`).
+- A preview of the columns your fields expect.
 
-| Without React Import Wizard   | With React Import Wizard            |
-| ----------------------------- | ----------------------------------- |
-| ❌ Build your own file parser | ✅ CSV/Excel parsing included       |
-| ❌ Manual column mapping UI   | ✅ AI-powered fuzzy matching        |
-| ❌ No inline editing          | ✅ Excel-like click-to-edit         |
-| ❌ Basic validation only      | ✅ Field-level + row-level + custom |
-| ❌ No undo/redo               | ✅ Full history with Ctrl+Z/Y       |
-| ❌ Start from scratch         | ✅ Production-ready in 5 minutes    |
+### Column matching
+- Columns are matched to your fields automatically by keyword similarity, using each field's `matchKeywords` (or its key and label when it has none). Auto-matched columns get an "Auto" badge.
+- Any match can be changed or cleared from a dropdown.
+- Required fields must be matched before continuing.
 
----
+### Review and edit
+- Every row is validated: required fields, type conversion, per-field `validate` functions and a row-level `validateRow`. Errors and warnings are highlighted per row.
+- Click a cell to edit it. Enter saves, Escape cancels, and leaving the cell saves. Rows are re-validated after every edit.
+- Search with highlighting, and find and replace across all columns or one, with case-sensitive and whole-word options and a count of affected cells.
+- Undo and redo (up to 50 steps), with buttons and keyboard shortcuts.
+- Rows can be **excluded** from the import. The import can't complete while an included row has errors, so every row is either valid or deliberately excluded, and excluded rows are reported to the Host App.
+- "Fill Required" fills empty required cells with placeholder values.
+- Export the rows (all, or valid only) to CSV or Excel.
+- **AI Edit** (optional): the Importer describes a change in plain language and reviews the proposed edits before applying them. It appears only when the Host App supplies its own AI endpoint through `aiEdit`.
 
-## ✨ Features
-
-### 📁 Smart File Handling
-
-- **Drag & drop** or click to upload
-- **CSV, TSV, XLS, XLSX** support via SheetJS
-- Automatic encoding detection
-- File size and type validation
-- Beautiful skeleton preview while loading
-
-### 🔄 Intelligent Column Mapping
-
-- **Fuzzy auto-matching** with configurable keywords
-- Visual confidence indicators
-- Manual override with dropdown selectors
-- Required field validation
-- Sparkle badges for auto-matched columns ✨
-
-### ✏️ Excel-Like Data Editing
-
-- **Click to edit** any cell
-- **Keyboard navigation**: Enter, Escape, Tab, F2
-- Inline save/cancel buttons
-- Auto-save on blur
-- Error and warning highlighting
-
-### 🔍 Powerful Search & Replace
-
-- Real-time search with highlighting
-- **Mass find & replace** across all data
-- Case-sensitive and whole-word options
-- Column-specific filtering
-- Live preview of affected cells
-
-### ↩️ Undo/Redo History
-
-- **50-level undo stack**
-- Keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y)
-- Visual undo/redo buttons with tooltips
-
-### 📤 Flexible Export
-
-- Export to **CSV or Excel**
-- Option to export only valid rows
-- Auto-sized columns
-- Custom filename support
-
-### 🎨 Beautiful by Default
-
-- Clean, modern design
-- **Light and dark mode** support
-- Semantic color tokens for easy theming
-- Responsive layout
-- Accessible (keyboard navigation, ARIA attributes)
+### Styling
+- Ships its own precompiled stylesheet, scoped to the wizard. Your app does **not** need Tailwind, and the wizard's CSS doesn't touch the rest of your page.
+- Themed through CSS custom properties, with light and dark variants.
 
 ---
 
-## 🚀 Quick Start
+## Quick start
 
 ### Installation
 
 The package is not on a registry yet. Build a tarball from this repository and install it:
 
 ```bash
-npm pack                              # in this repo: builds dist-lib/ and writes data-weaver-0.1.0.tgz
+npm pack                                           # in this repo: builds dist-lib/ and writes data-weaver-0.1.0.tgz
 npm install ../data-weaver/data-weaver-0.1.0.tgz   # in your app
 ```
 
-### Peer Dependencies
+Peer dependencies: React 18 (`react`, `react-dom`). Everything else ships with the package.
 
-React 18 (`react`, `react-dom`). Everything else ships with the package. Your app does **not** need Tailwind: the stylesheet is precompiled and scoped to the wizard, so it neither needs nor touches your own styles.
-
-### Basic Usage
+### Basic usage
 
 ```tsx
 import { ImportWizard } from 'data-weaver';
@@ -128,20 +64,19 @@ function App() {
       onComplete={(data, { excludedRows }) => {
         console.log('Imported:', data);
         console.log('Left out by the Importer:', excludedRows.length);
-        // Send to your API, update state, etc.
       }}
     />
   );
 }
 ```
 
-That's it! You now have a fully functional data import wizard. 🎉
+The framework-free logic (parsing, matching, validation, export) is also available on its own from `data-weaver/core`.
 
 ---
 
-## 📖 Examples
+## Examples
 
-### E-commerce Product Import
+### Product import
 
 ```tsx
 import { ImportWizard, type FieldConfig } from 'data-weaver';
@@ -204,16 +139,17 @@ function ProductImport() {
   return (
     <ImportWizard
       fields={productFields}
-      requiredFields={['sku', 'name']}
       onComplete={handleImport}
-      title="Import Products"
-      description="Upload your product catalog as CSV or Excel"
+      title="Import products"
+      description="Upload your product catalogue as a CSV or Excel file."
+      acceptedFileTypes={['.csv', '.xlsx']}
+      maxFileSize={5 * 1024 * 1024}
     />
   );
 }
 ```
 
-### User Import with Email Validation
+### Cross-field validation
 
 ```tsx
 import { ImportWizard, type FieldConfig } from 'data-weaver';
@@ -252,10 +188,8 @@ function UserImport() {
   return (
     <ImportWizard
       fields={userFields}
-      requiredFields={['email', 'name']}
       onComplete={(users) => console.log(users)}
-      validateRow={(data, index) => {
-        // Cross-field validation
+      validateRow={(data) => {
         if (data.role === 'admin' && !data.department) {
           return [{ type: 'warning', message: 'Admins should have a department' }];
         }
@@ -266,136 +200,129 @@ function UserImport() {
 }
 ```
 
-### Real-Time Progress Tracking
+### Tracking progress
+
+`onRowComplete` fires once per row when the review step opens, then again for each row the Importer edits. Key your state by `rowIndex` so edits update the count instead of adding to it.
 
 ```tsx
 import { ImportWizard } from 'data-weaver';
 import { useState } from 'react';
 
 function ImportWithProgress() {
-  const [progress, setProgress] = useState({ parsed: 0, valid: 0, total: 0 });
+  const [total, setTotal] = useState(0);
+  const [validRows, setValidRows] = useState<Set<number>>(new Set());
 
   return (
     <>
-      <div className="progress-bar">
-        Parsed: {progress.parsed}/{progress.total} | Valid: {progress.valid}
-      </div>
+      <p>
+        Valid: {validRows.size} / {total}
+      </p>
 
       <ImportWizard
         fields={[/* your fields */]}
-        onRowParse={(event) => {
-          setProgress(p => ({ ...p, parsed: event.rowIndex + 1 }));
+        onEvent={(event) => {
+          if (event.type === 'FILE_PARSED') setTotal(event.data.rows.length);
         }}
         onRowComplete={(event) => {
-          if (event.isValid) {
-            setProgress(p => ({ ...p, valid: p.valid + 1 }));
-          }
+          setValidRows((prev) => {
+            const next = new Set(prev);
+            if (event.isValid) next.add(event.rowIndex);
+            else next.delete(event.rowIndex);
+            return next;
+          });
         }}
-        onEvent={(event) => {
-          if (event.type === 'FILE_PARSED') {
-            setProgress(p => ({ ...p, total: event.data.rows.length }));
-          }
-        }}
-        onComplete={(data) => console.log('Done!', data)}
+        onComplete={(data) => console.log('Done', data)}
       />
     </>
   );
 }
 ```
 
-### Custom Styling with CSS Variables
+### AI Edit
 
-The wizard's theme tokens live on its root element, `.dw-root`. Override them there:
+AI Edit is off unless you pass `aiEdit`, a function that calls **your own** AI endpoint. Data Weaver sends the instruction, the rows and the field definitions, and expects back the edits to propose. The Importer reviews them before they are applied, and only configured fields of existing rows can change.
 
-```css
-/* your app's CSS, loaded after data-weaver/styles.css */
-.dw-root {
-  --primary: 260 100% 60%;        /* Purple theme */
-  --success: 160 84% 39%;         /* Teal success */
-  --step-active: 260 100% 60%;    /* Purple steps */
-  --dropzone-active: 260 60% 95%; /* Light purple dropzone */
-}
+```tsx
+import { ImportWizard, type AiEditHandler } from 'data-weaver';
+
+const aiEdit: AiEditHandler = async ({ command, rows, fields }) => {
+  const response = await fetch('/api/ai-edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, rows, fields }),
+  });
+  if (!response.ok) throw new Error('The AI service is unavailable. Try again later.');
+  return response.json(); // RowEdit[]: [{ rowIndex: 0, changes: { email: 'ada@example.com' } }]
+};
+
+<ImportWizard fields={fields} aiEdit={aiEdit} onComplete={save} />;
 ```
+
+A rejected promise's `Error` message is shown to the Importer. Your endpoint is responsible for authentication, rate limiting and validating what it receives.
 
 ---
 
-## 📚 API Reference
+## API reference
 
 ### `<ImportWizard />`
 
-The main component that orchestrates the complete 3-step import flow.
+The complete 3-step flow.
 
-#### Props
+| Prop                | Type                                              | Default                     | Description |
+| ------------------- | ------------------------------------------------- | --------------------------- | ----------- |
+| `fields`            | `FieldConfig<TKey>[]`                             | artwork fields              | The fields each row becomes. Without it, the demo's artwork fields are used. |
+| `requiredFields`    | `TKey[]`                                          | `[]`                        | Extra required field keys, on top of fields with `required: true`. |
+| `onComplete`        | `(data: TRecord[], result: ImportResult) => void` | -                           | Called on "Complete Import" with the records of every row that was not excluded; `result.excludedRows` lists the Excluded Rows. Completing is blocked while an included row is invalid. |
+| `onEvent`           | `(event: ImportWizardEvent) => void`              | -                           | Called for every lifecycle event. |
+| `onRowParse`        | `(event: RowParseEvent) => TRecord \| void`       | -                           | Called for each row as it is converted to a record. Return a record to replace it. |
+| `onRowComplete`     | `(event: RowCompleteEvent) => void`               | -                           | Called for each row when the review step opens, then for each edited row. |
+| `validateRow`       | `(data, rowIndex) => ValidationResult[]`          | -                           | Row-level validation, applied initially and after every edit. |
+| `aiEdit`            | `(request: AiEditRequest) => Promise<RowEdit[]>`  | -                           | Enables AI Edit with your own AI endpoint. Without it, AI Edit is hidden. |
+| `title`             | `string`                                          | none                        | Heading shown above the step indicator. |
+| `description`       | `string`                                          | none                        | Text shown above the step indicator, below the title. |
+| `acceptedFileTypes` | `string[]`                                        | `['.csv', '.xlsx', '.xls']` | Extensions the upload step accepts; must be a subset of the default. Also sets the file picker's filter and the "You can upload" line. |
+| `maxFileSize`       | `number`                                          | `10485760` (10 MB)          | Largest file, in bytes, the upload step accepts. |
+| `className`         | `string`                                          | -                           | Extra CSS class for the wizard's root element. |
 
-| Prop                | Type                                        | Default                     | Description                                                            |
-| ------------------- | ------------------------------------------- | --------------------------- | ---------------------------------------------------------------------- |
-| `fields`            | `FieldConfig<TKey>[]`                       | Required                    | Column/field configuration array                                       |
-| `requiredFields` | `TKey[]` | `[]` | Extra required field keys, on top of fields with `required: true` |
-| `onComplete` | `(data: TRecord[], result: ImportResult) => void` | - | Called on "Complete Import" with the records of every row that was not excluded; `result.excludedRows` lists the Excluded Rows. Completing is blocked while an included row is invalid. |
-| `onEvent`           | `(event: ImportWizardEvent) => void`        | -                           | Lifecycle event handler for all wizard events                          |
-| `onRowParse`        | `(event: RowParseEvent) => TRecord \| void` | -                           | Called for each row during parsing. Return modified data to transform. |
-| `onRowComplete`     | `(event: RowCompleteEvent) => void`         | -                           | Called when a row passes validation or is edited                       |
-| `validateRow`       | `(data, rowIndex) => ValidationResult[]`    | -                           | Custom row-level validation, applied initially and after every edit |
-| `aiEdit` | `(request: AiEditRequest) => Promise<RowEdit[]>` | - | Enables AI Edit with your own AI endpoint. Without it, AI Edit is hidden. Only configured fields of existing rows can be changed. |
-| `title`             | `string`                                    | `'Import Data'`             | Title displayed at the top                                             |
-| `description`       | `string`                                    | -                           | Optional description below the title                                   |
-| `acceptedFileTypes` | `string[]`                                  | `['.csv', '.xlsx', '.xls']` | Accepted file extensions                                               |
-| `maxFileSize`       | `number`                                    | `10485760`                  | Maximum file size in bytes (default 10MB)                              |
-| `className`         | `string`                                    | -                           | Additional CSS class for the container                                 |
+**No default heading.** The wizard is usually placed inside a page that already has its own heading, so it shows no title unless you pass `title` (and no description unless you pass `description`).
 
----
+**Refused files.** A file with another extension, or larger than `maxFileSize`, is refused before it is read. The upload step stays open and shows, for example, "catalogue.pdf is not a supported file type. You can upload: .csv, .xlsx, .xls" or "people.csv is too large. The maximum file size is 10 MB."
 
 ### `FieldConfig<TKey>`
-
-Configuration object for each target field/column.
 
 ```typescript
 interface FieldConfig<TKey extends string = string> {
   /** Unique identifier for this field */
   key: TKey;
-
-  /** Display label shown in the UI */
+  /** Label shown in the UI */
   label: string;
-
-  /** Data type for parsing and validation */
-  type: 'string' | 'number' | 'date' | 'boolean';
-
-  /** Whether this field is required for a valid row */
+  /** Whether a row must have a value for this field to be valid */
   required?: boolean;
-
-  /** Keywords for fuzzy auto-matching source columns */
+  /** How the cell text is converted (see below) */
+  type: 'string' | 'number' | 'date' | 'boolean';
+  /** Keywords used to auto-match source column names to this field */
   matchKeywords?: string[];
-
-  /**
-   * Custom validation function
-   * @returns null if valid, or { type: 'error' | 'warning', message: string }
-   */
+  /** Field-level validation: null if valid, otherwise an error or warning */
   validate?: (value: unknown, row: Record<string, unknown>) => ValidationResult | null;
-
-  /** Transform value after parsing (e.g., trim, lowercase) */
+  /** Transform the value after conversion (e.g. trim, lowercase) */
   transform?: (value: unknown) => unknown;
-
-  /** Placeholder shown when value is empty */
+  /** Placeholder shown when the value is empty */
   placeholder?: string;
 }
 ```
 
-#### Type Parsing Behavior
+#### Type conversion
 
-| Type      | Input Example            | Parsed Output                |
-| --------- | ------------------------ | ---------------------------- |
-| `string`  | `"  Hello World  "`      | `"Hello World"` (trimmed)    |
-| `number`  | `"$1,234.56"`            | `1234.56` (symbols stripped) |
-| `boolean` | `"yes"`, `"true"`, `"1"` | `true`                       |
-| `date`    | `"2024-01-15"`           | `Date` object                |
+Empty cells become `null`.
 
----
+| Type      | Input example                                        | Result                                     |
+| --------- | ---------------------------------------------------- | ------------------------------------------ |
+| `string`  | `"  Hello World  "`                                  | `"Hello World"` (trimmed)                  |
+| `number`  | `"$1,234.56"`                                        | `1234.56` (`, $ € £ ¥` and spaces removed) |
+| `boolean` | `"yes"`, `"true"`, `"1"`, `"on"` / `"no"`, `"false"`, `"0"`, `"off"` | `true` / `false`       |
+| `date`    | `"2024-01-15"`                                       | `Date` (via `new Date(text)`)              |
 
 ### Events
-
-#### `ImportWizardEvent<TRecord>`
-
-Union type of all lifecycle events:
 
 ```typescript
 type ImportWizardEvent<TRecord> =
@@ -406,25 +333,13 @@ type ImportWizardEvent<TRecord> =
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
   | { type: 'IMPORT_COMPLETED'; data: TRecord[]; excludedRows: RowValidation<TRecord>[] }
   | { type: 'ERROR'; error: string };
-```
 
-#### `RowParseEvent<TRecord>`
-
-Emitted during parsing for each row:
-
-```typescript
 interface RowParseEvent<TRecord> {
   rowIndex: number;
-  rawData: Record<string, unknown>;  // Original row data
-  parsedData: TRecord;               // Parsed & transformed data
+  rawData: Record<string, unknown>; // the row as read from the file
+  parsedData: TRecord;              // after type conversion and transforms
 }
-```
 
-#### `RowCompleteEvent<TRecord>`
-
-Emitted when a row is validated or edited:
-
-```typescript
 interface RowCompleteEvent<TRecord> {
   rowIndex: number;
   data: TRecord;
@@ -434,196 +349,129 @@ interface RowCompleteEvent<TRecord> {
 }
 ```
 
----
+`ERROR` is emitted when a file that passed the upload checks can't be parsed.
 
-### Individual Components
+### Individual components
 
-Use these for custom implementations or when you only need specific functionality.
-
-Each step component brings its own `WizardRoot` (styling scope, tooltips and portals), so it works on its own. To compose several building blocks under one scope, wrap them in `<WizardRoot>` yourself.
+Use these to build your own flow. Each step component brings its own `WizardRoot` (styling scope, tooltip context and a container for popovers), so it works on its own. To compose several pieces under one scope, wrap them in `<WizardRoot>` yourself.
 
 #### `<FileUploader />`
 
-Drag-and-drop file upload with validation.
-
 ```tsx
-import { FileUploader } from 'data-weaver';
-
 <FileUploader
-  onFileSelected={(file: File) => handleFile(file)}
-  isLoading={false}
-  error={null}
-  helpText="Upload your data file (CSV or Excel)"
+  onFileSelected={(file) => handleFile(file)}
+  acceptedFileTypes={['.csv']}
+  maxFileSize={2 * 1024 * 1024}
 />
 ```
 
-| Prop             | Type                   | Default  | Description                     |
-| ---------------- | ---------------------- | -------- | ------------------------------- |
-| `onFileSelected` | `(file: File) => void` | Required | Callback when file is selected  |
-| `isLoading`      | `boolean`              | `false`  | Show loading skeleton           |
-| `error`          | `string \| null`       | `null`   | Error message to display        |
-| `helpText`       | `string`               | -        | Custom help text in info banner |
-| `className`      | `string`               | -        | Additional CSS class            |
-
----
+| Prop                | Type                                   | Default                     | Description |
+| ------------------- | -------------------------------------- | --------------------------- | ----------- |
+| `onFileSelected`    | `(file: File) => void`                 | Required                    | Called with a file that passed the type and size checks. |
+| `acceptedFileTypes` | `string[]`                             | `['.csv', '.xlsx', '.xls']` | Accepted extensions. Other files are refused with a message. |
+| `maxFileSize`       | `number`                               | `10485760` (10 MB)          | Largest accepted file, in bytes. |
+| `fields`            | `Pick<FieldConfig, 'key' \| 'label'>[]` | artwork fields              | Columns shown in the preview. |
+| `helpText`          | `string`                               | a one-line explanation      | Plain text shown in the info banner. |
+| `isLoading`         | `boolean`                              | `false`                     | Show a loading skeleton. |
+| `error`             | `string \| null`                       | `null`                      | Error to display, e.g. from parsing. |
+| `className`         | `string`                               | -                           | Extra CSS class. |
 
 #### `<ColumnMapper />`
 
-Column mapping interface with auto-matching.
-
 ```tsx
-import { ColumnMapper } from 'data-weaver';
-
 <ColumnMapper
   mappings={columnMappings}
   fields={fields}
-  onMappingChange={(source, target) => updateMapping(source, target)}
-  onConfirm={() => goToValidation()}
-  isLoading={false}
+  onMappingChange={(source, target) => setMappings(updateMapping(columnMappings, source, target))}
+  onConfirm={() => goToReview()}
 />
 ```
 
-| Prop              | Type                       | Default  | Description                          |
-| ----------------- | -------------------------- | -------- | ------------------------------------ |
-| `mappings`        | `ColumnMapping[]`          | Required | Current column mappings              |
-| `fields`          | `FieldConfig[]`            | Required | Target field configurations          |
-| `onMappingChange` | `(source, target) => void` | Required | Callback when mapping changes        |
-| `onConfirm`       | `() => void`               | Required | Callback when user confirms mappings |
-| `isLoading`       | `boolean`                  | `false`  | Show loading skeleton                |
-
----
+| Prop              | Type                                               | Default  | Description |
+| ----------------- | -------------------------------------------------- | -------- | ----------- |
+| `mappings`        | `ColumnMapping[]`                                  | Required | Current column mappings. |
+| `fields`          | `FieldConfig[]`                                    | Required | Target fields. |
+| `onMappingChange` | `(sourceColumn: string, targetField: TKey \| null) => void` | Required | Called when a mapping changes. |
+| `onConfirm`       | `() => void`                                       | Required | Called when the Importer confirms the mappings. |
+| `isLoading`       | `boolean`                                          | `false`  | Show a loading skeleton. |
+| `className`       | `string`                                           | -        | Extra CSS class. |
 
 #### `<DataValidator />`
 
-Data review with editing, search, and export.
-
 ```tsx
-import { DataValidator } from 'data-weaver';
-
 <DataValidator
   validatedRows={rows}
   fields={fields}
-  requiredFields={['name', 'email']}
+  onRowsChange={setRows}
   onComplete={() => finishImport()}
   onBack={() => goToMapping()}
-  onRowsChange={(rows) => setRows(rows)}
-  isLoading={false}
 />
 ```
 
-| Prop             | Type              | Default  | Description               |
-| ---------------- | ----------------- | -------- | ------------------------- |
-| `validatedRows`  | `RowValidation[]` | Required | Validated row data        |
-| `fields`         | `FieldConfig[]`   | Required | Field configurations      |
-| `requiredFields` | `string[]`        | `[]`     | Required field keys       |
-| `onComplete`     | `() => void`      | Required | Callback for completion   |
-| `onBack`         | `() => void`      | Required | Callback to go back       |
-| `onRowsChange`   | `(rows) => void`  | -        | Callback when rows change |
-| `isLoading`      | `boolean`         | `false`  | Show loading skeleton     |
+| Prop             | Type                                     | Default  | Description |
+| ---------------- | ---------------------------------------- | -------- | ----------- |
+| `validatedRows`  | `RowValidation[]`                        | Required | Validated rows. |
+| `fields`         | `FieldConfig[]`                          | Required | Fields. |
+| `requiredFields` | `TKey[]`                                 | `[]`     | Extra required field keys. |
+| `validateRow`    | `(data, rowIndex) => ValidationResult[]` | -        | Row-level validation, re-applied after every edit. |
+| `aiEdit`         | `AiEditHandler`                          | -        | Enables AI Edit. |
+| `onComplete`     | `() => void`                             | Required | Called on "Complete Import". |
+| `onBack`         | `() => void`                             | Required | Called on "Back". |
+| `onRowsChange`   | `(rows: RowValidation[]) => void`        | -        | Called after each change to the rows (not on mount). |
+| `isLoading`      | `boolean`                                | `false`  | Show a loading skeleton. |
+| `className`      | `string`                                 | -        | Extra CSS class. |
 
----
+#### Smaller pieces
 
-#### `<EditableCell />`
+- `<EditableCell value onSave hasError? hasWarning? isHighlighted? />`: a click-to-edit cell.
+- `<SearchBar value onChange matchCount? />`: a search input with a match counter.
+- `<FindReplaceDialog onReplace getPreviewCount fields? />`: find and replace, with column, case-sensitive and whole-word options.
+- `<AiEditChat rows fields onRequestEdits onApplyEdits />`: the AI Edit chat on its own.
 
-Single editable cell with keyboard support.
+### Utility functions
 
-```tsx
-import { EditableCell } from 'data-weaver';
+All of these are exported from `data-weaver` and from `data-weaver/core`.
 
-<EditableCell
-  value="Cell content"
-  onSave={(newValue) => updateCell(newValue)}
-  hasError={false}
-  hasWarning={false}
-  isHighlighted={false}
-/>
-```
-
----
-
-#### `<SearchBar />`
-
-Search input with match counter.
-
-```tsx
-import { SearchBar } from 'data-weaver';
-
-<SearchBar
-  value={searchQuery}
-  onChange={setSearchQuery}
-  matchCount={5}
-/>
-```
-
----
-
-#### `<FindReplaceDialog />`
-
-Find and replace dialog with options.
-
-```tsx
-import { FindReplaceDialog } from 'data-weaver';
-
-<FindReplaceDialog
-  onReplace={(find, replace, options) => replaceAll(find, replace, options)}
-  getPreviewCount={(find, options) => countMatches(find, options)}
-  fields={fields}
-/>
-```
-
----
-
-### Utility Functions
-
-#### Parsing
+#### Upload checks and parsing
 
 ```typescript
-import { parseFile, isValidFileType, getFileTypeFromName } from 'data-weaver';
+import { checkUpload, parseFile, isValidFileType, getFileTypeFromName } from 'data-weaver';
 
-// Parse a file
-const data = await parseFile(file);
+checkUpload(file, { acceptedFileTypes: ['.csv'], maxFileSize: 10 * 1024 * 1024 });
+// => null if accepted, otherwise the message shown to the Importer
+
+const data = await parseFile(file); // .csv, .xlsx or .xls; throws on anything else
 // => { headers: string[], rows: Record<string, unknown>[], fileName: string, fileType: 'csv' | 'excel' }
 
-// Check file type
-isValidFileType('data.csv');        // true
-isValidFileType('image.png');       // false
-getFileTypeFromName('data.xlsx');   // 'excel'
+isValidFileType('data.csv');      // true
+isValidFileType('report.pdf');    // false
+getFileTypeFromName('data.xlsx'); // 'excel'
 ```
 
-#### Column Matching
+`DEFAULT_ACCEPTED_FILE_TYPES` and `DEFAULT_MAX_FILE_SIZE` hold the defaults.
+
+#### Column matching
 
 ```typescript
 import { autoMatchColumns, updateMapping, getUnmappedTargetFields } from 'data-weaver';
 
-// Auto-match columns
-const mappings = autoMatchColumns(headers, fields);
-
-// Update a mapping
+const mappings = autoMatchColumns(headers, fields);             // keyword-similarity matching
 const updated = updateMapping(mappings, 'source_col', 'target_field');
-
-// Get unmapped fields
 const unmapped = getUnmappedTargetFields(mappings, fields);
 ```
 
 #### Validation
 
 ```typescript
-import { validateRows, revalidateRow, getValidationSummary } from 'data-weaver';
+import { validateRows, revalidateRow, getValidationSummary, resolveRequiredKeys } from 'data-weaver';
 
-// Validate all rows
-const validated = validateRows(rows, mappings, {
-  fields,
-  requiredFields,
-  customValidator,
-  onRowParse,
-});
+const validated = validateRows(rows, mappings, { fields, requiredFields, customValidator, onRowParse });
+const revalidated = revalidateRow(row, { fields, requiredFields, customValidator });
 
-// Revalidate after editing
-const revalidated = revalidateRow(row, { fields, requiredFields });
+getValidationSummary(validated);
+// => { total, valid, withErrors, withWarnings, excluded }
 
-// Get summary statistics
-const summary = getValidationSummary(validated);
-// => { total: 100, valid: 95, withErrors: 3, withWarnings: 2 }
+resolveRequiredKeys(fields, requiredFields); // the field keys a row must fill in
 ```
 
 #### Export
@@ -631,187 +479,72 @@ const summary = getValidationSummary(validated);
 ```typescript
 import { exportData, exportToBlob } from 'data-weaver';
 
-// Download directly
+// Download a file
 exportData(rows, fields, {
-  filename: 'my-export',
-  format: 'xlsx',           // or 'csv'
-  onlyValid: true,          // export only valid rows
+  filename: 'my-export', // default 'export'
+  format: 'xlsx',        // or 'csv'
+  onlyValid: true,       // default false
   includeHeaders: true,
 });
 
-// Get blob for custom handling
+// Or get a Blob to handle yourself
 const blob = exportToBlob(rows, fields, { format: 'csv' });
-const url = URL.createObjectURL(blob);
 ```
 
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut                  | Action                               |
-| ------------------------- | ------------------------------------ |
-| `Click` / `Enter` / `F2`  | Start editing cell                   |
-| `Enter`                   | Save cell and exit edit mode         |
-| `Escape`                  | Cancel editing                       |
-| `Tab`                     | Save cell and move to next           |
-| `Ctrl+Z`                  | Undo last change                     |
-| `Ctrl+Shift+Z` / `Ctrl+Y` | Redo                                 |
-| `Ctrl+Enter`              | Replace all (in Find/Replace dialog) |
+`data-weaver` (not `data-weaver/core`) also exports `useHistory`, the undo/redo hook the review step uses.
 
 ---
 
-## 🎨 Customization
+## Keyboard shortcuts
 
-### CSS Custom Properties
+| Shortcut                 | Action                               |
+| ------------------------ | ------------------------------------ |
+| Click / `Enter` / `F2`   | Start editing a cell                 |
+| `Enter`                  | Save the cell                        |
+| `Escape`                 | Cancel editing                       |
+| `Tab`                    | Save the cell                        |
+| `Ctrl+Z` / `Cmd+Z`       | Undo                                 |
+| `Ctrl+Y` / `Cmd+Y`       | Redo                                 |
+| `Ctrl+Enter`             | Replace all (in the Find and Replace dialog) |
 
-The library uses CSS custom properties (CSS variables) for theming. Override these in your CSS:
+---
+
+## Theming
+
+All tokens live on the wizard's root element, `.dw-root`, as HSL values without the `hsl()` wrapper. Override them in your own CSS, loaded after `data-weaver/styles.css`:
 
 ```css
-:root {
-  /* Core theme colors (HSL values without hsl() wrapper) */
-  --primary: 210 100% 50%;
-  --primary-foreground: 0 0% 100%;
-
-  --success: 142 76% 36%;
-  --warning: 38 92% 50%;
-  --destructive: 0 72% 51%;
-
-  /* Wizard-specific tokens */
-  --step-active: 210 100% 45%;
-  --step-inactive: 220 10% 60%;
-
-  --dropzone-bg: 210 40% 98%;
-  --dropzone-border: 210 30% 88%;
-  --dropzone-hover: 210 50% 96%;
-  --dropzone-active: 210 60% 94%;
-
-  --info-bg: 210 100% 97%;
-  --info-foreground: 210 100% 40%;
-
-  --mapping-matched: 142 50% 95%;
-
-  --validation-valid: 142 76% 95%;
-  --validation-warning: 38 92% 95%;
-  --validation-error: 0 72% 95%;
+.dw-root {
+  --primary: 260 100% 60%;
+  --step-active: 260 100% 60%;
+  --dropzone-active: 260 60% 95%;
 }
 ```
 
-### Dark Mode
+The main tokens are `--primary`, `--success`, `--warning`, `--destructive`, `--step-active`, `--step-inactive`, `--dropzone-*`, `--info-*`, `--mapping-*` and `--validation-*`. See `src/components/import-wizard/styles.css` for the full list.
 
-The library automatically supports dark mode via the `.dark` class:
+**Dark mode** applies when the wizard is inside an element with the `dark` class (e.g. `<html class="dark">`). Override dark tokens with `.dark .dw-root { ... }`.
 
-```css
-.dark {
-  --primary: 210 100% 60%;
-  --dropzone-bg: 220 20% 12%;
-  --step-active: 210 100% 60%;
-  /* ... see styles.css for all tokens */
-}
-```
-
-### Component Class Names
-
-Each component accepts a `className` prop for additional styling:
-
-```tsx
-<ImportWizard
-  className="my-custom-wizard"
-  // ...
-/>
-```
-
-```css
-.my-custom-wizard {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-```
+Every component also accepts a `className` for layout tweaks.
 
 ---
 
-## 📦 Bundle Size
-
-React Import Wizard is optimized for minimal bundle impact:
-
-| Import          | Size (minified + gzipped) |
-| --------------- | ------------------------- |
-| Full library    | ~25 KB                    |
-| Core utils only | ~8 KB                     |
-| xlsx (peer dep) | ~150 KB                   |
-
-The library uses tree-shaking, so importing only what you need keeps your bundle small:
-
-```typescript
-// Full wizard
-import { ImportWizard } from 'data-weaver';
-
-// Just utilities (smaller)
-import { parseFile, validateRows, exportData } from 'data-weaver';
-```
-
----
-
-## 🧪 Testing
-
-The library includes comprehensive test coverage:
+## Developing
 
 ```bash
-npm test
+npm run dev         # demo app on http://localhost:8080
+npm test            # run the tests once
+npm run lint        # ESLint
+npm run build       # demo site build (GitHub Pages)
+npm run build:lib   # package build into dist-lib/
 ```
 
-```
-✓ parser.test.ts (9 tests)
-✓ matcher.test.ts (16 tests)
-✓ validator.test.ts (18 tests)
-✓ exporter.test.ts (8 tests)
+The demo app (`src/pages/Index.tsx`) is an artwork importer. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
 
-Test Files  4 passed
-Tests       51 passed
-```
+## Planned
 
----
+From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, Commit in batches with per-row outcomes, an Import Report, Fix & Retry, a message catalogue for translations, option lists loaded from the Host App, and a grid that stays fast with 10,000 rows.
 
-## 🗺️ Roadmap
+## License
 
-- [x] CSV/Excel parsing
-- [x] Fuzzy column matching
-- [x] Inline cell editing
-- [x] Search and find/replace
-- [x] Undo/redo history
-- [x] CSV/Excel export
-- [x] Dark mode support
-- [ ] PDF parsing (via AI/LLM)
-- [ ] Arrow key navigation between cells
-- [ ] Bulk row selection and deletion
-- [ ] Column reordering
-- [ ] Virtualized rendering for large datasets
-- [ ] Saved mapping templates
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-MIT © [Your Organization](https://github.com/your-org)
-
----
-
-<p align="center">
-  <strong>Built with ❤️ for developers who value great UX</strong>
-  <br />
-  <a href="https://github.com/your-org/react-import-wizard">GitHub</a> •
-  <a href="https://npmjs.com/package/react-import-wizard">npm</a> •
-  <a href="https://your-org.github.io/react-import-wizard">Demo</a>
-</p>
+No license has been chosen yet.

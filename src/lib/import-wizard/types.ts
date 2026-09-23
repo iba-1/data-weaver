@@ -1,8 +1,5 @@
 /**
- * React Import Wizard - Type Definitions
- * 
- * @packageDocumentation
- * @module react-import-wizard/types
+ * Data Weaver - type definitions
  */
 
 // ============================================================
