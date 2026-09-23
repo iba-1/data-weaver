@@ -27,6 +27,22 @@ export function EditableCell({
   const inputRef = useRef<HTMLInputElement>(null);
   const cellRef = useRef<HTMLDivElement>(null);
 
+  // The review grid is virtualised: a cell being edited unmounts when its row
+  // scrolls far out of view. Like clicking away, that saves what was typed.
+  // The draft lives in a ref (null when not editing) so a save is never doubled.
+  const draftRef = useRef<string | null>(null);
+  const onSaveRef = useRef(onSave);
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  });
+  useEffect(() => {
+    const draft = draftRef;
+    const save = onSaveRef;
+    return () => {
+      if (draft.current !== null) save.current(draft.current.trim());
+    };
+  }, []);
+
   useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus();
@@ -35,16 +51,26 @@ export function EditableCell({
   }, [isEditing]);
 
   const handleStartEdit = () => {
-    setEditValue(cellText(value));
+    const text = cellText(value);
+    draftRef.current = text;
+    setEditValue(text);
     setIsEditing(true);
   };
 
+  const handleChange = (text: string) => {
+    draftRef.current = text;
+    setEditValue(text);
+  };
+
   const handleSave = () => {
+    if (draftRef.current === null) return;
+    draftRef.current = null;
     onSave(editValue.trim());
     setIsEditing(false);
   };
 
   const handleCancel = () => {
+    draftRef.current = null;
     setIsEditing(false);
     setEditValue('');
   };
@@ -77,7 +103,7 @@ export function EditableCell({
         <Input
           ref={inputRef}
           value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
           className="h-7 text-sm py-0 px-2 flex-1"

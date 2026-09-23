@@ -350,7 +350,7 @@ function processValue(
 }
 
 /**
- * Get validation summary statistics
+ * Get validation summary statistics, in a single pass over the rows
  */
 export function getValidationSummary<TRecord>(validations: RowValidation<TRecord>[]): {
   total: number;
@@ -359,12 +359,15 @@ export function getValidationSummary<TRecord>(validations: RowValidation<TRecord
   withWarnings: number;
   excluded: number;
 } {
-  const included = validations.filter((v) => !v.excluded);
-  return {
-    total: validations.length,
-    valid: included.filter((v) => v.isValid && v.warnings.length === 0).length,
-    withErrors: included.filter((v) => !v.isValid).length,
-    withWarnings: included.filter((v) => v.isValid && v.warnings.length > 0).length,
-    excluded: validations.length - included.length,
-  };
+  let valid = 0;
+  let withErrors = 0;
+  let withWarnings = 0;
+  let excluded = 0;
+  for (const v of validations) {
+    if (v.excluded) excluded++;
+    else if (!v.isValid) withErrors++;
+    else if (v.warnings.length > 0) withWarnings++;
+    else valid++;
+  }
+  return { total: validations.length, valid, withErrors, withWarnings, excluded };
 }

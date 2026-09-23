@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, CheckCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Ban, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { getValidationSummary } from '@/lib/import-wizard/validator';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,7 @@ interface ReviewSummaryProps {
   onFilterChange: (filter: RowFilter) => void;
 }
 
-/** Valid / warning / error counts; each badge filters the grid to those rows */
+/** Valid / warning / error / excluded counts; each badge filters the grid to those rows */
 export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummaryProps) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -43,6 +43,14 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
       >
         <AlertCircle className="mr-1 h-3 w-3" />
         {summary.withErrors} Errors
+      </Badge>
+      <Badge
+        variant={filter === 'excluded' ? 'default' : 'outline'}
+        className="cursor-pointer"
+        onClick={() => onFilterChange('excluded')}
+      >
+        <Ban className="mr-1 h-3 w-3" />
+        {summary.excluded} Excluded
       </Badge>
     </div>
   );
