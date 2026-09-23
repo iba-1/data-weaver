@@ -243,3 +243,108 @@ describe('FileUploader preview', () => {
     expect(screen.queryByText('Artist')).not.toBeInTheDocument();
   });
 });
+
+describe('ImportWizard upload step', () => {
+  const MB = 1024 * 1024;
+
+  /** A file whose reported size is `size` bytes, without allocating it. */
+  function fileOfSize(name: string, size: number) {
+    const file = new File(['x'], name);
+    Object.defineProperty(file, 'size', { value: size });
+    return file;
+  }
+
+  async function upload(file: File) {
+    const input = document.getElementById('file-input') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+  }
+
+  function expectStillOnUpload() {
+    expect(parseFile).not.toHaveBeenCalled();
+    expect(document.getElementById('file-input')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /continue to validation/i })).not.toBeInTheDocument();
+  }
+
+  it('refuses a file over the default 10 MB limit with a message and stays on upload', async () => {
+    render(<ImportWizard fields={FIELDS} />);
+
+    await upload(fileOfSize('people.csv', 10 * MB + 1));
+
+    expect(screen.getByText('people.csv is too large. The maximum file size is 10 MB.')).toBeInTheDocument();
+    expectStillOnUpload();
+  });
+
+  it('enforces a Host App maxFileSize and accepts a file exactly at the limit', async () => {
+    mockFile([{ name: 'Ada', email: '' }]);
+    render(<ImportWizard fields={FIELDS} maxFileSize={2 * MB} />);
+
+    await upload(fileOfSize('people.csv', 3 * MB));
+    expect(screen.getByText('people.csv is too large. The maximum file size is 2 MB.')).toBeInTheDocument();
+    expectStillOnUpload();
+
+    await upload(fileOfSize('people.csv', 2 * MB));
+    expect(await screen.findByRole('button', { name: /continue to validation/i })).toBeInTheDocument();
+  });
+
+  it('refuses a PDF by default, with a message naming the accepted types', async () => {
+    render(<ImportWizard fields={FIELDS} />);
+
+    await upload(fileOfSize('catalogue.pdf', 100));
+
+    expect(
+      screen.getByText('catalogue.pdf is not a supported file type. You can upload: .csv, .xlsx, .xls')
+    ).toBeInTheDocument();
+    expectStillOnUpload();
+  });
+
+  it('refuses a file type outside acceptedFileTypes and advertises only the accepted types', async () => {
+    render(<ImportWizard fields={FIELDS} acceptedFileTypes={['.csv']} />);
+    const input = document.getElementById('file-input') as HTMLInputElement;
+
+    expect(input.accept).toBe('.csv');
+    expect(screen.getByText('You can upload: .csv (up to 10 MB)')).toBeInTheDocument();
+
+    await upload(fileOfSize('people.xlsx', 100));
+
+    expect(screen.getByText('people.xlsx is not a supported file type. You can upload: .csv')).toBeInTheDocument();
+    expectStillOnUpload();
+  });
+
+  it('refuses a dropped file the same way as a picked one', async () => {
+    render(<ImportWizard fields={FIELDS} acceptedFileTypes={['.csv']} />);
+    const dropZone = document.getElementById('file-input')!.parentElement!;
+
+    await act(async () => {
+      fireEvent.drop(dropZone, { dataTransfer: { files: [fileOfSize('people.xls', 100)] } });
+    });
+
+    expect(screen.getByText('people.xls is not a supported file type. You can upload: .csv')).toBeInTheDocument();
+    expectStillOnUpload();
+  });
+
+  it('advertises the default accepted types and size, with no HTML or placeholder help text', () => {
+    render(<ImportWizard fields={FIELDS} />);
+
+    expect((document.getElementById('file-input') as HTMLInputElement).accept).toBe('.csv,.xlsx,.xls');
+    expect(screen.getByText('You can upload: .csv, .xlsx, .xls (up to 10 MB)')).toBeInTheDocument();
+    expect(screen.queryByText(/html|customize this help text|sample file/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ImportWizard title and description', () => {
+  it('shows the title and description above the steps when given', () => {
+    render(<ImportWizard fields={FIELDS} title="Import artworks" description="One row per artwork." />);
+
+    expect(screen.getByRole('heading', { name: 'Import artworks' })).toBeInTheDocument();
+    expect(screen.getByText('One row per artwork.')).toBeInTheDocument();
+  });
+
+  it('shows no heading of its own when neither is given', () => {
+    render(<ImportWizard fields={FIELDS} />);
+
+    // The drop zone's "Drag and drop a file here" is the only heading
+    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Drag and drop a file here']);
+  });
+});

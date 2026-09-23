@@ -1,19 +1,31 @@
 import React, { useCallback, useState } from 'react';
 import { Upload, AlertCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isValidFileType } from '@/lib/import-wizard/parser';
+import {
+  checkUpload,
+  DEFAULT_ACCEPTED_FILE_TYPES,
+  DEFAULT_MAX_FILE_SIZE,
+  formatFileSize,
+  normaliseFileTypes,
+} from '@/lib/import-wizard/parser';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { TARGET_FIELDS, type FieldConfig } from '@/lib/import-wizard/types';
 import { WizardRoot } from './WizardRoot';
 
 interface FileUploaderProps {
+  /** Called with a file that passed the type and size checks */
   onFileSelected: (file: File) => void;
   isLoading?: boolean;
   error?: string | null;
+  /** Plain text shown in the info banner above the drop zone */
   helpText?: string;
   /** Fields shown as the expected columns in the preview; defaults to the artwork fields */
   fields?: Pick<FieldConfig, 'key' | 'label'>[];
+  /** Accepted extensions (subset of .csv, .xlsx, .xls); other files are refused with a message */
+  acceptedFileTypes?: string[];
+  /** Maximum file size in bytes; larger files are refused with a message */
+  maxFileSize?: number;
   className?: string;
 }
 
@@ -30,12 +42,24 @@ function FileUploaderContent({
   onFileSelected,
   isLoading = false,
   error = null,
-  helpText = 'Drag and drop the sample file. You can customize this help text. It even supports HTML so you can style it, embed videos, etc.',
+  helpText = 'Upload a spreadsheet with column names in the first row and one record per row after it.',
   fields = TARGET_FIELDS,
+  acceptedFileTypes = DEFAULT_ACCEPTED_FILE_TYPES,
+  maxFileSize = DEFAULT_MAX_FILE_SIZE,
   className,
 }: FileUploaderProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
+  const acceptedTypes = normaliseFileTypes(acceptedFileTypes);
+
+  const selectFile = useCallback(
+    (file: File) => {
+      const refusal = checkUpload(file, { acceptedFileTypes, maxFileSize });
+      setDragError(refusal);
+      if (!refusal) onFileSelected(file);
+    },
+    [acceptedFileTypes, maxFileSize, onFileSelected]
+  );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -64,16 +88,9 @@ function FileUploaderContent({
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
 
-      const file = files[0];
-      if (!isValidFileType(file.name)) {
-        setDragError('Please upload a CSV, Excel, or PDF file');
-        return;
-      }
-
-      setDragError(null);
-      onFileSelected(file);
+      selectFile(files[0]);
     },
-    [onFileSelected]
+    [selectFile]
   );
 
   const handleFileInput = useCallback(
@@ -81,16 +98,11 @@ function FileUploaderContent({
       const files = e.target.files;
       if (!files || files.length === 0) return;
 
-      const file = files[0];
-      if (!isValidFileType(file.name)) {
-        setDragError('Please upload a CSV, Excel, or PDF file');
-        return;
-      }
-
-      setDragError(null);
-      onFileSelected(file);
+      selectFile(files[0]);
+      // Let the Importer pick the same file again after fixing it
+      e.target.value = '';
     },
-    [onFileSelected]
+    [selectFile]
   );
 
   if (isLoading) {
@@ -107,7 +119,8 @@ function FileUploaderContent({
     );
   }
 
-  const displayError = error || dragError;
+  // A refusal of the file just picked outranks an error left from an earlier one
+  const displayError = dragError || error;
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -135,7 +148,7 @@ function FileUploaderContent({
         <input
           id="file-input"
           type="file"
-          accept=".csv,.xlsx,.xls,.pdf"
+          accept={acceptedTypes.join(',')}
           onChange={handleFileInput}
           className="hidden"
         />
@@ -178,7 +191,7 @@ function FileUploaderContent({
               {isDragActive ? 'Drop your file here' : 'Drag and drop a file here'}
             </h3>
             <p className="text-sm text-muted-foreground">
-              You can upload: .csv, .tsv, .txt, .xls, .xlsx
+              You can upload: {acceptedTypes.join(', ')} (up to {formatFileSize(maxFileSize)})
             </p>
           </div>
 
