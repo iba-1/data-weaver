@@ -24,6 +24,8 @@ export interface MessageParams {
     upload: void;
     mapping: void;
     review: void;
+    /** Shown only when the Output Shape has Relationship Fields */
+    resolution: void;
     import: void;
   };
   /** The upload step */
@@ -94,6 +96,8 @@ export interface MessageParams {
     back: void;
     excludedCount: { count: number };
     complete: { count: number };
+    /** The review's main button when the Output Shape has Relationship Fields: on to Resolution */
+    continueToResolution: { count: number };
   };
   /** Saving the rows through the Host App (Commit) */
   commit: {
@@ -116,6 +120,57 @@ export interface MessageParams {
     invalidAnswer: void;
     /** A Rejected Row's reason when the Host App rejected it without one */
     noReason: void;
+  };
+  /**
+   * Resolution: linking each distinct Relationship Field value to an existing
+   * Related Record or a new one, before Commit. `fields` is the labels of the
+   * fields of one kind, comma-separated.
+   */
+  resolution: {
+    title: void;
+    description: void;
+    loading: { fields: string; count: number };
+    /** `reason` is the message of the Error the Host App's `findRelated` rejected with, or `invalidLookup` */
+    lookupFailed: { fields: string; reason: string };
+    /** The reason when the Host App's lookup answer could not be read */
+    invalidLookup: void;
+    blocked: void;
+    retry: void;
+    /** Heading of one kind's values */
+    kindTitle: { fields: string; count: number };
+    empty: void;
+    matchedTitle: { count: number };
+    matchedDescription: void;
+    createTitle: { count: number };
+    createDescription: void;
+    undecidedTitle: { count: number };
+    undecidedDescription: void;
+    /** Introduces the existing records that share a value's name (Homonyms) */
+    homonyms: { count: number };
+    /** Introduces existing records that might be the same as a value (Possible Matches) */
+    possible: { count: number };
+    /** An existing record; `description` is the Host App's (may be empty) */
+    candidate: { name: string; description: string };
+    /** How many rows use a value */
+    rowCount: { count: number };
+    /** The spellings folded into a value; `spellings` is `spelling` entries, comma-separated */
+    spellings: { spellings: string; count: number };
+    spelling: { text: string; count: number };
+    /** Accessible label of the input for a new record's name; `value` is the value as spelled in the file */
+    nameLabel: { value: string };
+    nameRequired: void;
+    back: void;
+    complete: { count: number };
+    blockedUndecided: { count: number };
+    blockedUnnamed: { count: number };
+    /** Badges on grid cells after Resolution: the record a value is linked to, or will create */
+    badgeLinked: { name: string };
+    badgeNew: { name: string };
+    badgeUndecided: void;
+    /** A Rejected Row's reason when a Related Record it points to could not be created */
+    notCreated: { name: string; reason: string };
+    /** The reason when the Host App's `createRelated` resolved without an ID */
+    invalidId: void;
   };
   /** The Import Report after Commit */
   report: {
@@ -261,6 +316,7 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     upload: 'Upload',
     mapping: 'Match columns',
     review: 'Review and edit',
+    resolution: 'Link records',
     import: 'Import',
   },
   upload: {
@@ -320,6 +376,7 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     back: 'Back to Mapping',
     excludedCount: '{count} excluded',
     complete: (p) => `Complete Import (${plural(p.count, 'row', 'rows')})`,
+    continueToResolution: (p) => `Link related records (${plural(p.count, 'row', 'rows')})`,
   },
   commit: {
     title: 'Importing your rows',
@@ -333,6 +390,46 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
         : 'This row could not be sent: the server could not be reached. Try importing it again later.',
     invalidAnswer: 'No clear answer was received for this row, so it was not counted as imported.',
     noReason: 'Refused without a reason.',
+  },
+  resolution: {
+    title: 'Link related records',
+    description:
+      'Every name in your file is listed once. Names already in the system are linked to the existing record; the others are created when you import. Nothing is saved until then.',
+    loading: 'Looking up {fields}…',
+    lookupFailed: 'Could not look up {fields}: {reason}',
+    invalidLookup: 'The answer could not be read.',
+    blocked: "The rows can't be imported until the lookup succeeds.",
+    retry: 'Try again',
+    kindTitle: '{fields}',
+    empty: 'No names to link: these columns are empty in every row being imported.',
+    matchedTitle: 'Matched existing ({count})',
+    matchedDescription: 'Already in the system: these rows will be linked to the existing record.',
+    createTitle: 'Will be created ({count})',
+    createDescription:
+      'Not in the system yet: a new record is created for each when you import, with the name shown. You can change it.',
+    undecidedTitle: 'Needs a decision ({count})',
+    undecidedDescription:
+      'These names match several existing records, or might be the same as one. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.',
+    homonyms: '{count} records have this name:',
+    possible: 'Might be the same as:',
+    candidate: (p) => (p.description ? `${p.name} (${p.description})` : p.name),
+    rowCount: (p) => `Used in ${plural(p.count, 'row', 'rows')}`,
+    spellings: 'In your file: {spellings}',
+    spelling: '{text} ×{count}',
+    nameLabel: 'Name of the new record for {value}',
+    nameRequired: 'Enter a name for the new record.',
+    back: 'Back to Review',
+    complete: (p) => `Complete Import (${plural(p.count, 'row', 'rows')})`,
+    blockedUndecided: (p) =>
+      p.count === 1
+        ? '1 name needs a decision before you can import.'
+        : `${count(p.count)} names need a decision before you can import.`,
+    blockedUnnamed: 'Give every new record a name before you can import.',
+    badgeLinked: '{name}',
+    badgeNew: 'New: {name}',
+    badgeUndecided: 'Needs a decision',
+    notCreated: 'The record "{name}" could not be created: {reason}',
+    invalidId: 'No ID was received for the new record.',
   },
   report: {
     title: 'Import finished',

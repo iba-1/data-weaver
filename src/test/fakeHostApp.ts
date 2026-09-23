@@ -6,9 +6,35 @@
  * Tests script it per batch call (numbered from 1): reject chosen rows, fail a
  * batch before saving it, lose a batch's answer after saving it, tamper with
  * the answer, or hold a batch until the test releases it.
+ *
+ * It also keeps Related Records per kind (e.g. `registry`), found by the
+ * Normalised Match rule like a real Host App's lookup (several records with
+ * the same name are Homonyms), and can flag Possible Matches, fail a lookup
+ * or fail to create a chosen record.
  */
 
-import type { HostAppAdapter, ImportRow, RowOutcome } from '@/lib/import-wizard/types';
+import type {
+  HostAppAdapter,
+  ImportRow,
+  RelatedCandidate,
+  RelatedRecordId,
+  RowOutcome,
+} from '@/lib/import-wizard/types';
+import { normaliseForMatch } from '@/lib/import-wizard/normalise';
+
+/** A Related Record in the fake's store */
+export interface FakeRelatedRecord {
+  id: RelatedRecordId;
+  name: string;
+  description?: string;
+}
+
+/** How the fake answers one `findRelated` call */
+export type LookupScript =
+  /** Reject the promise, as when the lookup request fails */
+  | { fail: unknown }
+  /** Answer with whatever this returns instead of the honest answer */
+  | { answer: (honest: Record<string, RelatedCandidate[]>) => unknown };
 
 /** How the fake answers one `saveBatch` call */
 export type BatchScript =
@@ -25,6 +51,12 @@ export interface FakeHostAppOptions<TRecord> {
    * refuse a row, or nothing to save it. Called only for keys not yet saved.
    */
   reject?: (row: ImportRow<TRecord>) => { reason: string; field?: string } | null | undefined | false;
+  /** Existing Related Records by kind; records without an `id` get `<kind>-<n>` */
+  related?: Record<string, Array<Omit<FakeRelatedRecord, 'id'> & { id?: RelatedRecordId }>>;
+  /** Whether a record not found by Normalised Match is a Possible Match of a looked-up value */
+  possible?: (kind: string, value: string, record: FakeRelatedRecord) => boolean;
+  /** Refuse to create a record: return the reason (the Error message), or nothing to create it */
+  failCreate?: (kind: string, name: string) => string | null | undefined | false;
 }
 
 export interface FakeHostApp<TRecord> {
@@ -39,6 +71,18 @@ export interface FakeHostApp<TRecord> {
   writes: number;
   /** Most `saveBatch` calls in progress at the same time */
   maxConcurrentCalls: number;
+  /** The Related Records by kind, including those created during the test */
+  related: Map<string, FakeRelatedRecord[]>;
+  /** Every `findRelated` call, in call order */
+  lookups: Array<{ kind: string; values: string[] }>;
+  /** Every `createRelated` call, in call order, whether or not it succeeded */
+  creates: Array<{ kind: string; name: string }>;
+  /** Most `createRelated` calls in progress at the same time */
+  maxConcurrentCreates: number;
+  /** Every adapter call in order: `findRelated <kind>`, `createRelated <kind> <name>`, `saveBatch <n>` */
+  log: string[];
+  /** Script the answer to the `call`-th `findRelated` call (from 1) */
+  onLookup(call: number, script: LookupScript): void;
   /** Script the answer to the `call`-th `saveBatch` call (from 1) */
   onCall(call: number, script: BatchScript): void;
   /**
@@ -52,8 +96,26 @@ export function createFakeHostApp<TRecord = Record<string, unknown>>(
   options: FakeHostAppOptions<TRecord> = {}
 ): FakeHostApp<TRecord> {
   const scripts = new Map<number, BatchScript>();
+  const lookupScripts = new Map<number, LookupScript>();
   const holds = new Map<number, { gate: Promise<void>; arrive: () => void }>();
   let inFlight = 0;
+  let createsInFlight = 0;
+  let nextId = 1;
+
+  const related = new Map<string, FakeRelatedRecord[]>(
+    Object.entries(options.related ?? {}).map(([kind, records]) => [
+      kind,
+      records.map((record) => ({ ...record, id: record.id ?? `${kind}-${nextId++}` })),
+    ])
+  );
+
+  const candidatesFor = (kind: string, value: string): RelatedCandidate[] =>
+    (related.get(kind) ?? []).flatMap((record): RelatedCandidate[] => {
+      const base = { id: record.id, name: record.name, ...(record.description && { description: record.description }) };
+      if (normaliseForMatch(record.name) === value) return [{ ...base, match: 'normalised' }];
+      if (options.possible?.(kind, value, record)) return [{ ...base, match: 'possible' }];
+      return [];
+    });
 
   const save = (rows: ImportRow<TRecord>[]): RowOutcome[] =>
     rows.map((row) => {
@@ -70,11 +132,44 @@ export function createFakeHostApp<TRecord = Record<string, unknown>>(
     calls: [],
     writes: 0,
     maxConcurrentCalls: 0,
+    related,
+    lookups: [],
+    creates: [],
+    maxConcurrentCreates: 0,
+    log: [],
     records: () => [...fake.store.values()].map((row) => row.record),
     adapter: {
+      findRelated: async (kind, values) => {
+        fake.lookups.push({ kind, values: [...values] });
+        fake.log.push(`findRelated ${kind}`);
+        const call = fake.lookups.length;
+        await Promise.resolve();
+        const script = lookupScripts.get(call);
+        if (script && 'fail' in script) throw script.fail;
+        const honest = Object.fromEntries(values.map((value) => [value, candidatesFor(kind, value)]));
+        if (script && 'answer' in script) return script.answer(honest) as Record<string, RelatedCandidate[]>;
+        return honest;
+      },
+      createRelated: async (kind, name) => {
+        fake.creates.push({ kind, name });
+        fake.log.push(`createRelated ${kind} ${name}`);
+        createsInFlight++;
+        fake.maxConcurrentCreates = Math.max(fake.maxConcurrentCreates, createsInFlight);
+        try {
+          await Promise.resolve();
+          const refusal = options.failCreate?.(kind, name);
+          if (refusal) throw new Error(refusal);
+          const record = { id: `${kind}-${nextId++}`, name };
+          related.set(kind, [...(related.get(kind) ?? []), record]);
+          return record.id;
+        } finally {
+          createsInFlight--;
+        }
+      },
       saveBatch: async (rows) => {
         fake.calls.push(rows);
         const call = fake.calls.length;
+        fake.log.push(`saveBatch ${call}`);
         inFlight++;
         fake.maxConcurrentCalls = Math.max(fake.maxConcurrentCalls, inFlight);
         try {
@@ -99,6 +194,9 @@ export function createFakeHostApp<TRecord = Record<string, unknown>>(
     },
     onCall(call, script) {
       scripts.set(call, script);
+    },
+    onLookup(call, script) {
+      lookupScripts.set(call, script);
     },
     hold(call) {
       let release!: () => void;

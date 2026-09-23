@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
 import { createFakeHostApp, type FakeHostApp } from '@/test/fakeHostApp';
 import { readSheet } from '@/test/spreadsheet';
+import { continueToResolution, importRows } from '@/test/wizardDriver';
 import { WizardRoot } from '../WizardRoot';
 import { FileUploader } from '../FileUploader';
 import { DEFAULT_MESSAGES, type PartialMessageCatalogue } from '@/lib/import-wizard/messages';
@@ -250,6 +251,8 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     'Achrome', 'Concetto spaziale', 'Nature morte', 'dollari', 'ieri', 'bozza',
     'Euro', 'EUR', 'US dollar', 'USD',
     'Opera già presente', 'Servizio non disponibile',
+    // Resolution: Relationship Field labels and values as written in the file
+    'Autore', 'Prestatore', 'Lucio Fontana', 'Anna Bianchi', 'L. Fontana', 'Galleria Rossi', 'Piero Manzoni',
   ]);
   // Dates are shown as YYYY-MM-DD: no letters, so they need no allowance
 
@@ -528,5 +531,88 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
       '⟦report.downloadFieldError⟧',
       '⟦report.downloadError⟧',
     ]);
+  });
+
+  it('in Resolution: lookup, groups, names, blocked import, grid badges and a record not created', async () => {
+    type RelKey = 'title' | 'author' | 'lender';
+    type RelRec = Record<RelKey, unknown>;
+    const fields: FieldConfig<RelKey>[] = [
+      { key: 'title', label: 'Titolo', type: 'string', required: true, matchKeywords: ['titolo'] },
+      { key: 'author', label: 'Autore', type: 'string', relationship: { kind: 'registry' }, matchKeywords: ['autore'] },
+      { key: 'lender', label: 'Prestatore', type: 'string', relationship: { kind: 'registry' }, matchKeywords: ['prestatore'] },
+    ];
+    mockFile([
+      { Titolo: 'Achrome', Autore: 'Lucio Fontana', Prestatore: 'Galleria Rossi' },
+      { Titolo: 'Concetto spaziale', Autore: 'Anna Bianchi', Prestatore: '' },
+      { Titolo: 'Nature morte', Autore: 'L. Fontana', Prestatore: 'Piero Manzoni' },
+    ]);
+    const host = createFakeHostApp<RelRec>({
+      related: {
+        registry: [
+          { name: 'Lucio Fontana', description: '1899–1968' },
+          { name: 'Anna Bianchi', description: '1950' },
+          { name: 'Anna Bianchi', description: '1978' },
+        ],
+      },
+      possible: (_kind, value, record) => value === 'l. fontana' && record.name === 'Lucio Fontana',
+      failCreate: (_kind, name) => (name === 'Galleria Rossi' ? 'Servizio non disponibile' : null),
+    });
+    let answerLookup!: () => void;
+    const answered = new Promise<void>((resolve) => (answerLookup = resolve));
+    host.onLookup(1, { fail: new Error('Servizio non disponibile') });
+    host.onLookup(2, { answer: (honest) => answered.then(() => honest) });
+    render(<ImportWizard<RelRec, RelKey> adapter={host.adapter} fields={fields} messages={MARKED} />);
+    await upload();
+    await continueToReview('⟦mapping.continue⟧');
+    await screen.findByText('⟦review.title⟧');
+    expect(screen.getByText('⟦steps.resolution⟧')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '⟦review.continueToResolution⟧' })).toBeInTheDocument();
+    expectAllMarked();
+
+    // The lookup fails, then is retried and held while it loads
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '⟦review.continueToResolution⟧' }));
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('⟦resolution.lookupFailed⟧');
+    expectAllMarked();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '⟦resolution.retry⟧' }));
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('⟦resolution.loading⟧');
+    expectAllMarked();
+
+    // Matched, will be created, and needing a decision (Homonyms and a Possible Match)
+    await act(async () => answerLookup());
+    await screen.findByRole('region', { name: '⟦resolution.kindTitle⟧' });
+    expect(screen.getByRole('region', { name: '⟦resolution.matchedTitle⟧' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '⟦resolution.createTitle⟧' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '⟦resolution.undecidedTitle⟧' })).toBeInTheDocument();
+    expect(screen.getByText('⟦resolution.homonyms⟧')).toBeInTheDocument();
+    expect(screen.getByText('⟦resolution.possible⟧')).toBeInTheDocument();
+    expect(screen.getByText('⟦resolution.blockedUndecided⟧')).toBeInTheDocument();
+    expectAllMarked();
+
+    // Back in the grid: badges for linked, new and undecided values
+    fireEvent.click(screen.getByRole('button', { name: '⟦resolution.back⟧' }));
+    await screen.findByText('⟦review.title⟧');
+    expect(screen.getByText('⟦resolution.badgeLinked⟧')).toBeInTheDocument();
+    expect(screen.getAllByText('⟦resolution.badgeNew⟧')).toHaveLength(2);
+    expect(screen.getAllByText('⟦resolution.badgeUndecided⟧')).toHaveLength(2);
+    expectAllMarked();
+
+    // Leave the undecided rows out; an empty name blocks the import
+    fireEvent.click(within(gridRow(2)).getAllByRole('button')[0]);
+    fireEvent.click(within(gridRow(3)).getAllByRole('button')[0]);
+    await continueToResolution('⟦review.continueToResolution⟧', '⟦resolution.complete⟧');
+    fireEvent.change(screen.getByRole('textbox', { name: '⟦resolution.nameLabel⟧' }), { target: { value: '' } });
+    expect(screen.getByText('⟦resolution.nameRequired⟧')).toBeInTheDocument();
+    expect(screen.getByText('⟦resolution.blockedUnnamed⟧')).toBeInTheDocument();
+    expectAllMarked();
+
+    // Galleria Rossi can't be created: its row is rejected with the catalogue's reason
+    fireEvent.change(screen.getByRole('textbox', { name: '⟦resolution.nameLabel⟧' }), { target: { value: 'Galleria Rossi' } });
+    await importRows('⟦resolution.complete⟧');
+    expect(screen.getByText('⟦resolution.notCreated⟧')).toBeInTheDocument();
+    expectAllMarked();
   });
 });

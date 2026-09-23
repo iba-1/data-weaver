@@ -49,6 +49,15 @@ export interface FieldConfig<TKey extends string = string> {
    * @default 'DMY'
    */
   dateOrder?: DateOrder;
+  /**
+   * Makes this a Relationship Field: its cells name a Related Record of this
+   * kind (e.g. an author's Registry entry) rather than holding a plain value.
+   * Before Commit, every distinct value of every field of the same kind is
+   * resolved once, to an existing record or a new one, and the Host App
+   * receives the Related Record's ID in this field instead of the name.
+   * Use it with `type: 'string'`.
+   */
+  relationship?: RelationshipConfig;
   /** Keywords for fuzzy auto-matching source columns */
   matchKeywords?: string[];
   /** Custom validation function */
@@ -68,6 +77,16 @@ export interface ChoiceOption {
   value: string;
   /** What the Importer sees in the picker, e.g. `'Euro'`. Defaults to `value`. */
   label?: string;
+}
+
+/** What a Relationship Field points to */
+export interface RelationshipConfig {
+  /**
+   * The kind of Related Record, e.g. `'registry'`. It is passed to the
+   * adapter's `findRelated` and `createRelated`; fields of the same kind
+   * (author, owner, lender) are resolved together.
+   */
+  kind: string;
 }
 
 /**
@@ -283,9 +302,52 @@ export type RowOutcome =
  */
 export type SaveBatch<TRecord = ArtworkRecord> = (rows: ImportRow<TRecord>[]) => Promise<RowOutcome[]>;
 
+/** The Host App's identifier of a Related Record */
+export type RelatedRecordId = string | number;
+
+/**
+ * An existing Related Record the Host App's lookup found for a value.
+ * `match` says how it was found: `normalised` when its name is a Normalised
+ * Match of the value (several of them are Homonyms), `possible` when it might
+ * be the same record but is not a Normalised Match (e.g. `L. Fontana` for
+ * `lucio fontana`). Possible Matches are never linked without the Importer.
+ */
+export interface RelatedCandidate {
+  id: RelatedRecordId;
+  /** The record's name as the Host App stores it */
+  name: string;
+  /** A short detail that tells Homonyms apart, e.g. a birth year; the Host App's own text */
+  description?: string;
+  match: 'normalised' | 'possible';
+}
+
+/**
+ * Looks up existing Related Records of one kind. Called once per kind when
+ * the Resolution step opens, with the distinct values of every field of that
+ * kind in the whole file, each already normalised with the Normalised Match
+ * rule (`normaliseForMatch`). Must resolve with an entry for every value sent,
+ * keyed by that value: its candidates, or `[]` when there are none. Match
+ * names with the same rule. Rejecting shows the Error's message to the
+ * Importer, who can try again.
+ */
+export type FindRelated = (kind: string, values: string[]) => Promise<Record<string, RelatedCandidate[]>>;
+
+/**
+ * Creates one new Related Record of a kind, with the name the Importer
+ * confirmed in Resolution, and resolves with its ID. Called at the start of
+ * Commit, once per new record, one at a time, before any row is saved.
+ * Rejecting with an Error means it was not created: the rows that point to
+ * it become Rejected Rows, with the Error's message in their reason.
+ */
+export type CreateRelated = (kind: string, name: string) => Promise<RelatedRecordId>;
+
 /** What the Host App supplies so Data Weaver can Commit an import */
 export interface HostAppAdapter<TRecord = ArtworkRecord> {
   saveBatch: SaveBatch<TRecord>;
+  /** Required when the Output Shape has Relationship Fields */
+  findRelated?: FindRelated;
+  /** Required when the Output Shape has Relationship Fields */
+  createRelated?: CreateRelated;
 }
 
 /**
@@ -294,9 +356,11 @@ export interface HostAppAdapter<TRecord = ArtworkRecord> {
  * - `notSent`: its batch's promise rejected on every attempt (the server could
  *   not be reached), so the row may not have reached the Host App;
  * - `invalidAnswer`: the Host App's answer had no valid outcome for the row
- *   (missing, repeated or malformed), so it is not counted as imported.
+ *   (missing, repeated or malformed), so it is not counted as imported;
+ * - `relatedNotCreated`: a Related Record the row points to could not be
+ *   created, so the row was never sent.
  */
-export type RejectionCause = 'host' | 'notSent' | 'invalidAnswer';
+export type RejectionCause = 'host' | 'notSent' | 'invalidAnswer' | 'relatedNotCreated';
 
 /** A row the Host App did not save, and why */
 export interface RejectedRow<TRecord = ArtworkRecord> extends ImportRow<TRecord> {
@@ -368,8 +432,12 @@ export interface ImportReport<TRecord = ArtworkRecord> {
 // WIZARD STATE
 // ============================================================
 
-/** `commit` while rows are being saved, `report` for the Import Report after it */
-export type WizardStep = 'upload' | 'mapping' | 'validation' | 'commit' | 'report';
+/**
+ * `resolution` between review and Commit when the Output Shape has
+ * Relationship Fields, `commit` while rows are being saved, `report` for the
+ * Import Report after it
+ */
+export type WizardStep = 'upload' | 'mapping' | 'validation' | 'resolution' | 'commit' | 'report';
 
 export interface ImportWizardState<TRecord = ArtworkRecord> {
   step: WizardStep;
@@ -454,6 +522,9 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
    * How the rows are saved. When the Importer imports, every included row is
    * sent to `adapter.saveBatch` in batches, one batch at a time. Excluded Rows
    * are never sent. The import cannot start while an included row is invalid.
+   * When `fields` has Relationship Fields, it also needs `findRelated` (called
+   * in the Resolution step) and `createRelated` (called at the start of
+   * Commit, before any batch), and the rows carry Related Record IDs.
    */
   adapter: HostAppAdapter<TRecord>;
 

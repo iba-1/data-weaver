@@ -8,15 +8,15 @@
 
 Spec: `../spec.md`
 
-- [ ] Relationship Fields declare the kind of Related Record they point to; values of all fields of the same kind are resolved together
-- [ ] Distinct values are collected across the whole file using the Normalised Match rule, with the folded spellings and row counts shown
-- [ ] The Host App lookup is called once per kind with the distinct normalised values
-- [ ] The 'matched existing' and 'will be created' groups are shown in full
-- [ ] The stored name for a new Related Record defaults to the most frequent spelling, preferring the accented one, and is editable
-- [ ] Nothing is created before Commit; abandoning the import creates nothing (fake adapter test)
-- [ ] Commit creates each new Related Record exactly once, sequentially, before any row batch, even when the value appears in several fields
-- [ ] Row batches carry Related Record IDs, never names
-- [ ] Rows depending on a Related Record that failed to be created become Rejected Rows naming that record
-- [ ] The grid keeps the original text with a badge naming the resolved Related Record
-- [ ] The Importer can go back from Resolution to review
-- [ ] Resolution strings come from the message catalogue
+- [x] Relationship Fields declare the kind of Related Record they point to; values of all fields of the same kind are resolved together
+- [x] Distinct values are collected across the whole file using the Normalised Match rule, with the folded spellings and row counts shown
+- [x] The Host App lookup is called once per kind with the distinct normalised values
+- [x] The 'matched existing' and 'will be created' groups are shown in full
+- [x] The stored name for a new Related Record defaults to the most frequent spelling, preferring the accented one, and is editable
+- [x] Nothing is created before Commit; abandoning the import creates nothing (fake adapter test)
+- [x] Commit creates each new Related Record exactly once, sequentially, before any row batch, even when the value appears in several fields
+- [x] Row batches carry Related Record IDs, never names
+- [x] Rows depending on a Related Record that failed to be created become Rejected Rows naming that record
+- [x] The grid keeps the original text with a badge naming the resolved Related Record
+- [x] The Importer can go back from Resolution to review
+- [x] Resolution strings come from the message catalogue

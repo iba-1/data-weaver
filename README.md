@@ -1,6 +1,6 @@
 # Data Weaver
 
-A React library that lets non-technical people turn messy spreadsheets into clean, validated records. A wizard: **upload** a file, **match** its columns to your fields, **review and fix** the rows, then **import** them: Data Weaver saves them through your app in batches and shows an **Import Report** of what was imported, rejected and excluded.
+A React library that lets non-technical people turn messy spreadsheets into clean, validated records. A wizard: **upload** a file, **match** its columns to your fields, **review and fix** the rows, **link** the names in them to your existing records, then **import** them: Data Weaver saves them through your app in batches and shows an **Import Report** of what was imported, rejected and excluded.
 
 Data Weaver is general-purpose: the app that embeds it (the **Host App**) defines the fields it accepts. SpeakArt is the first Host App. Vocabulary: [`CONTEXT.md`](CONTEXT.md). Purpose and scope: [`docs/product/2026-09-23-purpose-and-scope.md`](docs/product/2026-09-23-purpose-and-scope.md).
 
@@ -28,6 +28,13 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 - "Fill Required" fills empty required cells with placeholder values.
 - Export the rows (all, or valid only) to CSV or Excel.
 - **AI Edit** (optional): the Importer describes a change in plain language and reviews the proposed edits before applying them. It appears only when the Host App supplies its own AI endpoint through `aiEdit`.
+
+### Linking related records (Resolution)
+- A field can be a **Relationship Field**: its cells name another record, e.g. an artwork's author or owner (a Registry entry), rather than holding a plain value. See [Relationship Fields and Resolution](#relationship-fields-and-resolution).
+- When your fields include some, a **Link records** step follows the review. Every distinct name in the file is listed once per kind of record, even when it is used in several columns (author, owner, lender), with the spellings folded into it and how many rows use it. Names that differ only in case, extra spaces or accents are the same name.
+- Your app looks the names up once per kind. A name that matches exactly one existing record is linked to it; a name that matches none will be created, with the most frequent spelling (preferring the accented one) as its name, which the Importer can change. A name matching several existing records (Homonyms), or that only might be the same as one (Possible Matches), is never decided automatically: it is shown as needing a decision and blocks the import. Choosing between them is not available yet.
+- Nothing is created until the Importer imports. The import then creates each new record once, before any row is saved, and the rows reach your app with the records' IDs, never their names.
+- Back in the review, each such cell keeps the file's text with a badge naming the record it resolved to.
 
 ### Import (Commit) and the Import Report
 - Data Weaver saves the rows itself, through a small adapter your app supplies: `saveBatch(rows)`. Rows are sent in batches (100 by default, `batchSize` to change it), one batch at a time. Excluded Rows are never sent.
@@ -298,7 +305,7 @@ The complete flow: upload, column matching, review, Commit and the Import Report
 | ------------------- | ------------------------------------------------- | --------------------------- | ----------- |
 | `fields`            | `FieldConfig<TKey>[]`                             | artwork fields              | The fields each row becomes. Without it, the demo's artwork fields are used. |
 | `requiredFields`    | `TKey[]`                                          | `[]`                        | Extra required field keys, on top of fields with `required: true`. |
-| `adapter`           | `HostAppAdapter<TRecord>`                         | Required                    | How rows are saved: `{ saveBatch }`. See [The Host App adapter](#the-host-app-adapter). The import can't start while an included row is invalid. |
+| `adapter`           | `HostAppAdapter<TRecord>`                         | Required                    | How rows are saved: `{ saveBatch }`, plus `findRelated` and `createRelated` when `fields` has Relationship Fields. See [The Host App adapter](#the-host-app-adapter). The import can't start while an included row is invalid. |
 | `batchSize`         | `number`                                          | `100`                       | Most rows per `saveBatch` call. Values below 1 fall back to the default; fractions are rounded down. |
 | `retry`             | `{ attempts?, baseDelayMs?, maxDelayMs? }`        | `{ attempts: 3, baseDelayMs: 1000, maxDelayMs: 8000 }` | How a batch whose `saveBatch` promise rejects is sent again. `attempts` counts the first one (`1` turns retrying off). See [Retries](#retries). |
 | `onImportFinished`  | `(report: ImportReport<TRecord>) => void`         | -                           | Called once when Commit is over, with the Import Report. |
@@ -335,6 +342,8 @@ interface FieldConfig<TKey extends string = string> {
   dateOrder?: 'DMY' | 'MDY';
   /** For `choice` fields: the accepted options, or a loader called once when the review step opens */
   options?: ChoiceOption[] | (() => Promise<ChoiceOption[]>);
+  /** Makes this a Relationship Field pointing to Related Records of `kind` (use with type 'string') */
+  relationship?: { kind: string };
   /** Keywords used to auto-match source column names to this field */
   matchKeywords?: string[];
   /** Field-level validation: null if valid, otherwise an error or warning */
@@ -431,6 +440,40 @@ const fields: FieldConfig<ArtworkField>[] = [
 
 Your app receives the canonical `value` (a `string`), never the label or the Importer's spelling.
 
+#### Relationship Fields and Resolution
+
+A Relationship Field's cells name another record, a **Related Record**, rather than holding a plain value. Give the field a `relationship` with the **kind** of record it points to. Several fields can point to the same kind:
+
+```tsx
+type ArtworkField = 'title' | 'author' | 'owner' | 'lender';
+
+const fields: FieldConfig<ArtworkField>[] = [
+  { key: 'title', label: 'Title', type: 'string', required: true },
+  { key: 'author', label: 'Author', type: 'string', relationship: { kind: 'registry' } },
+  { key: 'owner', label: 'Owner', type: 'string', relationship: { kind: 'registry' } },
+  { key: 'lender', label: 'Lender', type: 'string', relationship: { kind: 'registry' } },
+];
+
+<ImportWizard fields={fields} adapter={{ saveBatch, findRelated, createRelated }} />;
+```
+
+A name is not an identity: two people can share one. So Data Weaver never sends names to be matched or created row by row. Instead, with Relationship Fields, a **Resolution** step ("Link records") follows the review ([ADR-0001](docs/adr/0001-resolve-related-records-before-commit.md)):
+
+1. **Collect.** Every distinct value of all the fields of a kind, across the whole file, is listed once. Values that are a [Normalised Match](#normalised-match) of each other (`Niccolò Rossi`, `niccolo  rossi`) are one value; the spellings folded into it and the number of rows using it are shown. Excluded Rows and empty cells are left out.
+2. **Look up.** `findRelated(kind, values)` is called **once per kind**, with the distinct values in their normalised form. Opening Resolution again after changes in the review looks up only values not looked up before.
+3. **Decide.** Each value falls in one group:
+   - **Matched existing**: exactly one candidate is a Normalised Match. It is linked to that record.
+   - **Will be created**: no candidates. A new record will be created. Its name is the most frequent spelling in the file; between spellings that differ only by accents, the accented one wins (`Niccolo Rossi` ×3 and `Niccolò Rossi` ×1 give `Niccolò Rossi`). The Importer can change it; an empty name blocks the import.
+   - **Needs a decision**: several Normalised Match candidates (Homonyms), or only Possible Match candidates. These are never decided for the Importer. For now the Importer can't choose between them in the wizard: the import stays blocked until those values are changed or their rows excluded in the review.
+4. **Nothing is created yet.** Leaving the wizard during Resolution, or going back to the review, creates nothing.
+5. **Commit.** When the Importer imports, `createRelated(kind, name)` is called once for each new record, one at a time, before any row is saved. A value used in several fields (e.g. the same gallery as owner and lender) is created once; so are two values the Importer gave the same name. Then each Relationship Field value in the rows is replaced by its record's ID, and the rows go to `saveBatch`.
+
+**How IDs reach `saveBatch`.** A Relationship Field's value in `record` is the Related Record's ID as your `findRelated` or `createRelated` gave it (a `string` or `number`), in place of the name: `{ title: 'Achrome', author: 'reg-17', owner: 42, lender: null }`. Empty cells stay `null`. Names are never sent.
+
+**A record that can't be created.** If `createRelated` rejects, the other records are still created, and every row pointing to that record becomes a Rejected Row that is never sent, with the field it came from, `cause: 'relatedNotCreated'` and the reason *The record "Galleria Rossi" could not be created:* followed by your Error's message. The other rows are saved.
+
+**In the review grid.** After Resolution, going back to the review shows each Relationship Field cell with the file's text and a badge: the linked record's name, `New: <name>` for a record to be created, or *Needs a decision*. Editing a cell to a name not resolved yet removes its badge until Resolution runs again.
+
 ### The Host App adapter
 
 Data Weaver owns the import: when the Importer imports, it sends the rows to your `saveBatch` and shows the outcome. Your app only owns persistence. The contract ([ADR-0002](docs/adr/0002-host-apps-must-honour-import-keys.md)):
@@ -438,6 +481,9 @@ Data Weaver owns the import: when the Importer imports, it sends the rows to you
 ```typescript
 interface HostAppAdapter<TRecord> {
   saveBatch: (rows: ImportRow<TRecord>[]) => Promise<RowOutcome[]>;
+  // Required when `fields` has Relationship Fields (see below):
+  findRelated?: (kind: string, values: string[]) => Promise<Record<string, RelatedCandidate[]>>;
+  createRelated?: (kind: string, name: string) => Promise<RelatedRecordId>;
 }
 
 interface ImportRow<TRecord> {
@@ -477,6 +523,22 @@ A batch **fails in transit** when its `saveBatch` promise rejects (or the call t
 
 If the wizard is unmounted while a batch is waiting to be retried, the wait ends at once and no further attempt is made.
 
+With Relationship Fields, your adapter also implements:
+
+```typescript
+type RelatedRecordId = string | number;
+
+interface RelatedCandidate {
+  id: RelatedRecordId;
+  name: string;                     // the record's name as you store it
+  description?: string;             // tells Homonyms apart, e.g. a birth year; your own text
+  match: 'normalised' | 'possible'; // a Normalised Match of the value, or only possibly the same record
+}
+```
+
+- **`findRelated(kind, values)`** is called once per kind when Resolution opens, with the distinct values of the file, each already normalised (`normaliseForMatch`: accents stripped, lowercased, spaces collapsed). Match your records' names with the **same rule** ([Normalised Match](#normalised-match)) and answer with an entry for **every** value, keyed by the value as sent: its candidates, or `[]` when nothing matches. Return every Normalised Match (several are Homonyms: don't collapse them to one) and, if you can, Possible Matches. An answer that leaves a value out, or has a malformed candidate, is refused and logged with `console.error`; the Importer sees *"Could not look up Author, Owner: The answer could not be read."* with a "Try again" button. A missing value is never taken to mean "create it", as that could duplicate an existing record. Rejecting shows your Error's message the same way.
+- **`createRelated(kind, name)`** is called at the start of Commit, once per new record, one at a time, before any `saveBatch`. Create the record with exactly that name and resolve with its ID. Reject with an Error when it can't be created; its message is shown in the reason of the rows that pointed to it. Two Importers creating the same new record at the same moment is yours to guard against (e.g. a lock on the normalised name), as [ADR-0001](docs/adr/0001-resolve-related-records-before-commit.md) says.
+
 **Import Keys** are random UUIDs (`crypto.randomUUID`, or built from `crypto.getRandomValues` where that isn't available, e.g. on pages not served over HTTPS). One is made for each data row when the file is parsed, and stays tied to that row of the file for the whole import: editing, undo and redo, excluding and including, and going back to column matching (which validates the file's rows again) all keep it. Uploading a file, even the same one, makes new keys. Store the key with each saved record, or in a table of keys already imported, and check it before saving.
 
 ### The Import Report
@@ -493,11 +555,12 @@ interface ImportReport<TRecord> {
 interface RejectedRow<TRecord> extends ImportRow<TRecord> {
   reason: string;  // your reason as given, or Data Weaver's (from the message catalogue)
   field?: string;  // the field key you gave
-  cause: 'host' | 'notSent' | 'invalidAnswer'; // rejected by you, server unreachable after every retry, or no valid outcome
+  // rejected by you, server unreachable after every retry, no valid outcome, or a Related Record it points to not created
+  cause: 'host' | 'notSent' | 'invalidAnswer' | 'relatedNotCreated';
 }
 ```
 
-Every row of the file is in exactly one list, in file order. The report is not kept after the Importer leaves.
+Every row of the file is in exactly one list, in file order. The report is not kept after the Importer leaves. `created` rows, and rows you rejected, are as sent to `saveBatch` (with Related Record IDs); rows rejected because a Related Record could not be created were never sent and keep the names the Importer reviewed.
 
 #### Downloading the Rejected Rows
 
@@ -584,6 +647,8 @@ interface RowCompleteEvent<TRecord> {
 ```
 
 `ERROR` is emitted when a file that passed the upload checks can't be parsed, and when a choice field's options fail to load. Its `error` is written with the wizard's message catalogue.
+
+With Relationship Fields, `COMMIT_STARTED` is emitted once the new Related Records are created: its `rows` counts only the rows that will be sent (rows whose Related Record could not be created are in the report's `rejected`). A failed lookup in Resolution emits an `ERROR`.
 
 `BATCH_RETRY` is emitted each time a batch failed in transit and is about to be sent again, before the wait; log its `error` to see what went wrong. `BATCH_SETTLED` is emitted once per batch, after any retries, whether your app answered or the batch could not be sent; `created` and `rejected` are that batch's rows. `IMPORT_FINISHED` carries the report `onImportFinished` receives.
 
@@ -770,6 +835,38 @@ const { created, rejected } = await commitRows(rows, {
 
 `settleBatch(rows, answer)` is the check applied to each answer. `DEFAULT_BATCH_SIZE` is 100; `DEFAULT_RETRY` is `{ attempts: 3, baseDelayMs: 1000, maxDelayMs: 8000 }`. For tests, `commitRows` also takes `sleep(ms, signal)` and `random()` to replace the real waits and the jitter.
 
+#### Resolution
+
+The steps the wizard runs for Relationship Fields, for flows built from the individual components:
+
+```typescript
+import {
+  collectRelatedValues, lookupRelated, resolveValues, resolutionBlockers,
+  planRelatedCreations, createRelatedRecords, substituteRelatedIds, commitRows,
+} from 'data-weaver';
+
+// Distinct values per kind, with their spellings, rows and default names (Excluded Rows left out)
+const values = collectRelatedValues(validated, fields);
+
+// One lookup per kind; throws a RelatedLookupError when it fails or its answer can't be read
+const lookups = new Map();
+for (const kind of new Set(values.map((v) => v.kind))) {
+  const kindValues = values.filter((v) => v.kind === kind).map((v) => v.value);
+  lookups.set(kind, await lookupRelated(kind, kindValues, adapter.findRelated));
+}
+
+// names: the Importer's names for new records, by relatedValueKey(kind, value)
+const resolved = resolveValues(values, lookups, { names });
+const { pending, undecided, unnamed } = resolutionBlockers(resolved); // Commit only when all are 0
+
+// At Commit: create the new records once each, one at a time, then IDs in place of names
+const created = await createRelatedRecords(planRelatedCreations(resolved), { createRelated: adapter.createRelated });
+const { ready, rejected } = substituteRelatedIds(rows, fields, resolved, created);
+const outcome = await commitRows(ready, { saveBatch: adapter.saveBatch });
+```
+
+`preferredSpelling(spellings)` is the stored-name rule on its own. `resolveValues` also takes `decisions` (by `relatedValueKey`) to record the Importer's choice for a value that needs one.
+
 #### Export
 
 ```typescript
@@ -859,6 +956,8 @@ const italian: PartialMessageCatalogue = {
 
 **Rejection reasons** from your `saveBatch` are your own text and are shown as you give them. Only the reasons Data Weaver gives itself (a batch that could not be sent even after retries, an answer with no valid outcome, a rejection without a reason) come from the catalogue.
 
+**Related Records** you return from `findRelated` (names and descriptions) are your own text too, shown as you give them inside the `resolution.candidate` entry.
+
 ### Keys
 
 Keys are grouped by where the text appears. They are part of the public API: renaming or removing one is a breaking change.
@@ -868,6 +967,7 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `steps.upload` | - | `Upload` |
 | `steps.mapping` | - | `Match columns` |
 | `steps.review` | - | `Review and edit` |
+| `steps.resolution` | - | `Link records` (shown only with Relationship Fields) |
 | `steps.import` | - | `Import` |
 | `upload.helpText` | - | `Upload a spreadsheet with column names in the first row and one record per row after it.` |
 | `upload.dropHere` | - | `Drop your file here` |
@@ -919,6 +1019,7 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `review.back` | - | `Back to Mapping` |
 | `review.excludedCount` | count | `{count} excluded` |
 | `review.complete` | count | `Complete Import (1 row)`, `Complete Import (2 rows)` |
+| `review.continueToResolution` | count | `Link related records (1 row)`, `Link related records (2 rows)` |
 | `commit.title` | - | `Importing your rows` |
 | `commit.progress` | done, total | `0 of 1 row processed`, `100 of 250 rows processed` |
 | `commit.progressLabel` | - | `Import progress` |
@@ -927,6 +1028,38 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `commit.notSent` | attempts | `This row could not be sent: the server could not be reached, even after 3 tries. Try importing it again later.` (with 1 attempt: `…could not be reached. Try importing it again later.`) |
 | `commit.invalidAnswer` | - | `No clear answer was received for this row, so it was not counted as imported.` |
 | `commit.noReason` | - | `Refused without a reason.` |
+| `resolution.title` | - | `Link related records` |
+| `resolution.description` | - | `Every name in your file is listed once. Names already in the system are linked to the existing record; the others are created when you import. Nothing is saved until then.` |
+| `resolution.loading` | fields, count | `Looking up {fields}…` |
+| `resolution.lookupFailed` | fields, reason | `Could not look up {fields}: {reason}` |
+| `resolution.invalidLookup` | - | `The answer could not be read.` |
+| `resolution.blocked` | - | `The rows can't be imported until the lookup succeeds.` |
+| `resolution.retry` | - | `Try again` |
+| `resolution.kindTitle` | fields, count | `{fields}` |
+| `resolution.empty` | - | `No names to link: these columns are empty in every row being imported.` |
+| `resolution.matchedTitle` | count | `Matched existing ({count})` |
+| `resolution.matchedDescription` | - | `Already in the system: these rows will be linked to the existing record.` |
+| `resolution.createTitle` | count | `Will be created ({count})` |
+| `resolution.createDescription` | - | `Not in the system yet: a new record is created for each when you import, with the name shown. You can change it.` |
+| `resolution.undecidedTitle` | count | `Needs a decision ({count})` |
+| `resolution.undecidedDescription` | - | `These names match several existing records, or might be the same as one. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.` |
+| `resolution.homonyms` | count | `{count} records have this name:` |
+| `resolution.possible` | count | `Might be the same as:` |
+| `resolution.candidate` | name, description | `Lucio Fontana (1899–1968)`; the name alone when there is no description |
+| `resolution.rowCount` | count | `Used in 1 row`, `Used in 2 rows` |
+| `resolution.spellings` | spellings, count | `In your file: {spellings}` |
+| `resolution.spelling` | text, count | `{text} ×{count}` |
+| `resolution.nameLabel` | value | `Name of the new record for {value}` |
+| `resolution.nameRequired` | - | `Enter a name for the new record.` |
+| `resolution.back` | - | `Back to Review` |
+| `resolution.complete` | count | `Complete Import (1 row)`, `Complete Import (2 rows)` |
+| `resolution.blockedUndecided` | count | `1 name needs a decision before you can import.`, `2 names need a decision before you can import.` |
+| `resolution.blockedUnnamed` | count | `Give every new record a name before you can import.` |
+| `resolution.badgeLinked` | name | `{name}` |
+| `resolution.badgeNew` | name | `New: {name}` |
+| `resolution.badgeUndecided` | - | `Needs a decision` |
+| `resolution.notCreated` | name, reason | `The record "{name}" could not be created: {reason}` |
+| `resolution.invalidId` | - | `No ID was received for the new record.` |
 | `report.title` | - | `Import finished` |
 | `report.created` | count | `{count} imported` |
 | `report.rejected` | count | `{count} rejected` |
@@ -1050,11 +1183,11 @@ npm run build       # demo site build (GitHub Pages)
 npm run build:lib   # package build into dist-lib/
 ```
 
-The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a simulated, in-memory Host App (`src/pages/demoHostApp.ts`): it honours Import Keys and rejects an artwork whose title and artist are already in the collection, so importing the same file twice shows Rejected Rows. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
+The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a simulated, in-memory Host App (`src/pages/demoHostApp.ts`): it honours Import Keys and rejects an artwork whose title and artist are already in the collection, so importing the same file twice shows Rejected Rows. The artist is a Relationship Field: the demo's registry starts with Lucio Fontana, Piero Manzoni and Alberto Burri, and other artists are created when the import starts. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
 
 ## Planned
 
-From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, automatic retries of batches lost in transit, and Fix & Retry.
+From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): choosing between Homonyms (with per-row choices) and Possible Matches in Resolution, and Fix & Retry.
 
 ## License
 

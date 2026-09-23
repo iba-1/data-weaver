@@ -16,6 +16,7 @@ export type {
   FieldType,
   ChoiceOption,
   ChoiceOptionsLoader,
+  RelationshipConfig,
   ValidationResult,
   DataRecord,
   
@@ -48,6 +49,10 @@ export type {
   // Commit: the Host App adapter and the Import Report
   HostAppAdapter,
   SaveBatch,
+  FindRelated,
+  CreateRelated,
+  RelatedCandidate,
+  RelatedRecordId,
   ImportRow,
   RowOutcome,
   RejectedRow,
@@ -162,6 +167,42 @@ export {
   type CommitOptions,
   type CommitOutcome,
 } from './commit';
+
+// ============================================================
+// RESOLUTION: RELATIONSHIP FIELDS AND RELATED RECORDS
+// ============================================================
+
+export {
+  relationshipKinds,
+  hasRelationshipFields,
+  collectRelatedValues,
+  preferredSpelling,
+  relatedValueKey,
+  settleLookup,
+  lookupRelated,
+  RelatedLookupError,
+  classifyCandidates,
+  resolveValues,
+  resolutionBlockers,
+  type RelationshipKind,
+  type Spelling,
+  type RelatedValue,
+  type LookupResults,
+  type ResolutionGroup,
+  type RelatedDecision,
+  type ResolvedValue,
+  type ResolveOptions,
+} from './resolution';
+
+export {
+  planRelatedCreations,
+  createRelatedRecords,
+  substituteRelatedIds,
+  type RelatedCreation,
+  type CreatedRelated,
+  type CreateRelatedOptions,
+  type SubstitutedRows,
+} from './related';
 
 // ============================================================
 // EXPORT
