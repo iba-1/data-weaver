@@ -429,6 +429,20 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     emit,
   ]);
 
+  // The report as the Importer sees and downloads it: each row's record as
+  // reviewed, i.e. with their own text where Relationship Fields were sent to
+  // the Host App as Related Record IDs. onImportFinished keeps what was sent.
+  const importerReport = useMemo(() => {
+    if (!report) return null;
+    const reviewed = new Map(state.validatedRows.map((row) => [row.rowIndex, row.data]));
+    const asReviewed = <T extends ImportRow<TRecord>>(row: T): T => ({ ...row, record: reviewed.get(row.rowIndex) ?? row.record });
+    return {
+      created: report.created.map(asReviewed),
+      rejected: report.rejected.map(asReviewed),
+      excluded: report.excluded.map(asReviewed),
+    };
+  }, [report, state.validatedRows]);
+
   return (
     <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)} messages={messages}>
       {/* Optional heading; omitted so the wizard can sit under a Host App's own */}
@@ -511,18 +525,18 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
           <CommitProgress done={commitProgress.done} total={commitProgress.total} retry={commitProgress.retry} />
         )}
 
-        {state.step === 'report' && report && (
+        {state.step === 'report' && importerReport && (
           <ImportReportView
-            report={report}
+            report={importerReport}
             fields={fieldConfigs}
             actions={
-              report.rejected.length > 0 &&
+              importerReport.rejected.length > 0 &&
               state.parsedData && (
                 <RejectedRowsDownload
                   file={state.parsedData}
                   mappings={state.columnMappings}
                   fields={fieldConfigs}
-                  rejected={report.rejected}
+                  rejected={importerReport.rejected}
                   unedited={uneditedRecords}
                   acceptedFileTypes={acceptedFileTypes}
                 />

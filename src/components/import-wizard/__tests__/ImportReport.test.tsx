@@ -3,7 +3,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { ImportWizard } from '../ImportWizard';
 import type { FieldConfig, ImportWizardProps } from '@/lib/import-wizard/types';
 import { createFakeHostApp, type FakeHostApp } from '@/test/fakeHostApp';
-import { importRows } from '@/test/wizardDriver';
+import { continueToResolution, importRows } from '@/test/wizardDriver';
 import { readSheet } from '@/test/spreadsheet';
 
 vi.mock('@/lib/import-wizard/parser', async (importOriginal) => {
@@ -211,3 +211,42 @@ describe('leaving with unfixed Rejected Rows', () => {
     expect(onLeaveWarningChange).not.toHaveBeenCalled();
   });
 });
+
+describe('Rejected Rows with Relationship Fields', () => {
+  type RelKey = 'title' | 'author';
+  type RelRec = Record<RelKey, unknown>;
+  const REL_FIELDS: FieldConfig<RelKey>[] = [
+    { key: 'title', label: 'Title', type: 'string', required: true, matchKeywords: ['titolo'] },
+    { key: 'author', label: 'Author', type: 'string', relationship: { kind: 'registry' }, matchKeywords: ['autore'] },
+  ];
+
+  it('shows and downloads the Importer’s own text, never the Related Record IDs that were sent', async () => {
+    const rows = [
+      { Titolo: 'Achrome', Autore: 'Piero Manzoni' },
+      { Titolo: 'Concetto spaziale', Autore: 'lucio  fontana' },
+    ];
+    vi.mocked(parseFile).mockResolvedValue({ headers: ['Titolo', 'Autore'], rows, fileName: 'opere.xlsx', fileType: 'excel' });
+    const host = createFakeHostApp<RelRec>({
+      related: { registry: [{ id: 'reg-fontana', name: 'Lucio Fontana' }] },
+      reject: (row) => (row.rowIndex === 1 ? { reason: 'Already in the collection' } : null),
+    });
+    const onImportFinished = vi.fn();
+    render(<ImportWizard<RelRec, RelKey> fields={REL_FIELDS} adapter={host.adapter} onImportFinished={onImportFinished} />);
+    await goToReview();
+    await continueToResolution();
+
+    await importRows();
+
+    // The Host App got what was saved: the Related Record's ID
+    expect(onImportFinished.mock.calls[0][0].rejected[0].record.author).toBe('reg-fontana');
+    // The Importer sees and downloads what their file said
+    expect(screen.queryByText('reg-fontana')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Download rejected rows' }));
+    const { rows: sheet } = await readSheet(downloads[0].blob);
+    expect(sheet).toEqual([
+      ['Titolo', 'Autore', 'Error'],
+      ['Concetto spaziale', 'lucio  fontana', 'Already in the collection'],
+    ]);
+  });
+});
+
