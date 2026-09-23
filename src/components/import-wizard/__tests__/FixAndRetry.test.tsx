@@ -370,7 +370,7 @@ describe('Fix & Retry with Relationship Fields', () => {
     editCell(2, 'author', 'Piero Manzoni', REL_FIELDS);
     refuse.value = false;
     // A name not resolved before goes through Resolution first, alone
-    await continueToResolution(/link related records \(1 row\)/i);
+    await continueToResolution(/link related records \(1 row\)/i, /retry import \(1 row\)/i);
     expect(host.lookups).toEqual([
       { kind: 'registry', values: ['galleria nuova', 'lucio fontana'] },
       { kind: 'registry', values: ['piero manzoni'] },
@@ -379,8 +379,10 @@ describe('Fix & Retry with Relationship Fields', () => {
     expect(created).toHaveLength(1);
     expect(created[0]).toHaveTextContent('Piero Manzoni');
     expect(screen.queryByText(/matched existing/i)).not.toBeInTheDocument();
+    // Still Fix & Retry: the import button says the rows are imported again
+    expect(screen.queryByRole('button', { name: /complete import/i })).not.toBeInTheDocument();
 
-    await importRows(/complete import \(1 row\)/i);
+    await importRows(/retry import \(1 row\)/i);
 
     expect(host.creates.map((c) => c.name)).toEqual(['Galleria Nuova', 'Piero Manzoni']);
     const manzoni = host.related.get('registry')!.find((r) => r.name === 'Piero Manzoni')!.id;

@@ -1123,7 +1123,7 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `fix.description` | - | `Only the rows that were not imported are shown, each with the reason. Fix or exclude them, then import them again. Rows already imported are locked.` |
 | `fix.rejected` | reason | `Not imported: {reason}` |
 | `fix.back` | - | `Back to the report` |
-| `fix.retry` | count | `Retry import (1 row)`, `Retry import (2 rows)` |
+| `fix.retry` | count | `Retry import (1 row)`, `Retry import (2 rows)` (also in Resolution when Fix & Retry goes through it) |
 | `cell.empty` | - | `empty` |
 | `cell.clear` | - | `Clear` |
 | `cell.save` | - | `Save` |

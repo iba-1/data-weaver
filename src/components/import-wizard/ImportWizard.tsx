@@ -625,6 +625,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             blockers={resolution.blockers}
             canCommit={resolution.canCommit}
             rowCount={(report ? fixRows : state.validatedRows).filter((r) => !r.excluded).length}
+            retrying={report !== null}
             describeRow={describeRow}
             onNameChange={resolution.setName}
             onChoose={resolution.choose}

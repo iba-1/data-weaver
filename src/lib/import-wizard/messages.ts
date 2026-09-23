@@ -245,7 +245,7 @@ export interface MessageParams {
      */
     rejected: { reason: string };
     back: void;
-    /** The button that imports the rows again; `count` is the rows that will be sent */
+    /** The button that imports the rows again, in Fix & Retry and in its Resolution; `count` is the rows that will be sent */
     retry: { count: number };
   };
   /** A cell of the review grid */
