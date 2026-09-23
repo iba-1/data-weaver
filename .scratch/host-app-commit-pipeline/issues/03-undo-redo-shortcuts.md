@@ -8,7 +8,7 @@
 
 Spec: `../spec.md`
 
-- [ ] Ctrl/Cmd+Shift+Z redoes the last undone grid change
-- [ ] Ctrl+Y redoes the last undone grid change
-- [ ] Undo/redo shortcuts do nothing to the grid while focus is in a text input or textarea
-- [ ] Tests cover each of the above through the wizard
+- [x] Ctrl/Cmd+Shift+Z redoes the last undone grid change
+- [x] Ctrl+Y redoes the last undone grid change
+- [x] Undo/redo shortcuts do nothing to the grid while focus is in a text input or textarea
+- [x] Tests cover each of the above through the wizard
