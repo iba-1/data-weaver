@@ -17,14 +17,17 @@ import { RejectedRowsDownload } from './commit/RejectedRowsDownload';
 import { ResolutionStep } from './resolution/ResolutionStep';
 import { useResolution } from './resolution/useResolution';
 import {
+  combineDecisions,
   createdRelatedIds,
   createRelatedRecords,
   linkAlreadyCreated,
   planRelatedCreations,
+  rememberCommitted,
+  retryDecisions,
   substituteRelatedIds,
   undecidedValuesOnly,
 } from '@/lib/import-wizard/related';
-import { collectRelatedValues, relatedValueKey, type ResolvedValue } from '@/lib/import-wizard/resolution';
+import { collectRelatedValues, type ResolvedValue } from '@/lib/import-wizard/resolution';
 import { Button } from '@/components/ui/button';
 import { MessagesContext, useMessages } from './messages';
 import type {
@@ -142,16 +145,17 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     [state.validatedRows, rejections]
   );
 
-  // Each Relationship Field value a Commit was made with, and its decision, by
-  // relatedValueKey. A value whose new record was created links to it from then
-  // on, so Fix & Retry never creates a Related Record twice.
+  // Each Relationship Field value a Commit was made with, by relatedValueKey,
+  // with its decision and its rows' own (Homonyms). A new record once created
+  // is linked to from then on, so Fix & Retry never creates a Related Record twice.
   const [committedValues, setCommittedValues] = useState<ReadonlyMap<string, ResolvedValue>>(() => new Map());
   // The Related Records created so far, by creationKey
   const createdIdsRef = useRef(new Map<string, RelatedRecordId>());
 
   // What Resolution works on: the file's rows before the first Commit; in Fix
-  // & Retry, the Rejected Rows with only the values not committed before (new
-  // or changed in Fix & Retry), so earlier decisions are kept, not asked again
+  // & Retry, the Rejected Rows with only the values that have no committed
+  // decision for their row (new or changed in Fix & Retry), so earlier
+  // decisions are kept, not asked again
   const resolutionRows = useMemo(
     () => (report ? undecidedValuesOnly(fixRows, fieldConfigs, committedValues) : state.validatedRows),
     [report, fixRows, fieldConfigs, committedValues, state.validatedRows]
@@ -436,14 +440,10 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
         ({ ready: toSave, rejected: notCreated } = substituteRelatedIds(included, fieldConfigs, resolved, created, m));
         setCommitProgress({ done: notCreated.length, total: included.length, retry: null });
 
-        // Kept for Fix & Retry: what each value was committed with, linking to the records now created
+        // Kept for Fix & Retry: what each value and row was committed with, linking to the records now created
         for (const [key, id] of createdRelatedIds(created)) createdIdsRef.current.set(key, id);
         const committed = linkAlreadyCreated(resolved, createdIdsRef.current);
-        setCommittedValues((before) => {
-          const next = new Map(before);
-          for (const value of committed) next.set(relatedValueKey(value.kind, value.value), value);
-          return next;
-        });
+        setCommittedValues((before) => rememberCommitted(before, committed));
       }
 
       emit({
@@ -500,8 +500,9 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
   /**
    * Fix & Retry: commit the Rejected Rows again, as fixed (or excluded) by
-   * the Importer, with their original Import Keys. Their Relationship Field
-   * values keep the decisions they were committed with; values new or
+   * the Importer, with their original Import Keys. Each row's Relationship
+   * Field values keep the decisions they were committed with for that row
+   * (a Homonym's row its own, a merged value its merge); values new or
    * changed since are decided in Resolution first.
    */
   const handleRetry = useCallback(async () => {
@@ -512,14 +513,11 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     let resolved: ResolvedValue[] = [];
     if (withResolution) {
       if (state.step === 'resolution' && !resolution.canCommit) return;
-      // Resolution's decisions, for the values it was shown (none unless it is open)
-      const fresh = new Map(resolution.resolved.map((v) => [relatedValueKey(v.kind, v.value), v]));
-      const decided = collectRelatedValues(rows, fieldConfigs).map((value) => {
-        const key = relatedValueKey(value.kind, value.value);
-        return committedValues.get(key) ?? fresh.get(key);
-      });
-      if (decided.some((value) => !value?.decision)) return;
-      resolved = linkAlreadyCreated(decided as ResolvedValue[], createdIdsRef.current);
+      // Resolution's decisions are for the rows it was shown (none unless it is open)
+      const decided = retryDecisions(rows, fieldConfigs, committedValues, resolution.resolved);
+      if (!decided) return;
+      // A new record named like one created before is that record
+      resolved = linkAlreadyCreated(decided, createdIdsRef.current);
     }
     await commit(rows, resolved, report);
   }, [
@@ -534,11 +532,12 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     commit,
   ]);
 
-  // Fix & Retry's badges: what each value was committed with, or resolved to since
-  const fixBadges = useMemo(
-    () => new Map<string, ResolvedValue>([...resolution.badges, ...committedValues]),
-    [resolution.badges, committedValues]
-  );
+  // Fix & Retry's badges: what each value (and row) was committed with, or resolved to since
+  const fixBadges = useMemo(() => {
+    const badges = new Map<string, ResolvedValue>(resolution.badges);
+    for (const [key, value] of committedValues) badges.set(key, combineDecisions(value, resolution.badges.get(key)));
+    return badges;
+  }, [resolution.badges, committedValues]);
 
   // The report as the Importer sees and downloads it: each row's record as
   // reviewed, i.e. with their own text where Relationship Fields were sent to

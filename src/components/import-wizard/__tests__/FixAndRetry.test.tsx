@@ -389,4 +389,202 @@ describe('Fix & Retry with Relationship Fields', () => {
     expect(host.calls[1].map((row) => row.record)).toEqual([{ title: 'Concetto spaziale', author: manzoni }]);
     expect(screen.getByText('3 imported')).toBeInTheDocument();
   });
+
+  it('re-resolves only a rejected row’s renamed author; unchanged Rejected Rows keep their decisions', async () => {
+    // Row 3's author is misspelt, so the Host App refuses it; row 2 is refused until the collection has room
+    const refuse = { value: true };
+    const host = createFakeHostApp<RelRec>({
+      related: { registry: [{ id: 'reg-fontana', name: 'Lucio Fontana' }, { id: 'reg-manzoni', name: 'Piero Manzoni' }] },
+      reject: (row) =>
+        row.rowIndex === 1 && refuse.value
+          ? { reason: 'The collection is full' }
+          : row.rowIndex === 2 && row.record.author !== 'reg-manzoni'
+            ? { reason: 'Not an artist of the collection', field: 'author' }
+            : null,
+    });
+    await resolveRelFile(host, [
+      { Title: 'Achrome', Author: 'Lucio Fontana' },
+      { Title: 'Concetto spaziale', Author: 'Lucio Fontana' },
+      { Title: 'Linea', Author: 'Piero Manzzoni' },
+    ]);
+    await importRows();
+    expect(screen.getByText('2 rejected')).toBeInTheDocument();
+
+    await openFixAndRetry();
+    editCell(3, 'author', 'Piero Manzoni', REL_FIELDS);
+    refuse.value = false;
+    await continueToResolution(/link related records \(2 rows\)/i, /retry import \(2 rows\)/i);
+
+    // Only the renamed author is looked up and shown; Lucio Fontana is not asked again
+    expect(host.lookups.map((lookup) => lookup.values)).toEqual([['lucio fontana', 'piero manzzoni'], ['piero manzoni']]);
+    const matched = groupItems(screen.getByRole('region', { name: 'Author' }), 'Matched existing (1)');
+    expect(matched).toHaveLength(1);
+    expect(matched[0]).toHaveTextContent('Piero Manzoni');
+    expect(screen.queryByText('Lucio Fontana')).not.toBeInTheDocument();
+
+    await importRows(/retry import \(2 rows\)/i);
+
+    expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([
+      [1, 'reg-fontana'],
+      [2, 'reg-manzoni'],
+    ]);
+    expect(host.creates.map((c) => c.name)).toEqual(['Piero Manzzoni']);
+    expect(screen.getByText('3 imported')).toBeInTheDocument();
+  });
+
+  /** Upload a file with Title and Author, review it and open Resolution */
+  async function resolveRelFile(host: FakeHostApp<RelRec>, file: Record<string, unknown>[]) {
+    vi.mocked(parseFile).mockResolvedValue({ headers: ['Title', 'Author'], rows: file, fileName: 'opere.csv', fileType: 'csv' });
+    render(<ImportWizard<RelRec, RelKey> fields={REL_FIELDS} adapter={host.adapter} />);
+    await reviewFile({ excludeLinea: false });
+    await continueToResolution();
+  }
+
+  /** A Host App refusing the rows at `refused` (rowIndex) on their title, until the set is emptied */
+  function refusingHost(refused: Set<number>, options: FakeHostAppOptions<RelRec> = {}) {
+    return createFakeHostApp<RelRec>({
+      reject: (row) => (refused.has(row.rowIndex) ? { reason: 'Title already used', field: 'title' } : null),
+      ...options,
+    });
+  }
+
+  /** The items of one group of Resolution (e.g. "Several matches (1)") */
+  function groupItems(section: HTMLElement, group: string): HTMLElement[] {
+    return within(within(section).getByRole('region', { name: group })).getAllByRole('listitem');
+  }
+
+  const ROSSI = [
+    { id: 'rossi-1950', name: 'Mario Rossi', description: 'b. 1950' },
+    { id: 'rossi-1987', name: 'Mario Rossi', description: 'b. 1987' },
+  ];
+  const rossiItem = () => groupItems(screen.getByRole('region', { name: 'Author' }), 'Several matches (1)')[0];
+  function chooseForRow(row: number, option: string) {
+    const select = screen.getByRole('combobox', { name: `Record for Mario Rossi in row ${row}` }) as HTMLSelectElement;
+    const { value } = within(select).getByRole('option', { name: option }) as HTMLOptionElement;
+    fireEvent.change(select, { target: { value } });
+  }
+
+  it('keeps each row’s own Homonym decision on the retry, and never creates its new record again', async () => {
+    const refused = new Set([1, 2]);
+    const host = refusingHost(refused, { related: { registry: ROSSI } });
+    await resolveRelFile(host, [
+      { Title: 'Achrome', Author: 'Mario Rossi' },
+      { Title: 'Linea', Author: 'Mario Rossi' },
+      { Title: 'Bozza', Author: 'mario rossi' },
+    ]);
+    // The value is b. 1950; row 2 is b. 1987, row 3 a new Mario Rossi
+    fireEvent.click(within(rossiItem()).getByRole('radio', { name: 'Mario Rossi (b. 1950)' }));
+    fireEvent.click(within(rossiItem()).getByRole('button', { name: 'Choose for each row (3 rows)' }));
+    chooseForRow(2, 'Mario Rossi (b. 1987)');
+    chooseForRow(3, 'Create a new record');
+    await importRows();
+    const created = host.related.get('registry')!.find((r) => !String(r.id).startsWith('rossi-'))!.id;
+    expect(host.calls[0].map((row) => row.record.author)).toEqual(['rossi-1950', 'rossi-1987', created]);
+    expect(screen.getByText('2 rejected')).toBeInTheDocument();
+
+    await openFixAndRetry();
+    // Each row's badge says which Mario Rossi it is
+    expect(within(rowOfFile(2)).getByTitle('Mario Rossi (b. 1987)')).toBeInTheDocument();
+    expect(within(rowOfFile(3)).getByTitle('Mario Rossi')).toBeInTheDocument();
+    refused.clear();
+    await importRows(/retry import \(2 rows\)/i);
+
+    expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([
+      [1, 'rossi-1987'],
+      [2, created],
+    ]);
+    expect(host.creates).toHaveLength(1);
+    expect(host.lookups).toHaveLength(1);
+    expect(screen.getByText('3 imported')).toBeInTheDocument();
+  });
+
+  it('keeps merged values on the records they were merged into, creating nothing twice', async () => {
+    const refused = new Set([1, 2]);
+    const host = refusingHost(refused, {
+      related: { registry: [{ id: 'reg-fontana', name: 'Lucio Fontana', description: '1899–1968' }] },
+      possible: (_kind, value, record) => value === 'l. fontana' && record.name === 'Lucio Fontana',
+    });
+    await resolveRelFile(host, [
+      { Title: 'Achrome', Author: 'Piero Manzoni' },
+      { Title: 'Linea', Author: 'Manzoni, Piero' },
+      { Title: 'Concetto spaziale', Author: 'L. Fontana' },
+    ]);
+    const possible = groupItems(screen.getByRole('region', { name: 'Author' }), 'Possibly the same (2)');
+    const item = (text: string) => possible.find((p) => p.textContent?.includes(text))!;
+    fireEvent.click(within(item('Manzoni, Piero')).getByRole('radio', { name: 'Merge with Piero Manzoni, also in your file' }));
+    fireEvent.click(
+      within(item('L. Fontana')).getByRole('radio', { name: 'Merge with Lucio Fontana (1899–1968), already in the system' })
+    );
+    await importRows();
+    expect(host.creates.map((c) => c.name)).toEqual(['Piero Manzoni']);
+    const manzoni = host.related.get('registry')!.find((r) => r.name === 'Piero Manzoni')!.id;
+
+    await openFixAndRetry();
+    refused.clear();
+    await importRows(/retry import \(2 rows\)/i);
+
+    expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([
+      [1, manzoni],
+      [2, 'reg-fontana'],
+    ]);
+    expect(host.creates).toHaveLength(1);
+    expect(host.lookups).toHaveLength(1);
+  });
+
+  it('resolves a name changed to a Homonym with the Homonym choices, kept when going back and returning', async () => {
+    const refused = new Set([1]);
+    const host = refusingHost(refused, { related: { registry: [{ id: 'reg-fontana', name: 'Lucio Fontana' }, ...ROSSI] } });
+    await resolveRelFile(host, [
+      { Title: 'Achrome', Author: 'Lucio Fontana' },
+      { Title: 'Linea', Author: 'Anna Bianchi' },
+    ]);
+    await importRows();
+
+    await openFixAndRetry();
+    editCell(2, 'author', 'Mario Rossi', REL_FIELDS);
+    refused.clear();
+    await continueToResolution(/link related records \(1 row\)/i, /retry import \(1 row\)/i);
+
+    // Only Mario Rossi, as a Homonym the Importer must decide
+    expect(host.lookups.map((lookup) => lookup.values)).toEqual([['lucio fontana', 'anna bianchi'], ['mario rossi']]);
+    expect(rossiItem()).toHaveTextContent('Used in 1 row');
+    expect(screen.getByText('1 name needs a decision before you can import.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry import \(1 row\)/i })).toBeDisabled();
+    fireEvent.click(within(rossiItem()).getByRole('radio', { name: 'Mario Rossi (b. 1987)' }));
+
+    // Back in Fix & Retry, the badge shows the choice; returning keeps it, without looking up again
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Review' }));
+    expect(within(rowOfFile(2)).getByTitle('Mario Rossi (b. 1987)')).toBeInTheDocument();
+    await continueToResolution(/link related records \(1 row\)/i, /retry import \(1 row\)/i);
+    expect(within(rossiItem()).getByRole('radio', { name: 'Mario Rossi (b. 1987)' })).toHaveAttribute('aria-checked', 'true');
+    expect(host.lookups).toHaveLength(2);
+
+    await importRows(/retry import \(1 row\)/i);
+    expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([[1, 'rossi-1987']]);
+    expect(host.creates.map((c) => c.name)).toEqual(['Anna Bianchi']);
+  });
+
+  it('lets a name changed in Fix & Retry be merged with an existing record it might be', async () => {
+    const refused = new Set([1]);
+    const host = refusingHost(refused, {
+      related: { registry: [{ id: 'reg-fontana', name: 'Lucio Fontana', description: '1899–1968' }] },
+      possible: (_kind, value, record) => value === 'l. fontana' && record.name === 'Lucio Fontana',
+    });
+    await resolveRelFile(host, [
+      { Title: 'Achrome', Author: 'Piero Manzoni' },
+      { Title: 'Linea', Author: 'Anna Bianchi' },
+    ]);
+    await importRows();
+
+    await openFixAndRetry();
+    editCell(2, 'author', 'L. Fontana', REL_FIELDS);
+    refused.clear();
+    await continueToResolution(/link related records \(1 row\)/i, /retry import \(1 row\)/i);
+    const [fontana] = groupItems(screen.getByRole('region', { name: 'Author' }), 'Possibly the same (1)');
+    fireEvent.click(within(fontana).getByRole('radio', { name: 'Merge with Lucio Fontana (1899–1968), already in the system' }));
+    await importRows(/retry import \(1 row\)/i);
+
+    expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([[1, 'reg-fontana']]);
+    expect(host.creates.map((c) => c.name)).toEqual(['Piero Manzoni', 'Anna Bianchi']);
+  });
 });
