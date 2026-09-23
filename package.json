@@ -35,6 +35,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:tz": "TZ=America/New_York vitest run && TZ=Asia/Tokyo vitest run",
+    "check": "npm run lint && tsc --noEmit -p tsconfig.app.json && npm test && npm run test:tz && npm run build && npm run build:lib",
     "build:lib": "vite build -c vite.lib.config.ts",
     "prepack": "npm run build:lib"
   },
