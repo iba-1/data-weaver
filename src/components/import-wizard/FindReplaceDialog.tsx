@@ -21,13 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { FieldConfig } from '@/lib/import-wizard/types';
-
-export interface ReplaceOptions {
-  caseSensitive: boolean;
-  wholeWord: boolean;
-  selectedColumn: string;
-}
+import type { FieldConfig, ReplaceOptions } from '@/lib/import-wizard/types';
 
 interface FindReplaceDialogProps<TKey extends string = string> {
   onReplace: (find: string, replace: string, options: ReplaceOptions) => number;

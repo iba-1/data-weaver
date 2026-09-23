@@ -38,6 +38,7 @@ export type {
   
   // Edits & results
   RowEdit,
+  ReplaceOptions,
   AiEditRequest,
   AiEditHandler,
   ImportResult,
@@ -89,7 +90,24 @@ export {
   markRequiredFields,
 } from './validator';
 
+// ============================================================
+// REVIEW: VALUES, EDITS, SEARCH
+// ============================================================
+
+export { parseNumber } from './values';
+
 export { applyRowEdits, coerceEditedValue } from './edits';
+
+export {
+  matchesSearch,
+  rowMatchesSearch,
+  countSearchMatches,
+  matchesFind,
+  replaceInText,
+  countFindMatches,
+  findReplaceEdits,
+  countEditedCells,
+} from './search';
 
 // ============================================================
 // EXPORT

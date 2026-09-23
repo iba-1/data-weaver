@@ -48,7 +48,7 @@ export { DataValidator } from './DataValidator';
 export { SearchBar } from './SearchBar';
 
 /** Find and replace dialog with options */
-export { FindReplaceDialog, type ReplaceOptions } from './FindReplaceDialog';
+export { FindReplaceDialog } from './FindReplaceDialog';
 
 /** AI Edit chat; calls the Host App-supplied `aiEdit` handler */
 export { AiEditChat } from './AiEditChat';
@@ -80,6 +80,7 @@ export type {
   
   // Edits & results
   RowEdit,
+  ReplaceOptions,
   AiEditRequest,
   AiEditHandler,
   ImportResult,
