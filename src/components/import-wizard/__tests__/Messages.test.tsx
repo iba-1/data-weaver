@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
 import { createFakeHostApp, type FakeHostApp } from '@/test/fakeHostApp';
 import { readSheet } from '@/test/spreadsheet';
-import { continueToResolution, importRows } from '@/test/wizardDriver';
+import { continueToResolution, importRows, openFixAndRetry } from '@/test/wizardDriver';
 import { WizardRoot } from '../WizardRoot';
 import { FileUploader } from '../FileUploader';
 import { DEFAULT_MESSAGES, type PartialMessageCatalogue } from '@/lib/import-wizard/messages';
@@ -532,6 +532,41 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
       '⟦report.downloadFieldError⟧',
       '⟦report.downloadError⟧',
     ]);
+  });
+
+  it('in Fix & Retry: its heading, pinned and row-level rejections, and its buttons', async () => {
+    // Concetto spaziale is refused on its title, Nature morte as a whole (the Host App's own reasons)
+    let refusing = true;
+    const host = createFakeHostApp<Rec>({
+      reject: (row) =>
+        !refusing
+          ? null
+          : row.record.title === 'Concetto spaziale'
+            ? { reason: 'Opera già presente', field: 'title' }
+            : row.record.title === 'Nature morte'
+              ? { reason: 'Servizio non disponibile' }
+              : null,
+    });
+    await reviewMarked({ host });
+    fireEvent.click(screen.getByRole('button', { name: '⟦review.excludeErrors⟧' }));
+    await importRows('⟦review.complete⟧');
+    expect(screen.getByRole('button', { name: '⟦fix.open⟧' })).toBeInTheDocument();
+    expectAllMarked();
+
+    await openFixAndRetry('⟦fix.open⟧', '⟦fix.retry⟧');
+    expect(screen.getByRole('heading', { name: '⟦fix.title⟧' })).toBeInTheDocument();
+    expect(screen.getByText('⟦fix.description⟧')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '⟦fix.back⟧' })).toBeInTheDocument();
+    // Pinned to Concetto spaziale's title cell, and on each row's status
+    expect(within(gridRow(1)).getAllByRole('gridcell')[0]).toHaveAttribute('title', '⟦fix.rejected⟧');
+    expect(within(gridRow(2)).getByLabelText('⟦fix.rejected⟧')).toBeInTheDocument();
+    expect(await statusTooltip(2)).toHaveTextContent('⟦fix.rejected⟧');
+    expectAllMarked();
+
+    refusing = false;
+    await importRows('⟦fix.retry⟧');
+    expect(screen.getByText('⟦report.title⟧')).toBeInTheDocument();
+    expectAllMarked();
   });
 
   it('in Resolution: lookup, groups, Possible Matches, names, blocked import, grid badges and a record not created', async () => {

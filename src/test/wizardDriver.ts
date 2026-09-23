@@ -28,3 +28,18 @@ export async function continueToResolution(
   });
   await screen.findByRole('button', { name: importName });
 }
+
+/**
+ * From the Import Report, open Fix & Retry and wait for its grid. `name` is
+ * the report's button, `retryName` Fix & Retry's button on (to the import,
+ * or to Resolution).
+ */
+export async function openFixAndRetry(
+  name: RegExp | string = /fix and retry/i,
+  retryName: RegExp | string = /retry import|link related records/i
+) {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name }));
+  });
+  await screen.findByRole('button', { name: retryName });
+}

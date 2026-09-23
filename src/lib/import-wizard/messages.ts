@@ -229,6 +229,25 @@ export interface MessageParams {
     /** A Rejected Row's error in the downloaded file; `field` is the field's label */
     downloadFieldError: { reason: string; field: string };
   };
+  /**
+   * Fix & Retry: the review grid with only the Rejected Rows, opened from the
+   * Import Report, to fix or exclude them and import them again
+   */
+  fix: {
+    /** The Import Report's button that opens Fix & Retry; `count` is the Rejected Rows */
+    open: { count: number };
+    title: void;
+    description: void;
+    /**
+     * Why the Host App refused a row, on its status icon and on the offending
+     * cell. `reason` is the Host App's own text (or the catalogue's, when
+     * Data Weaver rejected the row itself).
+     */
+    rejected: { reason: string };
+    back: void;
+    /** The button that imports the rows again; `count` is the rows that will be sent */
+    retry: { count: number };
+  };
   /** A cell of the review grid */
   cell: {
     empty: void;
@@ -497,6 +516,15 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     downloadErrorHeader: 'Error',
     downloadError: '{reason}',
     downloadFieldError: '{field}: {reason}',
+  },
+  fix: {
+    open: (p) => `Fix and retry (${plural(p.count, 'row', 'rows')})`,
+    title: 'Fix and retry',
+    description:
+      'Only the rows that were not imported are shown, each with the reason. Fix or exclude them, then import them again. Rows already imported are locked.',
+    rejected: 'Not imported: {reason}',
+    back: 'Back to the report',
+    retry: (p) => `Retry import (${plural(p.count, 'row', 'rows')})`,
   },
   cell: {
     empty: 'empty',

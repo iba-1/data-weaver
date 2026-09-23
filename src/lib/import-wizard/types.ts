@@ -374,6 +374,9 @@ export interface RejectedRow<TRecord = ArtworkRecord> extends ImportRow<TRecord>
   cause: RejectionCause;
 }
 
+/** Why the Host App refused a row, as Fix & Retry shows it: on the field's cell, or the whole row */
+export type RowRejection = Pick<RejectedRow<unknown>, 'reason' | 'field'>;
+
 /** How far a Commit has got */
 export interface CommitProgress {
   /** Rows with an outcome so far, saved or rejected */
@@ -435,9 +438,9 @@ export interface ImportReport<TRecord = ArtworkRecord> {
 /**
  * `resolution` between review and Commit when the Output Shape has
  * Relationship Fields, `commit` while rows are being saved, `report` for the
- * Import Report after it
+ * Import Report after it, `fix` for Fix & Retry (the Rejected Rows only)
  */
-export type WizardStep = 'upload' | 'mapping' | 'validation' | 'resolution' | 'commit' | 'report';
+export type WizardStep = 'upload' | 'mapping' | 'validation' | 'resolution' | 'commit' | 'report' | 'fix';
 
 export interface ImportWizardState<TRecord = ArtworkRecord> {
   step: WizardStep;
@@ -482,7 +485,10 @@ export type ImportWizardEvent<TRecord = ArtworkRecord> =
   | { type: 'ROW_PARSED'; event: RowParseEvent<TRecord> }
   | { type: 'ROW_COMPLETE'; event: RowCompleteEvent<TRecord> }
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
-  /** Commit began: `rows` will be sent in `batches`; `excluded` rows will not */
+  /**
+   * Commit began: `rows` will be sent in `batches`; `excluded` rows will not.
+   * On a Fix & Retry, both count only that retry's rows.
+   */
   | { type: 'COMMIT_STARTED'; rows: number; batches: number; excluded: number }
   /** A batch failed in transit and will be sent again, with the same Import Keys */
   | { type: 'BATCH_RETRY'; retry: BatchRetry }
@@ -493,7 +499,7 @@ export type ImportWizardEvent<TRecord = ArtworkRecord> =
       created: ImportRow<TRecord>[];
       rejected: RejectedRow<TRecord>[];
     }
-  /** Commit is over; the same report `onImportFinished` receives */
+  /** Commit (or a Fix & Retry) is over; the same cumulative report `onImportFinished` receives */
   | { type: 'IMPORT_FINISHED'; report: ImportReport<TRecord> }
   | { type: 'ERROR'; error: string };
 
@@ -543,15 +549,19 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
   retry?: RetryOptions;
 
   /**
-   * Called once when Commit is over, with the Import Report: the rows the
-   * Host App saved, the Rejected Rows with their reasons and the Excluded Rows.
+   * Called when Commit is over, with the Import Report: the rows the Host
+   * App saved, the Rejected Rows with their reasons and the Excluded Rows.
+   * Called again after each Fix & Retry, with the report of every outcome so
+   * far (rows created on any Commit, rows still rejected, rows excluded
+   * before or during Fix & Retry): each call replaces the previous one.
    */
   onImportFinished?: (report: ImportReport<TRecord>) => void;
 
   /**
-   * Called with `true` when leaving the wizard should be confirmed: the
-   * Import Report shows Rejected Rows not yet fixed, and it is not kept once
-   * the Importer leaves. Called with `false` when that is no longer so,
+   * Called with `true` when leaving the wizard should be confirmed: there
+   * are Rejected Rows not yet fixed (in the Import Report, in Fix & Retry or
+   * while they are sent again), and the report is not kept once the
+   * Importer leaves. Called with `false` when that is no longer so,
    * including when the wizard unmounts. Guard your router's navigation with
    * it (e.g. React Router's `useBlocker`); closing or reloading the tab is
    * already guarded by the wizard (`beforeunload`).
