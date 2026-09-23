@@ -587,6 +587,8 @@ describe('Homonyms: several existing records with the same name', () => {
 
     await importRows();
     expect(authors(fake)).toEqual(['reg-rossi-1950', 'reg-rossi-1950']);
+  });
+});
 
 describe('Possible Matches in Resolution', () => {
   /** Piero Manzoni is also written "Manzoni, Piero"; the Host App flags Lucio Fontana as possibly "L. Fontana" */
