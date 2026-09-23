@@ -1,5 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { FieldConfig, HostAppAdapter, RelatedCandidate, RowValidation } from '@/lib/import-wizard/types';
+import type {
+  FieldConfig,
+  HostAppAdapter,
+  RelatedCandidate,
+  RelatedRecordId,
+  RowValidation,
+} from '@/lib/import-wizard/types';
 import type { ResolvedMessages } from '@/lib/import-wizard/messages';
 import {
   collectRelatedValues,
@@ -10,8 +16,18 @@ import {
   resolutionBlockers,
   resolveValues,
   type LookupResults,
+  type RelatedDecision,
+  type RelatedValue,
   type ResolvedValue,
 } from '@/lib/import-wizard/resolution';
+
+/**
+ * What the Importer chose for a Homonym, for the whole value or one row: an
+ * existing record, or a new one. A new record's name is not part of the
+ * choice: it is the value's name (`names`), so every row of a value assigned
+ * to "create new" points to the same one new record.
+ */
+export type RelatedChoice = { action: 'link'; id: RelatedRecordId; name: string } | { action: 'create' };
 
 /** The Host App lookup for the values not looked up yet */
 export type LookupState =
@@ -35,7 +51,8 @@ interface UseResolutionOptions<TRecord, TKey extends string> {
 /**
  * The Resolution step's state: the distinct values of the file's Relationship
  * Fields, what the Host App's lookup found for them, the names the Importer
- * gave new records, and what Commit will do for each value.
+ * gave new records, the Importer's choices for Homonyms (per value and per
+ * row), and what Commit will do for each value and row.
  *
  * Lookups are kept for the life of the wizard: opening Resolution again
  * (after changes in the review) looks up only values not looked up before,
@@ -58,8 +75,27 @@ export function useResolution<TRecord, TKey extends string>({
   // Bumped when a lookup starts or Resolution is left, so late answers don't change the step
   const requestRef = useRef(0);
 
+  // What the Importer chose for Homonyms, by relatedValueKey: for the whole value, and per rowIndex.
+  // Kept for the life of the wizard, like names: they apply again whenever the value (or row) is back.
+  const [choices, setChoices] = useState<ReadonlyMap<string, RelatedChoice>>(() => new Map());
+  const [rowChoices, setRowChoices] = useState<ReadonlyMap<string, ReadonlyMap<number, RelatedChoice>>>(
+    () => new Map()
+  );
+
   const values = useMemo(() => (active ? collectRelatedValues(rows, fields) : []), [active, rows, fields]);
-  const resolved = useMemo(() => resolveValues(values, lookups, { names }), [values, lookups, names]);
+  const resolved = useMemo(() => {
+    const decisions = new Map<string, RelatedDecision>();
+    const rowDecisions = new Map<string, Map<number, RelatedDecision>>();
+    for (const value of values) {
+      const key = relatedValueKey(value.kind, value.value);
+      const decide = (choice: RelatedChoice) => toDecision(choice, value, names.get(key));
+      const choice = choices.get(key);
+      if (choice) decisions.set(key, decide(choice));
+      const forRows = rowChoices.get(key);
+      if (forRows) rowDecisions.set(key, new Map([...forRows].map(([rowIndex, c]) => [rowIndex, decide(c)])));
+    }
+    return resolveValues(values, lookups, { names, decisions, rowDecisions });
+  }, [values, lookups, names, choices, rowChoices]);
   const blockers = useMemo(() => resolutionBlockers(resolved), [resolved]);
   const canCommit =
     lookup.status === 'ready' && blockers.pending === 0 && blockers.undecided === 0 && blockers.unnamed === 0;
@@ -153,6 +189,21 @@ export function useResolution<TRecord, TKey extends string>({
     setNames((previous) => new Map(previous).set(key, name));
   }, []);
 
+  /** Choose for a whole value (a Homonym), by relatedValueKey */
+  const choose = useCallback((key: string, choice: RelatedChoice) => {
+    setChoices((previous) => new Map(previous).set(key, choice));
+  }, []);
+
+  /** Choose for one row of a value, or (null) let it follow the value's choice again */
+  const chooseForRow = useCallback((key: string, rowIndex: number, choice: RelatedChoice | null) => {
+    setRowChoices((previous) => {
+      const forRows = new Map(previous.get(key));
+      if (choice) forRows.set(rowIndex, choice);
+      else forRows.delete(rowIndex);
+      return new Map(previous).set(key, forRows);
+    });
+  }, []);
+
   return {
     /** The Output Shape's Relationship Fields by kind; empty when it has none */
     kinds,
@@ -168,5 +219,12 @@ export function useResolution<TRecord, TKey extends string>({
     start,
     leave,
     setName,
+    choose,
+    chooseForRow,
   };
+}
+
+/** A choice as Commit applies it: "create new" takes the value's name, as typed or by default */
+function toDecision(choice: RelatedChoice, value: RelatedValue, typedName: string | undefined): RelatedDecision {
+  return choice.action === 'create' ? { action: 'create', name: typedName ?? value.defaultName } : choice;
 }

@@ -53,8 +53,8 @@ function gridRow(n: number): HTMLElement {
   return row;
 }
 
-/** Upload the file, go to the review and leave row 4 (Bozza) out */
-async function reviewFile() {
+/** Upload the file, go to the review and leave out the given rows (row 4, Bozza, by default) */
+async function reviewFile(exclude: number[] = [4]) {
   const input = document.getElementById('file-input') as HTMLInputElement;
   await act(async () => {
     fireEvent.change(input, { target: { files: [new File(['x'], 'opere.xlsx')] } });
@@ -63,7 +63,7 @@ async function reviewFile() {
     fireEvent.click(await screen.findByRole('button', { name: /continue to validation/i }));
   });
   await screen.findByText(/validate data/i);
-  fireEvent.click(within(gridRow(4)).getByRole('button', { name: 'Exclude row 4' }));
+  for (const n of exclude) fireEvent.click(within(gridRow(n)).getByRole('button', { name: `Exclude row ${n}` }));
 }
 
 /** One kind's section of the Resolution step, by its fields' labels */
@@ -269,10 +269,12 @@ describe('Resolution of Relationship Fields', () => {
     await continueToResolution();
 
     const registry = kindSection('Author, Owner, Lender');
-    const [anna, fontana] = groupItems(registry, 'Needs a decision (2)');
+    const [anna] = groupItems(registry, 'Several matches (1)');
     expect(anna).toHaveTextContent('2 records have this name:');
     expect(anna).toHaveTextContent('Anna Bianchi (1950)');
     expect(anna).toHaveTextContent('Anna Bianchi (1978)');
+    expect(within(anna).getAllByRole('radio').every((radio) => radio.getAttribute('aria-checked') === 'false')).toBe(true);
+    const [fontana] = groupItems(registry, 'Needs a decision (1)');
     expect(fontana).toHaveTextContent('Might be the same as:');
     expect(fontana).toHaveTextContent('Lucio Fontana (1899–1968)');
     expect(screen.getByText('2 names need a decision before you can import.')).toBeInTheDocument();
@@ -382,5 +384,207 @@ describe('Resolution of Relationship Fields', () => {
       'Could not look up Author, Owner, Lender: The answer could not be read.'
     );
     expect(consoleError.mock.calls.join('\n')).toMatch(/findRelated gave no candidates list for "lucio fontana"/);
+  });
+});
+
+describe('Homonyms: several existing records with the same name', () => {
+  /** Three artworks by "Mario Rossi"; the Registry holds two, b. 1950 and b. 1987 */
+  const ROSSI_FILE = [
+    { Title: 'Achrome', Author: 'Mario Rossi', Owner: '', Lender: '', Venue: '' },
+    { Title: 'Linea', Author: 'mario rossi', Owner: 'Lucio Fontana', Lender: 'Mario Rossi', Venue: '' },
+    { Title: 'Bozza', Author: 'Mario  Rossi', Owner: '', Lender: '', Venue: '' },
+  ];
+  const ROSSI_REGISTRY = {
+    registry: [
+      ...REGISTRY.registry,
+      { id: 'reg-rossi-1950', name: 'Mario Rossi', description: 'b. 1950' },
+      { id: 'reg-rossi-1987', name: 'Mario Rossi', description: 'b. 1987' },
+    ],
+  };
+
+  async function resolveRossi(props: Partial<ImportWizardProps<Rec, Key>> = {}) {
+    mockFile(ROSSI_FILE);
+    const fake = host({ related: ROSSI_REGISTRY });
+    renderWizard(fake, props);
+    await reviewFile([]);
+    await continueToResolution();
+    return fake;
+  }
+
+  /** The Mario Rossi item of the "Several matches" group */
+  function rossiItem(): HTMLElement {
+    const [item] = groupItems(kindSection('Author, Owner, Lender'), 'Several matches (1)');
+    return item;
+  }
+
+  /** Choose for the whole value */
+  function choose(name: string) {
+    fireEvent.click(within(rossiItem()).getByRole('radio', { name }));
+  }
+
+  /** Choose for one row, in the per-row panel */
+  function chooseForRow(row: number, option: string) {
+    const select = screen.getByRole('combobox', { name: `Record for Mario Rossi in row ${row}` }) as HTMLSelectElement;
+    const { value } = within(select).getByRole('option', { name: option }) as HTMLOptionElement;
+    fireEvent.change(select, { target: { value } });
+  }
+
+  function openPerRow() {
+    fireEvent.click(within(rossiItem()).getByRole('button', { name: 'Choose for each row (3 rows)' }));
+  }
+
+  const importButton = () => screen.getByRole('button', { name: /complete import/i });
+  const authors = (fake: FakeHostApp<Rec>) => fake.calls.flat().map((row) => row.record.author);
+  /** The ID of the one record created during the test */
+  const createdId = (fake: FakeHostApp<Rec>) => fake.related.get('registry')!.find((r) => !String(r.id).startsWith('reg-'))!.id;
+
+  it('lists the value once in a "Several matches" group, with each candidate’s details, and blocks the import', async () => {
+    const fake = await resolveRossi();
+
+    const item = rossiItem();
+    expect(item).toHaveTextContent('Mario Rossi');
+    expect(item).toHaveTextContent('Used in 3 rows');
+    expect(item).toHaveTextContent('2 records have this name:');
+    expect(within(item).getByRole('radiogroup', { name: 'Which record is Mario Rossi?' })).toBeInTheDocument();
+    expect(within(item).getAllByRole('radio')).toHaveLength(3);
+    expect(within(item).getByRole('radio', { name: 'Mario Rossi (b. 1950)' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(item).getByRole('radio', { name: 'Mario Rossi (b. 1987)' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(item).getByRole('radio', { name: 'Create a new record' })).toHaveAttribute('aria-checked', 'false');
+    // The other groups are still shown in full
+    expect(groupItems(kindSection('Author, Owner, Lender'), 'Matched existing (1)')[0]).toHaveTextContent('Lucio Fontana');
+
+    expect(screen.getByText('1 name needs a decision before you can import.')).toBeInTheDocument();
+    expect(importButton()).toBeDisabled();
+    expect(fake.lookups).toEqual([{ kind: 'registry', values: ['mario rossi', 'lucio fontana'] }]);
+  });
+
+  it('links every row to the candidate the Importer picks, and keeps the value in its group', async () => {
+    const fake = await resolveRossi();
+
+    choose('Mario Rossi (b. 1987)');
+    expect(within(rossiItem()).getByRole('radio', { name: 'Mario Rossi (b. 1987)' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByText(/needs? a decision before you can import/)).not.toBeInTheDocument();
+    expect(importButton()).toBeEnabled();
+
+    await importRows();
+    expect(fake.creates).toEqual([]);
+    expect(fake.calls.flat().map((row) => [row.record.author, row.record.lender])).toEqual([
+      ['reg-rossi-1987', null],
+      ['reg-rossi-1987', 'reg-rossi-1987'],
+      ['reg-rossi-1987', null],
+    ]);
+  });
+
+  it('creates exactly one new record for "create new", with a name the Importer can change', async () => {
+    const fake = await resolveRossi();
+
+    choose('Create a new record');
+    const name = within(rossiItem()).getByRole('textbox', { name: 'Name of the new record for Mario Rossi' });
+    expect(name).toHaveValue('Mario Rossi');
+    fireEvent.change(name, { target: { value: ' ' } });
+    expect(screen.getByText('Give every new record a name before you can import.')).toBeInTheDocument();
+    expect(importButton()).toBeDisabled();
+    fireEvent.change(name, { target: { value: 'Mario Rossi (b. 2001)' } });
+
+    await importRows();
+    expect(fake.creates).toEqual([{ kind: 'registry', name: 'Mario Rossi (b. 2001)' }]);
+    const created = createdId(fake);
+    expect(authors(fake)).toEqual([created, created, created]);
+  });
+
+  it('lets the Importer assign individual rows to a different record, and blocks until every row is decided', async () => {
+    const fake = await resolveRossi();
+
+    openPerRow();
+    const panel = within(rossiItem()).getByRole('list', { name: 'Choose for each row (3 rows)' });
+    // Each row with enough context to decide: its number and first field
+    expect(within(panel).getAllByRole('listitem').map((row) => row.firstChild?.textContent)).toEqual([
+      'Row 1: Achrome',
+      'Row 2: Linea',
+      'Row 3: Bozza',
+    ]);
+    expect(
+      within(screen.getByRole('combobox', { name: 'Record for Mario Rossi in row 1' }))
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    ).toEqual(['Same as above', 'Mario Rossi (b. 1950)', 'Mario Rossi (b. 1987)', 'Create a new record']);
+
+    // Rows chosen individually, but row 3 not yet: still blocked
+    chooseForRow(1, 'Mario Rossi (b. 1950)');
+    chooseForRow(2, 'Mario Rossi (b. 1987)');
+    expect(screen.getByText('1 name needs a decision before you can import.')).toBeInTheDocument();
+    expect(importButton()).toBeDisabled();
+
+    chooseForRow(3, 'Create a new record');
+    expect(within(rossiItem()).getByText('3 rows chosen individually')).toBeInTheDocument();
+    expect(importButton()).toBeEnabled();
+    // A row creating a new record: its name can be set
+    expect(within(rossiItem()).getByRole('textbox', { name: 'Name of the new record for Mario Rossi' })).toHaveValue(
+      'Mario Rossi'
+    );
+
+    await importRows();
+    expect(fake.creates).toEqual([{ kind: 'registry', name: 'Mario Rossi' }]);
+    expect(fake.calls.flat().map((row) => [row.record.author, row.record.lender])).toEqual([
+      ['reg-rossi-1950', null],
+      // Every field of the row using the value follows the row's choice
+      ['reg-rossi-1987', 'reg-rossi-1987'],
+      [createdId(fake), null],
+    ]);
+  });
+
+  it('creates one record for all the rows assigned to "create new", whether by the value or individually', async () => {
+    const fake = await resolveRossi();
+
+    choose('Create a new record');
+    openPerRow();
+    chooseForRow(2, 'Mario Rossi (b. 1950)');
+    chooseForRow(3, 'Create a new record');
+
+    await importRows();
+    expect(fake.creates).toEqual([{ kind: 'registry', name: 'Mario Rossi' }]);
+    const created = createdId(fake);
+    expect(authors(fake)).toEqual([created, 'reg-rossi-1950', created]);
+  });
+
+  it('keeps the decisions when the Importer goes back to the review and returns, and badges each row', async () => {
+    const fake = await resolveRossi();
+    choose('Mario Rossi (b. 1987)');
+    openPerRow();
+    chooseForRow(1, 'Create a new record');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Review' }));
+    await screen.findByText(/validate data/i);
+    // Each row's badge says which Mario Rossi it is
+    expect(within(gridRow(1)).getByText('New: Mario Rossi')).toBeInTheDocument();
+    expect(within(gridRow(2)).getAllByText('Mario Rossi (b. 1987)')).toHaveLength(2);
+    expect(within(gridRow(3)).getByText('Mario Rossi (b. 1987)')).toBeInTheDocument();
+
+    await continueToResolution();
+    expect(within(rossiItem()).getByRole('radio', { name: 'Mario Rossi (b. 1987)' })).toHaveAttribute('aria-checked', 'true');
+    // The per-row choices are open, as a row has one
+    const row1 = screen.getByRole('combobox', { name: 'Record for Mario Rossi in row 1' }) as HTMLSelectElement;
+    expect(row1.selectedOptions[0].textContent).toBe('Create a new record');
+    expect(fake.lookups).toHaveLength(1);
+
+    await importRows();
+    expect(authors(fake)).toEqual([createdId(fake), 'reg-rossi-1987', 'reg-rossi-1987']);
+  });
+
+  it('ignores a row’s choice once the row no longer uses the value', async () => {
+    const fake = await resolveRossi();
+    choose('Mario Rossi (b. 1950)');
+    openPerRow();
+    chooseForRow(3, 'Mario Rossi (b. 1987)');
+
+    // Row 3 is left out: its choice no longer counts, and the others keep the value's
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Review' }));
+    fireEvent.click(within(gridRow(3)).getByRole('button', { name: 'Exclude row 3' }));
+    await continueToResolution();
+    expect(rossiItem()).toHaveTextContent('Used in 2 rows');
+    expect(within(rossiItem()).queryByText(/chosen individually/)).not.toBeInTheDocument();
+
+    await importRows();
+    expect(authors(fake)).toEqual(['reg-rossi-1950', 'reg-rossi-1950']);
   });
 });

@@ -11,7 +11,7 @@ import { EditableCell } from '../EditableCell';
 import { issueText } from '@/lib/import-wizard/messages';
 import { ChoiceCell } from '../ChoiceCell';
 import { useMessages } from '../messages';
-import { relatedValueKey, relatedValueOf, type ResolvedValue } from '@/lib/import-wizard/resolution';
+import { decisionForRow, relatedValueKey, relatedValueOf, type ResolvedValue } from '@/lib/import-wizard/resolution';
 
 interface ReviewRowProps<TRecord, TKey extends string> {
   row: RowValidation<TRecord>;
@@ -120,7 +120,10 @@ function ReviewRowView<TRecord, TKey extends string>({
                   className={cn('min-w-0 flex-1', row.excluded && 'line-through')}
                 />
                 {field.relationship && relatedValues && !row.excluded && (
-                  <RelatedBadge resolved={relatedValues.get(relatedValueKey(field.relationship.kind, relatedValueOf(value)))} />
+                  <RelatedBadge
+                    resolved={relatedValues.get(relatedValueKey(field.relationship.kind, relatedValueOf(value)))}
+                    rowIndex={row.rowIndex}
+                  />
                 )}
               </div>
             )}
@@ -133,17 +136,23 @@ function ReviewRowView<TRecord, TKey extends string>({
 
 /**
  * The Related Record a Relationship Field cell resolved to: the existing
- * record's name, the name a new one will be created with, or that the value
- * still needs a decision. The cell itself keeps the file's text.
+ * record's name (with its description for a chosen Homonym, so rows sharing
+ * a name can be told apart), the name a new one will be created with, or
+ * that the value still needs a decision. A row's own choice (Homonyms) wins
+ * over the value's. The cell itself keeps the file's text.
  */
-function RelatedBadge({ resolved }: { resolved: ResolvedValue | undefined }) {
+function RelatedBadge({ resolved, rowIndex }: { resolved: ResolvedValue | undefined; rowIndex: number }) {
   const m = useMessages();
   if (!resolved) return null;
-  const { decision } = resolved;
+  const decision = decisionForRow(resolved, rowIndex);
+  const description =
+    decision?.action === 'link' && resolved.group === 'homonyms'
+      ? (resolved.candidates.find((c) => c.id === decision.id)?.description ?? '')
+      : '';
   const [text, Icon, tone] = !decision
     ? [m.resolution.badgeUndecided(), AlertTriangle, 'border-warning/40 text-warning']
     : decision.action === 'link'
-      ? [m.resolution.badgeLinked({ name: decision.name }), Link2, 'border-success/40 text-success']
+      ? [m.resolution.badgeLinked({ name: decision.name, description }), Link2, 'border-success/40 text-success']
       : [m.resolution.badgeNew({ name: decision.name }), Plus, 'border-primary/40 text-primary'];
   return (
     <span

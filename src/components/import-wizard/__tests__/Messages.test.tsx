@@ -615,4 +615,67 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expect(screen.getByText('⟦resolution.notCreated⟧')).toBeInTheDocument();
     expectAllMarked();
   });
+
+  it('in Resolution’s Homonyms: the choices, the per-row panel, a new record’s name and the grid badges', async () => {
+    type RelKey = 'title' | 'author';
+    type RelRec = Record<RelKey, unknown>;
+    const fields: FieldConfig<RelKey>[] = [
+      { key: 'title', label: 'Titolo', type: 'string', required: true, matchKeywords: ['titolo'] },
+      { key: 'author', label: 'Autore', type: 'string', relationship: { kind: 'registry' }, matchKeywords: ['autore'] },
+    ];
+    mockFile([
+      { Titolo: 'Achrome', Autore: 'Anna Bianchi' },
+      { Titolo: 'Concetto spaziale', Autore: 'Anna Bianchi' },
+    ]);
+    const host = createFakeHostApp<RelRec>({
+      related: {
+        registry: [
+          { name: 'Anna Bianchi', description: '1950' },
+          { name: 'Anna Bianchi', description: '1978' },
+        ],
+      },
+    });
+    render(<ImportWizard<RelRec, RelKey> adapter={host.adapter} fields={fields} messages={MARKED} />);
+    await upload();
+    await continueToReview('⟦mapping.continue⟧');
+    await screen.findByText('⟦review.title⟧');
+    await continueToResolution('⟦review.continueToResolution⟧', '⟦resolution.complete⟧');
+
+    // Undecided: the candidates, "create new", and the button to choose per row
+    expect(screen.getByRole('region', { name: '⟦resolution.homonymsTitle⟧' })).toBeInTheDocument();
+    expect(screen.getByText('⟦resolution.homonymsDescription⟧')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: '⟦resolution.homonymChoice⟧' })).toBeInTheDocument();
+    expect(screen.getAllByRole('radio', { name: '⟦resolution.candidate⟧' })).toHaveLength(2);
+    expect(screen.getByText('⟦resolution.blockedUndecided⟧')).toBeInTheDocument();
+    expectAllMarked();
+
+    // The per-row panel: each row, and its choice
+    fireEvent.click(screen.getByRole('button', { name: '⟦resolution.perRow⟧' }));
+    expect(screen.getAllByText('⟦resolution.rowLabel⟧')).toHaveLength(2);
+    const [firstRow] = screen.getAllByRole('combobox', { name: '⟦resolution.rowChoice⟧' });
+    expect(within(firstRow).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      '⟦resolution.rowDefault⟧',
+      '⟦resolution.candidate⟧',
+      '⟦resolution.candidate⟧',
+      '⟦resolution.createNew⟧',
+    ]);
+    expectAllMarked();
+
+    // Row 1 creates a new record (named here), the rest link to the first candidate
+    fireEvent.change(firstRow, {
+      target: { value: within(firstRow).getByRole('option', { name: '⟦resolution.createNew⟧' }).getAttribute('value') },
+    });
+    fireEvent.click(screen.getAllByRole('radio', { name: '⟦resolution.candidate⟧' })[0]);
+    expect(screen.getByText('⟦resolution.perRowCount⟧')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '⟦resolution.nameLabel⟧' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '⟦resolution.complete⟧' })).toBeEnabled();
+    expectAllMarked();
+
+    // Back in the grid: each row's badge
+    fireEvent.click(screen.getByRole('button', { name: '⟦resolution.back⟧' }));
+    await screen.findByText('⟦review.title⟧');
+    expect(screen.getByText('⟦resolution.badgeNew⟧')).toBeInTheDocument();
+    expect(screen.getByText('⟦resolution.badgeLinked⟧')).toBeInTheDocument();
+    expectAllMarked();
+  });
 });

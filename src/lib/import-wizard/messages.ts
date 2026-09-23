@@ -147,6 +147,23 @@ export interface MessageParams {
     undecidedDescription: void;
     /** Introduces the existing records that share a value's name (Homonyms) */
     homonyms: { count: number };
+    /** The group of values matching several existing records (Homonyms) */
+    homonymsTitle: { count: number };
+    homonymsDescription: void;
+    /** Accessible name of a Homonym's choices; `value` is the value as spelled in the file */
+    homonymChoice: { value: string };
+    /** The choice to create a new record with a Homonym's name, for the value or one row */
+    createNew: void;
+    /** The button showing a Homonym's rows, to choose for each; `count` is its rows */
+    perRow: { count: number };
+    /** How many of a Homonym's rows have their own choice */
+    perRowCount: { count: number };
+    /** A row in the per-row choices: its number as in the grid, and its first field's text (may be empty) */
+    rowLabel: { row: number; title: string };
+    /** Accessible name of one row's choice */
+    rowChoice: { row: number; value: string };
+    /** The row choice that follows the value's choice */
+    rowDefault: void;
     /** Introduces existing records that might be the same as a value (Possible Matches) */
     possible: { count: number };
     /** An existing record; `description` is the Host App's (may be empty) */
@@ -163,8 +180,11 @@ export interface MessageParams {
     complete: { count: number };
     blockedUndecided: { count: number };
     blockedUnnamed: { count: number };
-    /** Badges on grid cells after Resolution: the record a value is linked to, or will create */
-    badgeLinked: { name: string };
+    /**
+     * Badges on grid cells after Resolution: the record a value is linked to,
+     * or will create. `description` tells a chosen Homonym apart (may be empty).
+     */
+    badgeLinked: { name: string; description: string };
     badgeNew: { name: string };
     badgeUndecided: void;
     /** A Rejected Row's reason when a Related Record it points to could not be created */
@@ -409,8 +429,18 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
       'Not in the system yet: a new record is created for each when you import, with the name shown. You can change it.',
     undecidedTitle: 'Needs a decision ({count})',
     undecidedDescription:
-      'These names match several existing records, or might be the same as one. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.',
+      'These names might be the same as an existing record. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.',
     homonyms: '{count} records have this name:',
+    homonymsTitle: 'Several matches ({count})',
+    homonymsDescription:
+      'More than one existing record has each of these names. Choose which one each name means, or create a new record. You can choose differently for individual rows.',
+    homonymChoice: 'Which record is {value}?',
+    createNew: 'Create a new record',
+    perRow: (p) => `Choose for each row (${plural(p.count, 'row', 'rows')})`,
+    perRowCount: (p) => `${plural(p.count, 'row', 'rows')} chosen individually`,
+    rowLabel: (p) => (p.title ? `Row ${p.row}: ${p.title}` : `Row ${p.row}`),
+    rowChoice: 'Record for {value} in row {row}',
+    rowDefault: 'Same as above',
     possible: 'Might be the same as:',
     candidate: (p) => (p.description ? `${p.name} (${p.description})` : p.name),
     rowCount: (p) => `Used in ${plural(p.count, 'row', 'rows')}`,
@@ -425,7 +455,7 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
         ? '1 name needs a decision before you can import.'
         : `${count(p.count)} names need a decision before you can import.`,
     blockedUnnamed: 'Give every new record a name before you can import.',
-    badgeLinked: '{name}',
+    badgeLinked: (p) => (p.description ? `${p.name} (${p.description})` : p.name),
     badgeNew: 'New: {name}',
     badgeUndecided: 'Needs a decision',
     notCreated: 'The record "{name}" could not be created: {reason}',
