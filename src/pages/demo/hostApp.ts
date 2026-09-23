@@ -256,7 +256,7 @@ export function createDemoHostApp({ latencyMs = 400 }: DemoHostAppOptions = {}):
       const parts = [`${saved} saved`];
       if (repeated) parts.push(`${repeated} already saved (Import Key)`);
       if (refused) parts.push(`${refused} refused`);
-      const summary = `saveBatch #${call} · ${rows.length} rows → ${parts.join(', ')}`;
+      const summary = `saveBatch #${call} · ${rows.length} row${rows.length === 1 ? '' : 's'} → ${parts.join(', ')}`;
 
       if (settings.loseNextBatch) {
         settings = { ...settings, loseNextBatch: false };
@@ -305,10 +305,17 @@ export function createDemoHostApp({ latencyMs = 400 }: DemoHostAppOptions = {}):
   };
 }
 
-/** A registry entry's name, for showing a saved artwork's artist or owner */
+/**
+ * A registry entry's name, for showing a saved artwork's artist or owner.
+ * A name several entries share (Homonyms) gets the entry's ID, so the store
+ * shows which one a row was linked to.
+ */
 export function registryName(snapshot: DemoHostSnapshot, id: unknown): string | null {
   if (id === null || id === undefined || id === '') return null;
-  return snapshot.registry.find((entry) => entry.id === id)?.name ?? String(id);
+  const entry = snapshot.registry.find((e) => e.id === id);
+  if (!entry) return String(id);
+  const shared = snapshot.registry.some((e) => e.id !== entry.id && normaliseForMatch(e.name) === normaliseForMatch(entry.name));
+  return shared ? `${entry.name} [${entry.id}]` : entry.name;
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   artworksSavedTwice,
   createDemoHostApp,
   CURRENCIES,
+  registryName,
   REGISTRY_KIND,
   type DemoArtwork,
 } from '../hostApp';
@@ -161,6 +162,13 @@ describe('the demo Host App', () => {
       await expect(host.adapter.createRelated!('lender', 'Anna Bianchi')).rejects.toThrow('The archive has no lender records.');
       expect(await host.adapter.findRelated!('lender', ['anna bianchi'])).toEqual({ 'anna bianchi': [] });
     });
+  });
+
+  it("names a saved artwork's registry entries, with the ID when the name is a Homonym", () => {
+    const snapshot = newHost().getSnapshot();
+    expect(registryName(snapshot, 'reg-1')).toBe('Lucio Fontana');
+    expect(registryName(snapshot, 'reg-4')).toBe('Mario Rossi [reg-4]');
+    expect(registryName(snapshot, null)).toBeNull();
   });
 
   it('loads the currencies it accepts', async () => {
