@@ -240,26 +240,76 @@ describe('Commit through the Host App adapter', () => {
     expect(consoleError.mock.calls.join('\n')).toMatch(/no outcome for import key/);
   });
 
-  it('turns a batch that could not be sent into Rejected Rows and carries on with the next batch', async () => {
+  it('retries a batch whose answer was lost, telling the Importer, and saves nothing twice', async () => {
+    mockArtworks(4);
+    const host = createFakeHostApp<Rec>();
+    const lost = new TypeError('Failed to fetch');
+    // Batch 1 is saved but its answer never arrives; its retry and batch 2 are held to look at the screen
+    host.onCall(1, { lose: lost });
+    const retried = host.hold(2);
+    const secondBatch = host.hold(3);
+    const onEvent = vi.fn<(event: ImportWizardEvent<Rec>) => void>();
+    const onImportFinished = vi.fn<(report: ImportReport<Rec>) => void>();
+    renderWizard(host, { batchSize: 2, retry: { baseDelayMs: 0 }, onEvent, onImportFinished });
+    await goToReview();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
+      await retried.reached;
+    });
+
+    expect(screen.getByRole('status')).toHaveTextContent('0 of 4 rows processed');
+    expect(screen.getByRole('status')).toHaveTextContent('Connection problem, retrying… (attempt 2 of 3)');
+    const retries = onEvent.mock.calls.map(([event]) => event).filter((event) => event.type === 'BATCH_RETRY');
+    expect(retries).toEqual([
+      { type: 'BATCH_RETRY', retry: { batch: 1, batches: 2, attempt: 2, attempts: 3, delayMs: 0, error: lost } },
+    ]);
+
+    // Once the batch has its outcome, the retry notice goes
+    await act(async () => {
+      retried.release();
+      await secondBatch.reached;
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('2 of 4 rows processed');
+    expect(screen.queryByText(/retrying/i)).not.toBeInTheDocument();
+
+    await act(async () => secondBatch.release());
+    await waitFor(() => expect(screen.getByText('4 imported')).toBeInTheDocument());
+    expect(screen.getByText('0 rejected')).toBeInTheDocument();
+    // The retry sent the same rows with the same Import Keys: the Host App saved each row once
+    expect(host.calls[1]).toEqual(host.calls[0]);
+    expect(host.store.size).toBe(4);
+    expect(host.writes).toBe(4);
+    expect(onImportFinished.mock.calls[0][0].created).toHaveLength(4);
+  });
+
+  it('turns a batch that could not be sent after every retry into Rejected Rows and carries on with the next batch', async () => {
     mockArtworks(5);
     const host = createFakeHostApp<Rec>();
-    host.onCall(2, { fail: new TypeError('Failed to fetch') });
+    for (const call of [2, 3, 4]) host.onCall(call, { fail: new TypeError('Failed to fetch') });
     const onImportFinished = vi.fn<(report: ImportReport<Rec>) => void>();
-    renderWizard(host, { batchSize: 2, onImportFinished });
+    const onEvent = vi.fn<(event: ImportWizardEvent<Rec>) => void>();
+    renderWizard(host, { batchSize: 2, retry: { baseDelayMs: 0 }, onImportFinished, onEvent });
     await goToReview();
 
     await importRows();
 
-    expect(host.calls).toHaveLength(3);
+    expect(host.calls.map((batch) => batch.map((row) => row.rowIndex))).toEqual([[0, 1], [2, 3], [2, 3], [2, 3], [4]]);
     expect(host.records().map((record) => record.title)).toEqual(['Opera 1', 'Opera 2', 'Opera 5']);
     expect(screen.getByText('3 imported')).toBeInTheDocument();
     expect(screen.getByText('2 rejected')).toBeInTheDocument();
-    const notSent = 'This row could not be sent. Try importing it again later.';
+    const unreachable =
+      'This row could not be sent: the server could not be reached, even after 3 tries. Try importing it again later.';
     expect(reportTable('Rejected rows')).toEqual([
-      ['3', 'Opera 3', '', notSent],
-      ['4', 'Opera 4', '', notSent],
+      ['3', 'Opera 3', '', unreachable],
+      ['4', 'Opera 4', '', unreachable],
     ]);
     expect(onImportFinished.mock.calls[0][0].rejected.map((row) => row.cause)).toEqual(['notSent', 'notSent']);
+    const retries = onEvent.mock.calls.map(([event]) => event).filter((event) => event.type === 'BATCH_RETRY');
+    expect(retries.map((event) => event.type === 'BATCH_RETRY' && [event.retry.batch, event.retry.attempt])).toEqual([
+      [2, 2],
+      [2, 3],
+    ]);
   });
 
   it('shows progress while committing, with the review locked', async () => {
@@ -404,6 +454,29 @@ describe('Commit through the Host App adapter', () => {
 
     expect(host.calls).toHaveLength(1);
     expect(onImportFinished).not.toHaveBeenCalled();
+  });
+
+  it('stops retrying once the wizard is unmounted while waiting to retry', async () => {
+    mockArtworks(250);
+    const host = createFakeHostApp<Rec>();
+    host.onCall(1, { fail: new TypeError('Failed to fetch') });
+    const onEvent = vi.fn<(event: ImportWizardEvent<Rec>) => void>();
+    // A wait longer than the test: only unmounting can end it
+    const { unmount } = renderWizard(host, { retry: { baseDelayMs: 600_000 }, onEvent });
+    await goToReview();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
+    });
+    await waitFor(() => expect(screen.getByText(/retrying/i)).toBeInTheDocument());
+    unmount();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(host.calls).toHaveLength(1);
+    const types = onEvent.mock.calls.map(([event]) => event.type);
+    // The wait ended at once: the batch settled as not sent, and nothing followed it
+    expect(types).toContain('BATCH_SETTLED');
+    expect(types).not.toContain('IMPORT_FINISHED');
   });
 });
 

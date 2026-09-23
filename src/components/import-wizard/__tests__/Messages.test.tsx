@@ -293,6 +293,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
       <ImportWizard<Rec, Key>
         adapter={(props.host ?? createFakeHostApp<Rec>()).adapter}
         batchSize={props.batchSize}
+        retry={{ baseDelayMs: 0 }}
         fields={props.fields ?? outputShape()}
         aiEdit={props.aiEdit}
         validateRow={(data) => (data.title === 'Nature morte' ? [{ type: 'warning', message: 'Opera già presente' }] : [])}
@@ -474,12 +475,14 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
 
   it('while committing, and in the Import Report with the Host App’s reasons as written', async () => {
     // One row per batch: Achrome is saved, Concetto spaziale is refused by the
-    // Host App (its reason is its own text), Nature morte's batch can't be sent
+    // Host App (its reason is its own text), Nature morte's batch can't be
+    // sent on any of its 3 attempts (calls 3 to 5)
     const host = createFakeHostApp<Rec>({
       reject: (row) => (row.record.title === 'Concetto spaziale' ? { reason: 'Opera già presente', field: 'title' } : null),
     });
     const second = host.hold(2);
-    host.onCall(3, { fail: new Error('Servizio non disponibile') });
+    const retry = host.hold(4);
+    for (const call of [3, 4, 5]) host.onCall(call, { fail: new Error('Servizio non disponibile') });
     await reviewMarked({ host, batchSize: 1 });
     // Row 2 has errors: leave it out, so the report has an Excluded Row too
     fireEvent.click(screen.getByRole('button', { name: '⟦review.excludeErrors⟧' }));
@@ -492,7 +495,15 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expect(screen.getByText('⟦steps.import⟧')).toBeInTheDocument();
     expectAllMarked();
 
-    await act(async () => second.release());
+    // Retrying the batch that failed in transit
+    await act(async () => {
+      second.release();
+      await retry.reached;
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('⟦commit.retrying⟧');
+    expectAllMarked();
+
+    await act(async () => retry.release());
     await screen.findByText('⟦report.title⟧');
     expect(screen.getByText('⟦report.created⟧')).toBeInTheDocument();
     expect(screen.getByText('Opera già presente')).toBeInTheDocument();

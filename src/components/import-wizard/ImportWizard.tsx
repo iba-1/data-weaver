@@ -71,6 +71,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   requiredFields,
   adapter,
   batchSize,
+  retry,
   onImportFinished,
   onLeaveWarningChange,
   onEvent,
@@ -94,7 +95,12 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   // parsed and tied to the source row, so edits, undo/redo, exclusion and
   // going back to column matching (which re-validates the file's rows) keep it
   const [importKeys, setImportKeys] = useState<string[]>([]);
-  const [commitProgress, setCommitProgress] = useState({ done: 0, total: 0 });
+  // `retry` is set while a batch that failed in transit is being sent again
+  const [commitProgress, setCommitProgress] = useState<{
+    done: number;
+    total: number;
+    retry: { attempt: number; attempts: number } | null;
+  }>({ done: 0, total: 0, retry: null });
   const [report, setReport] = useState<ImportReport<TRecord> | null>(null);
   const committingRef = useRef(false);
   // Aborted on unmount: no more batches are sent once nobody can see the Import Report
@@ -316,7 +322,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     const included = rows.filter((r) => !r.excluded).map(toImportRow);
     const excluded = rows.filter((r) => r.excluded).map(toImportRow);
 
-    setCommitProgress({ done: 0, total: included.length });
+    setCommitProgress({ done: 0, total: included.length, retry: null });
     setState((s) => ({ ...s, step: 'commit' }));
     emit({
       type: 'COMMIT_STARTED',
@@ -332,10 +338,15 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       // Called on the adapter, so a Host App's class instance keeps its `this`
       saveBatch: (batch) => adapter.saveBatch(batch),
       batchSize,
+      retry,
       messages: m,
+      onBatchRetry: (batchRetry) => {
+        setCommitProgress((p) => ({ ...p, retry: { attempt: batchRetry.attempt, attempts: batchRetry.attempts } }));
+        emit({ type: 'BATCH_RETRY', retry: batchRetry });
+      },
       onBatchSettled: (result, progress) => {
         for (const problem of result.problems) console.error(`[data-weaver] ${problem}`);
-        setCommitProgress({ done: progress.done, total: progress.total });
+        setCommitProgress({ done: progress.done, total: progress.total, retry: null });
         emit({ type: 'BATCH_SETTLED', progress, created: result.created, rejected: result.rejected });
       },
     });
@@ -346,7 +357,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     setState((s) => ({ ...s, step: 'report' }));
     emit({ type: 'IMPORT_FINISHED', report: finished });
     callHost('onImportFinished', () => onImportFinishedRef.current?.(finished));
-  }, [review.status, state.validatedRows, importKeys, adapter, batchSize, m, emit]);
+  }, [review.status, state.validatedRows, importKeys, adapter, batchSize, retry, m, emit]);
 
   return (
     <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)} messages={messages}>
@@ -409,7 +420,9 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
           />
         )}
 
-        {state.step === 'commit' && <CommitProgress done={commitProgress.done} total={commitProgress.total} />}
+        {state.step === 'commit' && (
+          <CommitProgress done={commitProgress.done} total={commitProgress.total} retry={commitProgress.retry} />
+        )}
 
         {state.step === 'report' && report && (
           <ImportReportView

@@ -6,10 +6,12 @@ interface CommitProgressProps {
   done: number;
   /** Rows being committed */
   total: number;
+  /** Set while a batch that failed in transit is being sent again */
+  retry?: { attempt: number; attempts: number } | null;
 }
 
 /** Shown instead of the review while rows are being saved: nothing can be edited until Commit is over */
-export function CommitProgress({ done, total }: CommitProgressProps) {
+export function CommitProgress({ done, total, retry }: CommitProgressProps) {
   const m = useMessages();
   const percent = total === 0 ? 100 : Math.round((done / total) * 100);
   const progressText = m.commit.progress({ done, total });
@@ -31,9 +33,11 @@ export function CommitProgress({ done, total }: CommitProgressProps) {
       >
         <div className="h-full bg-primary transition-all" style={{ width: `${percent}%` }} />
       </div>
-      <p role="status" className="text-sm font-medium text-foreground">
-        {progressText}
-      </p>
+      {/* One live region, so a retry is announced along with the progress */}
+      <div role="status" className="space-y-1 text-sm">
+        <p className="font-medium text-foreground">{progressText}</p>
+        {retry && <p className="text-warning">{m.commit.retrying(retry)}</p>}
+      </div>
       <p className="text-sm text-muted-foreground">{m.commit.keepOpen()}</p>
     </div>
   );
