@@ -30,9 +30,17 @@ export interface FieldConfig<TKey extends string = string> {
   required?: boolean;
   /**
    * Data type for parsing and validation. A `date` is a calendar day, given to
-   * the Host App as a `Date` at midnight UTC.
+   * the Host App as a `Date` at midnight UTC. A `choice` is one of `options`,
+   * given to the Host App as the option's `value`.
    */
-  type: 'string' | 'number' | 'date' | 'boolean';
+  type: FieldType;
+  /**
+   * For `choice` fields: the accepted options, as a list or as a loader the
+   * wizard calls once when the review step starts. A cell that is a Normalised
+   * Match of an option's `value` or `label` becomes that option's `value`;
+   * any other value is an error on the cell.
+   */
+  options?: ChoiceOption[] | ChoiceOptionsLoader;
   /**
    * For `date` fields: how numeric dates such as 01/02/2024 are read,
    * day-first (`'DMY'`) or month-first (`'MDY'`). Year-first ISO dates are
@@ -49,6 +57,24 @@ export interface FieldConfig<TKey extends string = string> {
   /** Placeholder shown when value is empty */
   placeholder?: string;
 }
+
+/** How a field's cell text is converted and checked */
+export type FieldType = 'string' | 'number' | 'date' | 'boolean' | 'choice';
+
+/** One accepted value of a `choice` field */
+export interface ChoiceOption {
+  /** The canonical value the Host App receives, e.g. `'EUR'` */
+  value: string;
+  /** What the Importer sees in the picker, e.g. `'Euro'`. Defaults to `value`. */
+  label?: string;
+}
+
+/**
+ * Host App-supplied loader for a `choice` field's options, e.g. a call to its
+ * API. Rejecting with an Error shows its message to the Importer, who can
+ * retry; the import can't complete until the options load.
+ */
+export type ChoiceOptionsLoader = () => Promise<ChoiceOption[]>;
 
 /**
  * Result from a field validation function
@@ -196,7 +222,8 @@ export interface AiEditRequest {
   /** The Importer's natural-language instruction */
   command: string;
   rows: Array<{ rowIndex: number; data: Record<string, unknown> }>;
-  fields: Array<Pick<FieldConfig, 'key' | 'label' | 'type'>>;
+  /** The fields; `choice` fields include their loaded options */
+  fields: Array<Pick<FieldConfig, 'key' | 'label' | 'type'> & { options?: ChoiceOption[] }>;
 }
 
 /**

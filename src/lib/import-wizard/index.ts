@@ -13,6 +13,9 @@
 export type {
   // Field Configuration
   FieldConfig,
+  FieldType,
+  ChoiceOption,
+  ChoiceOptionsLoader,
   ValidationResult,
   DataRecord,
   
@@ -110,6 +113,14 @@ export {
 } from './search';
 
 export { parseCalendarDate, formatCalendarDate, type DateOrder } from './dates';
+
+// ============================================================
+// NORMALISED MATCH & CHOICE FIELDS
+// ============================================================
+
+export { normaliseForMatch, isNormalisedMatch } from './normalise';
+
+export { matchChoice, loadChoiceOptions, hasOptionLoaders } from './choices';
 
 // ============================================================
 // EXPORT

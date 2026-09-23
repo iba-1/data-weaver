@@ -6,6 +6,8 @@ import { WizardRoot } from './WizardRoot';
 import { DEFAULT_ACCEPTED_FILE_TYPES, DEFAULT_MAX_FILE_SIZE, parseFile } from '@/lib/import-wizard/parser';
 import { autoMatchColumns, updateMapping } from '@/lib/import-wizard/matcher';
 import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator';
+import { hasOptionLoaders, loadChoiceOptions } from '@/lib/import-wizard/choices';
+import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptionsStatus';
 import type {
   ArtworkRecord,
   ColumnMapping,
@@ -13,6 +15,7 @@ import type {
   ImportWizardEvent,
   ImportWizardProps,
   ImportWizardState,
+  ParsedFileData,
   RowCompleteEvent,
   RowValidation,
   TargetField,
@@ -21,6 +24,15 @@ import type {
 import { ARTWORK_FIELD_CONFIGS } from '@/lib/import-wizard/types';
 import { cn } from '@/lib/utils';
 import { Check } from 'lucide-react';
+
+/**
+ * The review step before its rows can be shown: choice options loading, failed
+ * to load, or loaded, with the fields the rows were validated against.
+ */
+type ReviewState<TKey extends string> =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; fields: FieldConfig<TKey>[] };
 
 const INITIAL_STATE: ImportWizardState = {
   step: 'upload',
@@ -48,6 +60,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   className,
 }: ImportWizardProps<TRecord, TKey>) {
   const [state, setState] = useState<ImportWizardState<TRecord>>(INITIAL_STATE as ImportWizardState<TRecord>);
+  const [review, setReview] = useState<ReviewState<TKey>>({ status: 'loading' });
 
   // Use provided fields or default to artwork fields. `requiredFields` is
   // folded into the fields so every step reads one source of truth.
@@ -133,44 +146,71 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     []
   );
 
-  const handleConfirmMapping = useCallback(() => {
+  /** Validate the rows with fields whose choice options are loaded, and open the review */
+  const showReview = useCallback(
+    (fields: FieldConfig<TKey>[], parsedData: ParsedFileData, columnMappings: ColumnMapping[]) => {
+      const validatedRows = validateRows<TRecord, TKey>(
+        parsedData.rows,
+        columnMappings as ColumnMapping<TKey>[],
+        {
+          fields,
+          customValidator,
+          onRowParse: onRowParse
+            ? (rowIndex, rawData, parsedData) => {
+                const event = { rowIndex, rawData, parsedData };
+                emit({ type: 'ROW_PARSED', event });
+                return onRowParse(event);
+              }
+            : undefined,
+        }
+      );
+
+      reportedRowsRef.current = validatedRows;
+      validatedRows.forEach(reportRowComplete);
+
+      setReview({ status: 'ready', fields });
+      setState((s) => ({
+        ...s,
+        validatedRows,
+        step: 'validation',
+        isLoading: false,
+      }));
+
+      emit({ type: 'COLUMNS_MAPPED', mappings: columnMappings });
+      emit({ type: 'DATA_VALIDATED', rows: validatedRows });
+    },
+    [customValidator, onRowParse, reportRowComplete, emit]
+  );
+
+  // Bumped whenever the review starts or is left, so late options are ignored
+  const reviewRequestRef = useRef(0);
+
+  // Choice options load once each time the review starts, then rows are validated against them
+  const startReview = useCallback(async () => {
     const { parsedData, columnMappings } = state;
     if (!parsedData) return;
+    const request = ++reviewRequestRef.current;
 
-    setState((s) => ({ ...s, isLoading: true }));
+    if (!hasOptionLoaders(fieldConfigs)) {
+      showReview(fieldConfigs, parsedData, columnMappings);
+      return;
+    }
 
-    // Validate rows with the current mappings
-    const validatedRows = validateRows<TRecord, TKey>(
-      parsedData.rows,
-      columnMappings as ColumnMapping<TKey>[],
-      {
-        fields: fieldConfigs,
-        customValidator,
-        onRowParse: onRowParse
-          ? (rowIndex, rawData, parsedData) => {
-              const event = { rowIndex, rawData, parsedData };
-              emit({ type: 'ROW_PARSED', event });
-              return onRowParse(event);
-            }
-          : undefined,
-      }
-    );
-
-    reportedRowsRef.current = validatedRows;
-    validatedRows.forEach(reportRowComplete);
-
-    setState((s) => ({
-      ...s,
-      validatedRows,
-      step: 'validation',
-      isLoading: false,
-    }));
-
-    emit({ type: 'COLUMNS_MAPPED', mappings: columnMappings });
-    emit({ type: 'DATA_VALIDATED', rows: validatedRows });
-  }, [state, fieldConfigs, customValidator, onRowParse, reportRowComplete, emit]);
+    setReview({ status: 'loading' });
+    setState((s) => ({ ...s, step: 'validation' }));
+    try {
+      const fields = await loadChoiceOptions(fieldConfigs);
+      if (request === reviewRequestRef.current) showReview(fields, parsedData, columnMappings);
+    } catch (error) {
+      if (request !== reviewRequestRef.current) return;
+      const message = error instanceof Error ? error.message : 'Could not load the options';
+      setReview({ status: 'error', message });
+      emit({ type: 'ERROR', error: message });
+    }
+  }, [state, fieldConfigs, showReview, emit]);
 
   const handleBack = useCallback(() => {
+    reviewRequestRef.current++;
     setState((s) => ({ ...s, step: 'mapping' }));
   }, []);
 
@@ -189,6 +229,8 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   );
 
   const handleComplete = useCallback(() => {
+    // Rows are only checked against choice options once the options have loaded
+    if (review.status !== 'ready') return;
     const includedRows = state.validatedRows.filter((r) => !r.excluded);
     // Never drop a row silently: every row is either valid or excluded
     if (includedRows.some((r) => !r.isValid)) return;
@@ -198,7 +240,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
     emit({ type: 'IMPORT_COMPLETED', data, excludedRows });
     onComplete?.(data, { excludedRows });
-  }, [state.validatedRows, emit, onComplete]);
+  }, [review.status, state.validatedRows, emit, onComplete]);
 
   return (
     <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)}>
@@ -231,15 +273,26 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             mappings={state.columnMappings}
             fields={fieldConfigs}
             onMappingChange={handleMappingChange}
-            onConfirm={handleConfirmMapping}
+            onConfirm={startReview}
             isLoading={state.isLoading}
           />
         )}
 
-        {state.step === 'validation' && (
+        {state.step === 'validation' && review.status === 'loading' && (
+          <ChoiceOptionsLoading
+            fieldLabels={fieldConfigs.filter((f) => f.type === 'choice' && typeof f.options === 'function').map((f) => f.label)}
+            onBack={handleBack}
+          />
+        )}
+
+        {state.step === 'validation' && review.status === 'error' && (
+          <ChoiceOptionsError message={review.message} onRetry={startReview} onBack={handleBack} />
+        )}
+
+        {state.step === 'validation' && review.status === 'ready' && (
           <DataValidator
             validatedRows={state.validatedRows}
-            fields={fieldConfigs}
+            fields={review.fields}
             validateRow={customValidator}
             aiEdit={aiEdit}
             onComplete={handleComplete}
