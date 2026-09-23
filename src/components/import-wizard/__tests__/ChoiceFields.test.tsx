@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ImportWizard } from '../ImportWizard';
+import { createFakeHostApp } from '@/test/fakeHostApp';
+import { importRows } from '@/test/wizardDriver';
 import type { ChoiceOption, FieldConfig, RowValidation } from '@/lib/import-wizard/types';
 
 vi.mock('@/lib/import-wizard/parser', async (importOriginal) => {
@@ -81,8 +83,8 @@ describe('choice fields with options from the Host App', () => {
       { Titolo: 'Senza titolo', Valuta: ' us  DOLLAR ' },
     ]);
     const { fields } = fakeHostApp();
-    const onComplete = vi.fn();
-    render(<ImportWizard<Rec, Key> fields={fields} onComplete={onComplete} />);
+    const host = createFakeHostApp<Rec>();
+    render(<ImportWizard<Rec, Key> fields={fields} adapter={host.adapter} />);
 
     await goToReview();
 
@@ -90,8 +92,8 @@ describe('choice fields with options from the Host App', () => {
     expect(currencyCell(2)).toHaveTextContent('EUR');
     expect(currencyCell(3)).toHaveTextContent('USD');
 
-    fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
-    expect(onComplete.mock.calls[0][0]).toEqual([
+    await importRows();
+    expect(host.records()).toEqual([
       { title: 'Concetto spaziale', currency: 'EUR' },
       { title: 'Achrome', currency: 'EUR' },
       { title: 'Senza titolo', currency: 'USD' },
@@ -104,7 +106,7 @@ describe('choice fields with options from the Host App', () => {
       { Titolo: 'Achrome', Valuta: 'Swiss franc' },
     ]);
     const { fields } = fakeHostApp();
-    render(<ImportWizard<Rec, Key> fields={fields} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
 
     await goToReview();
 
@@ -118,20 +120,20 @@ describe('choice fields with options from the Host App', () => {
   it('leaves an empty choice cell empty and valid when the field is optional', async () => {
     mockFile([{ Titolo: 'Concetto spaziale', Valuta: '' }]);
     const { fields } = fakeHostApp();
-    const onComplete = vi.fn();
-    render(<ImportWizard<Rec, Key> fields={fields} onComplete={onComplete} />);
+    const host = createFakeHostApp<Rec>();
+    render(<ImportWizard<Rec, Key> fields={fields} adapter={host.adapter} />);
 
     await goToReview();
-    fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
+    await importRows();
 
-    expect(onComplete.mock.calls[0][0]).toEqual([{ title: 'Concetto spaziale', currency: null }]);
+    expect(host.records()).toEqual([{ title: 'Concetto spaziale', currency: null }]);
   });
 
   it('edits a choice cell with a picker listing the options', async () => {
     mockFile([{ Titolo: 'Achrome', Valuta: 'Swiss franc' }]);
     const { fields } = fakeHostApp();
-    const onComplete = vi.fn();
-    render(<ImportWizard<Rec, Key> fields={fields} onComplete={onComplete} />);
+    const host = createFakeHostApp<Rec>();
+    render(<ImportWizard<Rec, Key> fields={fields} adapter={host.adapter} />);
     await goToReview();
 
     fireEvent.click(currencyCell(1));
@@ -149,14 +151,14 @@ describe('choice fields with options from the Host App', () => {
 
     expect(currencyCell(1)).toHaveTextContent('GBP');
     expect(currencyCell(1)).not.toHaveAttribute('aria-invalid');
-    fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
-    expect(onComplete.mock.calls[0][0]).toEqual([{ title: 'Achrome', currency: 'GBP' }]);
+    await importRows();
+    expect(host.records()).toEqual([{ title: 'Achrome', currency: 'GBP' }]);
   });
 
   it('can clear a choice cell from the picker', async () => {
     mockFile([{ Titolo: 'Achrome', Valuta: 'Swiss franc' }]);
     const { fields } = fakeHostApp();
-    render(<ImportWizard<Rec, Key> fields={fields} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
     await goToReview();
 
     fireEvent.click(currencyCell(1));
@@ -172,7 +174,7 @@ describe('choice fields with options from the Host App', () => {
       { Titolo: 'Concetto spaziale', Valuta: 'Swiss franc' },
     ]);
     const { fields } = fakeHostApp();
-    render(<ImportWizard<Rec, Key> fields={fields} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
     await goToReview();
 
     fireEvent.click(screen.getByRole('button', { name: /find & replace/i }));
@@ -191,7 +193,7 @@ describe('choice fields with options from the Host App', () => {
     mockFile([{ Titolo: 'Achrome', Valuta: 'Swiss franc' }]);
     const { fields } = fakeHostApp();
     const aiEdit = vi.fn().mockResolvedValue([{ rowIndex: 0, changes: { currency: 'us dollar' } }]);
-    render(<ImportWizard<Rec, Key> fields={fields} aiEdit={aiEdit} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} aiEdit={aiEdit} />);
     await goToReview();
 
     fireEvent.click(screen.getByRole('button', { name: /ai edit/i }));
@@ -219,7 +221,7 @@ describe('choice fields with options from the Host App', () => {
       { Titolo: 'Senza titolo', Valuta: 'usd' },
     ]);
     const { fields, loadCurrencies } = fakeHostApp();
-    const { rerender } = render(<ImportWizard<Rec, Key> fields={fields} />);
+    const { rerender } = render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
 
     await upload();
     // Column matching doesn't need the options
@@ -236,7 +238,7 @@ describe('choice fields with options from the Host App', () => {
     fireEvent.click(screen.getByRole('option', { name: /euro/i }));
     fireEvent.click(screen.getByText('Achrome'));
     fireEvent.keyDown(screen.getByDisplayValue('Achrome'), { key: 'Enter' });
-    rerender(<ImportWizard<Rec, Key> fields={fields} />);
+    rerender(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
 
     expect(loadCurrencies).toHaveBeenCalledTimes(1);
   });
@@ -245,7 +247,7 @@ describe('choice fields with options from the Host App', () => {
     mockFile([{ Titolo: 'Achrome', Valuta: 'eur' }]);
     const pending = deferred<ChoiceOption[]>();
     const { fields } = fakeHostApp(vi.fn(() => pending.promise));
-    render(<ImportWizard<Rec, Key> fields={fields} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
 
     await uploadAndContinue();
 
@@ -265,9 +267,9 @@ describe('choice fields with options from the Host App', () => {
       .mockRejectedValueOnce(new Error('503 Service Unavailable'))
       .mockResolvedValueOnce(CURRENCIES);
     const { fields } = fakeHostApp(loadCurrencies);
-    const onComplete = vi.fn();
+    const host = createFakeHostApp<Rec>();
     const onEvent = vi.fn();
-    render(<ImportWizard<Rec, Key> fields={fields} onComplete={onComplete} onEvent={onEvent} />);
+    render(<ImportWizard<Rec, Key> fields={fields} adapter={host.adapter} onEvent={onEvent} />);
 
     await uploadAndContinue();
 
@@ -285,14 +287,14 @@ describe('choice fields with options from the Host App', () => {
 
     expect(loadCurrencies).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /complete import/i }));
-    expect(onComplete.mock.calls[0][0]).toEqual([{ title: 'Achrome', currency: 'EUR' }]);
+    await importRows();
+    expect(host.records()).toEqual([{ title: 'Achrome', currency: 'EUR' }]);
   });
 
   it('can go back to column matching after a loader failure', async () => {
     mockFile([{ Titolo: 'Achrome', Valuta: 'eur' }]);
     const { fields } = fakeHostApp(vi.fn().mockRejectedValue(new Error('offline')));
-    render(<ImportWizard<Rec, Key> fields={fields} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} />);
 
     await uploadAndContinue();
     await screen.findByRole('alert');
@@ -306,7 +308,7 @@ describe('choice fields with options from the Host App', () => {
     const pending = deferred<ChoiceOption[]>();
     const { fields } = fakeHostApp(vi.fn(() => pending.promise));
     const onEvent = vi.fn();
-    render(<ImportWizard<Rec, Key> fields={fields} onEvent={onEvent} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} onEvent={onEvent} />);
 
     await uploadAndContinue();
     fireEvent.click(screen.getByRole('button', { name: /back to mapping/i }));
@@ -323,7 +325,7 @@ describe('choice fields with options from the Host App', () => {
       { key: 'currency', label: 'Currency', type: 'choice', options: CURRENCIES, matchKeywords: ['valuta'] },
     ];
     const onEvent = vi.fn();
-    render(<ImportWizard<Rec, Key> fields={fields} onEvent={onEvent} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fields} onEvent={onEvent} />);
 
     await goToReview();
 
@@ -336,7 +338,7 @@ describe('choice fields with options from the Host App', () => {
     // jsdom has no layout, so this guards the invariant the virtualised grid relies on:
     // every cell of a row uses the same compact cell padding (measured at 45px in Chromium)
     mockFile([{ Titolo: 'Achrome', Valuta: 'eur' }]);
-    render(<ImportWizard<Rec, Key> fields={fakeHostApp().fields} />);
+    render(<ImportWizard<Rec, Key> adapter={createFakeHostApp().adapter} fields={fakeHostApp().fields} />);
     await goToReview();
 
     const cells = within(currencyCell(1).closest('tr') as HTMLElement).getAllByRole('cell');

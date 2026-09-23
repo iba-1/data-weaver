@@ -1,7 +1,8 @@
 /**
  * Data Weaver
  *
- * A spreadsheet import wizard for React: upload, map columns, review and fix rows.
+ * A spreadsheet import wizard for React: upload, map columns, review and fix rows,
+ * then save them through the Host App and report the outcome.
  *
  * @packageDocumentation
  * @module data-weaver
@@ -18,7 +19,8 @@
  *         { key: 'name', label: 'Name', type: 'string', required: true },
  *         { key: 'email', label: 'Email', type: 'string' },
  *       ]}
- *       onComplete={(data) => console.log(data)}
+ *       adapter={{ saveBatch: (rows) => api.saveRows(rows) }}
+ *       onImportFinished={(report) => console.log(report.created.length, 'imported')}
  *     />
  *   );
  * }
@@ -89,7 +91,16 @@ export type {
   ReplaceOptions,
   AiEditRequest,
   AiEditHandler,
-  ImportResult,
+
+  // Commit: the Host App adapter and the Import Report
+  HostAppAdapter,
+  SaveBatch,
+  ImportRow,
+  RowOutcome,
+  RejectedRow,
+  RejectionCause,
+  CommitProgress,
+  ImportReport,
 
   // State & Props
   WizardStep,
@@ -189,6 +200,22 @@ export {
   /** Whether any choice field still has an options loader */
   hasOptionLoaders,
 } from '@/lib/import-wizard/choices';
+
+// Commit
+export {
+  /** Send rows to a Host App's saveBatch in batches, one at a time, with per-row outcomes */
+  commitRows,
+  /** Check a Host App's answer to a batch: one valid outcome per row, or the row is rejected */
+  settleBatch,
+  /** A new Import Key (a random UUID) */
+  createImportKey,
+  /** One Import Key per row */
+  createImportKeys,
+  DEFAULT_BATCH_SIZE,
+  type BatchResult,
+  type CommitOptions,
+  type CommitOutcome,
+} from '@/lib/import-wizard/commit';
 
 // Export
 export {

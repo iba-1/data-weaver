@@ -8,7 +8,10 @@ import { autoMatchColumns, updateMapping } from '@/lib/import-wizard/matcher';
 import { markRequiredFields, validateRows } from '@/lib/import-wizard/validator';
 import { hasOptionLoaders, loadChoiceOptions, OptionsLoadError } from '@/lib/import-wizard/choices';
 import { resolveMessages } from '@/lib/import-wizard/messages';
+import { commitRows, createImportKeys, normaliseBatchSize, toBatches } from '@/lib/import-wizard/commit';
 import { ChoiceOptionsError, ChoiceOptionsLoading } from './review/ChoiceOptionsStatus';
+import { CommitProgress } from './commit/CommitProgress';
+import { ImportReportView } from './commit/ImportReportView';
 import { MessagesContext, useMessages } from './messages';
 import type {
   ArtworkRecord,
@@ -17,6 +20,8 @@ import type {
   ImportWizardEvent,
   ImportWizardProps,
   ImportWizardState,
+  ImportReport,
+  ImportRow,
   ParsedFileData,
   RowCompleteEvent,
   RowValidation,
@@ -50,7 +55,9 @@ const INITIAL_STATE: ImportWizardState = {
 export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = TargetField>({
   fields,
   requiredFields,
-  onComplete,
+  adapter,
+  batchSize,
+  onImportFinished,
   onEvent,
   onRowParse,
   onRowComplete,
@@ -68,6 +75,13 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   const m = useMemo(() => resolveMessages(messages, enclosingMessages), [messages, enclosingMessages]);
   const [state, setState] = useState<ImportWizardState<TRecord>>(INITIAL_STATE as ImportWizardState<TRecord>);
   const [review, setReview] = useState<ReviewState<TKey>>({ status: 'loading' });
+  // One Import Key per data row of the file, by rowIndex: made when the file is
+  // parsed and tied to the source row, so edits, undo/redo, exclusion and
+  // going back to column matching (which re-validates the file's rows) keep it
+  const [importKeys, setImportKeys] = useState<string[]>([]);
+  const [commitProgress, setCommitProgress] = useState({ done: 0, total: 0 });
+  const [report, setReport] = useState<ImportReport<TRecord> | null>(null);
+  const committingRef = useRef(false);
 
   // Use provided fields or default to artwork fields. `requiredFields` is
   // folded into the fields so every step reads one source of truth.
@@ -85,8 +99,10 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
   // Latest callback, so a Host App passing inline functions doesn't retrigger work
   const onRowCompleteRef = useRef(onRowComplete);
+  const onImportFinishedRef = useRef(onImportFinished);
   useEffect(() => {
     onRowCompleteRef.current = onRowComplete;
+    onImportFinishedRef.current = onImportFinished;
   });
 
   const reportRowComplete = useCallback(
@@ -125,6 +141,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
 
         const columnMappings = autoMatchColumns<TKey>(parsedData.headers, fieldConfigs);
 
+        setImportKeys(createImportKeys(parsedData.rows.length));
         setState((s) => ({
           ...s,
           parsedData,
@@ -239,19 +256,50 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     [reportRowComplete]
   );
 
-  const handleComplete = useCallback(() => {
+  /** Commit: save every included row through the Host App's adapter, then show the Import Report */
+  const handleCommit = useCallback(async () => {
     // Rows are only checked against choice options once the options have loaded
-    if (review.status !== 'ready') return;
-    const includedRows = state.validatedRows.filter((r) => !r.excluded);
+    if (review.status !== 'ready' || committingRef.current) return;
+    const rows = state.validatedRows;
     // Never drop a row silently: every row is either valid or excluded
-    if (includedRows.some((r) => !r.isValid)) return;
+    if (rows.some((r) => !r.excluded && !r.isValid)) return;
+    committingRef.current = true;
 
-    const data = includedRows.map((r) => r.data);
-    const excludedRows = state.validatedRows.filter((r) => r.excluded);
+    const toImportRow = (row: RowValidation<TRecord>): ImportRow<TRecord> => ({
+      importKey: importKeys[row.rowIndex],
+      rowIndex: row.rowIndex,
+      record: row.data,
+    });
+    const included = rows.filter((r) => !r.excluded).map(toImportRow);
+    const excluded = rows.filter((r) => r.excluded).map(toImportRow);
 
-    emit({ type: 'IMPORT_COMPLETED', data, excludedRows });
-    onComplete?.(data, { excludedRows });
-  }, [review.status, state.validatedRows, emit, onComplete]);
+    setCommitProgress({ done: 0, total: included.length });
+    setState((s) => ({ ...s, step: 'commit' }));
+    emit({
+      type: 'COMMIT_STARTED',
+      rows: included.length,
+      batches: toBatches(included, normaliseBatchSize(batchSize)).length,
+      excluded: excluded.length,
+    });
+
+    const outcome = await commitRows(included, {
+      // Called on the adapter, so a Host App's class instance keeps its `this`
+      saveBatch: (batch) => adapter.saveBatch(batch),
+      batchSize,
+      messages: m,
+      onBatchSettled: (result, progress) => {
+        for (const problem of result.problems) console.error(`[data-weaver] ${problem}`);
+        setCommitProgress({ done: progress.done, total: progress.total });
+        emit({ type: 'BATCH_SETTLED', progress, created: result.created, rejected: result.rejected });
+      },
+    });
+
+    const finished: ImportReport<TRecord> = { ...outcome, excluded };
+    setReport(finished);
+    setState((s) => ({ ...s, step: 'report' }));
+    emit({ type: 'IMPORT_FINISHED', report: finished });
+    onImportFinishedRef.current?.(finished);
+  }, [review.status, state.validatedRows, importKeys, adapter, batchSize, m, emit]);
 
   return (
     <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)} messages={messages}>
@@ -307,12 +355,16 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             fields={review.fields}
             validateRow={customValidator}
             aiEdit={aiEdit}
-            onComplete={handleComplete}
+            onComplete={handleCommit}
             onBack={handleBack}
             onRowsChange={handleRowsChange}
             isLoading={state.isLoading}
           />
         )}
+
+        {state.step === 'commit' && <CommitProgress done={commitProgress.done} total={commitProgress.total} />}
+
+        {state.step === 'report' && report && <ImportReportView report={report} fields={fieldConfigs} />}
       </div>
     </WizardRoot>
   );
@@ -333,9 +385,11 @@ function StepIndicator({ currentStep }: StepIndicatorProps) {
     { key: 'upload', label: m.steps.upload(), number: 1 },
     { key: 'mapping', label: m.steps.mapping(), number: 2 },
     { key: 'validation', label: m.steps.review(), number: 3 },
+    { key: 'commit', label: m.steps.import(), number: 4 },
   ];
 
-  const currentIndex = steps.findIndex((s) => s.key === currentStep);
+  // Commit and the Import Report are both the import step
+  const currentIndex = steps.findIndex((s) => s.key === (currentStep === 'report' ? 'commit' : currentStep));
 
   return (
     <div className="flex items-center justify-center gap-6">

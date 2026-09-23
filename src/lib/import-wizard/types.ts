@@ -243,17 +243,101 @@ export interface AiEditRequest {
  */
 export type AiEditHandler = (request: AiEditRequest) => Promise<RowEdit[]>;
 
-/** Everything besides the imported records that the Host App learns on completion */
-export interface ImportResult<TRecord = ArtworkRecord> {
-  /** Rows the Importer deliberately left out of the import */
-  excludedRows: RowValidation<TRecord>[];
+// ============================================================
+// COMMIT: THE HOST APP ADAPTER AND THE IMPORT REPORT
+// ============================================================
+
+/**
+ * A row of the import as the Host App sees it: its Import Key, its position in
+ * the file and its record.
+ */
+export interface ImportRow<TRecord = ArtworkRecord> {
+  /**
+   * Data Weaver's unique identifier for this row, the same on every attempt to
+   * save it. A Host App that has already saved a row with this key must not
+   * save it again, and answers `created` (ADR-0002).
+   */
+  importKey: string;
+  /** The row's position among the file's data rows, from 0; the Importer sees `rowIndex + 1` */
+  rowIndex: number;
+  /** The row's record, as reviewed by the Importer */
+  record: TRecord;
+}
+
+/**
+ * The Host App's answer for one row of a batch: saved, or refused with a
+ * reason the Importer can act on. `reason` is the Host App's own text, in the
+ * Importer's language; `field` is the key of the offending field, when known.
+ */
+export type RowOutcome =
+  | { importKey: string; status: 'created' }
+  | { importKey: string; status: 'rejected'; reason: string; field?: string };
+
+/**
+ * Saves one batch of rows. Must resolve with exactly one outcome per row sent,
+ * matched by `importKey` (in any order), and must honour Import Keys: a row
+ * whose key was already saved is not saved again and is answered `created`.
+ * Rejecting the promise (e.g. a network error) means no outcome is known for
+ * any row of the batch.
+ */
+export type SaveBatch<TRecord = ArtworkRecord> = (rows: ImportRow<TRecord>[]) => Promise<RowOutcome[]>;
+
+/** What the Host App supplies so Data Weaver can Commit an import */
+export interface HostAppAdapter<TRecord = ArtworkRecord> {
+  saveBatch: SaveBatch<TRecord>;
+}
+
+/**
+ * Why a row became a Rejected Row:
+ * - `host`: the Host App answered `rejected`;
+ * - `notSent`: its batch's promise rejected, so the row may not have reached the Host App;
+ * - `invalidAnswer`: the Host App's answer had no valid outcome for the row
+ *   (missing, repeated or malformed), so it is not counted as imported.
+ */
+export type RejectionCause = 'host' | 'notSent' | 'invalidAnswer';
+
+/** A row the Host App did not save, and why */
+export interface RejectedRow<TRecord = ArtworkRecord> extends ImportRow<TRecord> {
+  /**
+   * Why the row was not saved: the Host App's reason as given, or, when
+   * Data Weaver rejected the row itself, its text from the message catalogue
+   */
+  reason: string;
+  /** The key of the offending field, as given by the Host App */
+  field?: string;
+  cause: RejectionCause;
+}
+
+/** How far a Commit has got */
+export interface CommitProgress {
+  /** Rows with an outcome so far, saved or rejected */
+  done: number;
+  /** Rows being committed (Excluded Rows are not sent and not counted) */
+  total: number;
+  /** Batches with an outcome so far */
+  batch: number;
+  batches: number;
+}
+
+/**
+ * The outcome of an import, shown to the Importer after Commit and given to
+ * the Host App. Every row of the file is in exactly one list, in file order.
+ */
+export interface ImportReport<TRecord = ArtworkRecord> {
+  /** Rows the Host App saved */
+  created: ImportRow<TRecord>[];
+  /** Rows the Host App refused, or that could not be saved, with the reason */
+  rejected: RejectedRow<TRecord>[];
+  /** Rows the Importer deliberately left out; they were never sent */
+  excluded: ImportRow<TRecord>[];
 }
 
 // ============================================================
 // WIZARD STATE
 // ============================================================
 
-export type WizardStep = 'upload' | 'mapping' | 'validation';
+/** `commit` while rows are being saved, `report` for the Import Report after it */
+export type WizardStep = 'upload' | 'mapping' | 'validation' | 'commit' | 'report';
 
 export interface ImportWizardState<TRecord = ArtworkRecord> {
   step: WizardStep;
@@ -298,7 +382,17 @@ export type ImportWizardEvent<TRecord = ArtworkRecord> =
   | { type: 'ROW_PARSED'; event: RowParseEvent<TRecord> }
   | { type: 'ROW_COMPLETE'; event: RowCompleteEvent<TRecord> }
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
-  | { type: 'IMPORT_COMPLETED'; data: TRecord[]; excludedRows: RowValidation<TRecord>[] }
+  /** Commit began: `rows` will be sent in `batches`; `excluded` rows will not */
+  | { type: 'COMMIT_STARTED'; rows: number; batches: number; excluded: number }
+  /** A batch has its outcome, whether the Host App answered or the batch could not be sent */
+  | {
+      type: 'BATCH_SETTLED';
+      progress: CommitProgress;
+      created: ImportRow<TRecord>[];
+      rejected: RejectedRow<TRecord>[];
+    }
+  /** Commit is over; the same report `onImportFinished` receives */
+  | { type: 'IMPORT_FINISHED'; report: ImportReport<TRecord> }
   | { type: 'ERROR'; error: string };
 
 // ============================================================
@@ -323,12 +417,25 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
   requiredFields?: TKey[];
   
   /**
-   * Called when the Importer completes the import, with the records of every
-   * row that was not excluded. Excluded Rows are reported in `result`.
-   * The import cannot complete while an included row is invalid.
+   * How the rows are saved. When the Importer imports, every included row is
+   * sent to `adapter.saveBatch` in batches, one batch at a time. Excluded Rows
+   * are never sent. The import cannot start while an included row is invalid.
    */
-  onComplete?: (data: TRecord[], result: ImportResult<TRecord>) => void;
-  
+  adapter: HostAppAdapter<TRecord>;
+
+  /**
+   * Most rows sent in one `saveBatch` call. Values below 1 or not a number
+   * fall back to the default; fractions are rounded down.
+   * @default 100
+   */
+  batchSize?: number;
+
+  /**
+   * Called once when Commit is over, with the Import Report: the rows the
+   * Host App saved, the Rejected Rows with their reasons and the Excluded Rows.
+   */
+  onImportFinished?: (report: ImportReport<TRecord>) => void;
+
   /**
    * Called for each lifecycle event
    */

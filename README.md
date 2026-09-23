@@ -1,6 +1,6 @@
 # Data Weaver
 
-A React library that lets non-technical people turn messy spreadsheets into clean, validated records. A 3-step wizard: **upload** a file, **match** its columns to your fields, then **review and fix** the rows before handing them to your app.
+A React library that lets non-technical people turn messy spreadsheets into clean, validated records. A wizard: **upload** a file, **match** its columns to your fields, **review and fix** the rows, then **import** them: Data Weaver saves them through your app in batches and shows an **Import Report** of what was imported, rejected and excluded.
 
 Data Weaver is general-purpose: the app that embeds it (the **Host App**) defines the fields it accepts. SpeakArt is the first Host App. Vocabulary: [`CONTEXT.md`](CONTEXT.md). Purpose and scope: [`docs/product/2026-09-23-purpose-and-scope.md`](docs/product/2026-09-23-purpose-and-scope.md).
 
@@ -29,6 +29,12 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 - Export the rows (all, or valid only) to CSV or Excel.
 - **AI Edit** (optional): the Importer describes a change in plain language and reviews the proposed edits before applying them. It appears only when the Host App supplies its own AI endpoint through `aiEdit`.
 
+### Import (Commit) and the Import Report
+- Data Weaver saves the rows itself, through a small adapter your app supplies: `saveBatch(rows)`. Rows are sent in batches (100 by default, `batchSize` to change it), one batch at a time. Excluded Rows are never sent.
+- Every row carries an **Import Key**, so your app can recognise a row it has already saved and not save it twice. Your app answers each batch with one outcome per row: created, or rejected with a reason and, when known, the field. See [The Host App adapter](#the-host-app-adapter).
+- The Importer sees the progress while rows are saved; the review can't be changed meanwhile.
+- Afterwards, the **Import Report** shows how many rows were imported, rejected and excluded, each Rejected Row with its row number, your reason and the field, and the Excluded Rows as a separate list. Your app receives the same report through `onImportFinished`.
+
 ### Language
 - Every piece of text the Importer sees comes from a message catalogue. English is built in. Your app passes its own entries for the Importer's language, and anything it leaves out falls back to English. See [Messages and translation](#messages-and-translation).
 
@@ -54,20 +60,37 @@ Peer dependencies: React 18 (`react`, `react-dom`). Everything else ships with t
 ### Basic usage
 
 ```tsx
-import { ImportWizard } from 'data-weaver';
+import { ImportWizard, type HostAppAdapter } from 'data-weaver';
 import 'data-weaver/styles.css';
+
+type Person = { name: string | null; email: string | null; age: number | null };
+
+// Your save function: see "The Host App adapter" for the contract
+const adapter: HostAppAdapter<Person> = {
+  saveBatch: async (rows) => {
+    const response = await fetch('/api/people/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rows), // [{ importKey, rowIndex, record }, ...]
+    });
+    if (!response.ok) throw new Error(`Import failed: ${response.status}`);
+    return response.json(); // [{ importKey, status: 'created' } | { importKey, status: 'rejected', reason, field? }, ...]
+  },
+};
 
 function App() {
   return (
-    <ImportWizard
+    <ImportWizard<Person, keyof Person>
       fields={[
         { key: 'name', label: 'Name', type: 'string', required: true },
         { key: 'email', label: 'Email', type: 'string' },
         { key: 'age', label: 'Age', type: 'number' },
       ]}
-      onComplete={(data, { excludedRows }) => {
-        console.log('Imported:', data);
-        console.log('Left out by the Importer:', excludedRows.length);
+      adapter={adapter}
+      onImportFinished={(report) => {
+        console.log('Imported:', report.created.length);
+        console.log('Rejected:', report.rejected.length);
+        console.log('Left out by the Importer:', report.excluded.length);
       }}
     />
   );
@@ -133,17 +156,11 @@ const productFields: FieldConfig<ProductField>[] = [
 ];
 
 function ProductImport() {
-  const handleImport = async (products: Record<ProductField, unknown>[]) => {
-    await fetch('/api/products/bulk', {
-      method: 'POST',
-      body: JSON.stringify(products),
-    });
-  };
-
   return (
     <ImportWizard
       fields={productFields}
-      onComplete={handleImport}
+      adapter={productsAdapter} // your saveBatch, as in Basic usage
+      batchSize={50}
       title="Import products"
       description="Upload your product catalogue as a CSV or Excel file."
       acceptedFileTypes={['.csv', '.xlsx']}
@@ -192,7 +209,7 @@ function UserImport() {
   return (
     <ImportWizard
       fields={userFields}
-      onComplete={(users) => console.log(users)}
+      adapter={usersAdapter}
       validateRow={(data) => {
         if (data.role === 'admin' && !data.department) {
           return [{ type: 'warning', message: 'Admins should have a department' }];
@@ -235,7 +252,8 @@ function ImportWithProgress() {
             return next;
           });
         }}
-        onComplete={(data) => console.log('Done', data)}
+        adapter={adapter}
+        onImportFinished={(report) => console.log('Done', report)}
       />
     </>
   );
@@ -259,7 +277,7 @@ const aiEdit: AiEditHandler = async ({ command, rows, fields }) => {
   return response.json(); // RowEdit[]: [{ rowIndex: 0, changes: { email: 'ada@example.com' } }]
 };
 
-<ImportWizard fields={fields} aiEdit={aiEdit} onComplete={save} />;
+<ImportWizard fields={fields} adapter={adapter} aiEdit={aiEdit} />;
 ```
 
 Each entry of `fields` has the field's `key`, `label` and `type`; choice fields also carry their loaded `options`, so your endpoint can propose accepted values. Proposed values are matched to options the same way as cells read from the file.
@@ -272,13 +290,15 @@ A rejected promise's `Error` message is shown to the Importer. Your endpoint is 
 
 ### `<ImportWizard />`
 
-The complete 3-step flow.
+The complete flow: upload, column matching, review, Commit and the Import Report.
 
 | Prop                | Type                                              | Default                     | Description |
 | ------------------- | ------------------------------------------------- | --------------------------- | ----------- |
 | `fields`            | `FieldConfig<TKey>[]`                             | artwork fields              | The fields each row becomes. Without it, the demo's artwork fields are used. |
 | `requiredFields`    | `TKey[]`                                          | `[]`                        | Extra required field keys, on top of fields with `required: true`. |
-| `onComplete`        | `(data: TRecord[], result: ImportResult) => void` | -                           | Called on "Complete Import" with the records of every row that was not excluded; `result.excludedRows` lists the Excluded Rows. Completing is blocked while an included row is invalid. |
+| `adapter`           | `HostAppAdapter<TRecord>`                         | Required                    | How rows are saved: `{ saveBatch }`. See [The Host App adapter](#the-host-app-adapter). The import can't start while an included row is invalid. |
+| `batchSize`         | `number`                                          | `100`                       | Most rows per `saveBatch` call. Values below 1 fall back to the default; fractions are rounded down. |
+| `onImportFinished`  | `(report: ImportReport<TRecord>) => void`         | -                           | Called once when Commit is over, with the Import Report. |
 | `onEvent`           | `(event: ImportWizardEvent) => void`              | -                           | Called for every lifecycle event. |
 | `onRowParse`        | `(event: RowParseEvent) => TRecord \| void`       | -                           | Called for each row as it is converted to a record. Return a record to replace it. |
 | `onRowComplete`     | `(event: RowCompleteEvent) => void`               | -                           | Called for each row when the review step opens, then for each edited row. |
@@ -395,7 +415,7 @@ const fields: FieldConfig<ArtworkField>[] = [
   },
 ];
 
-<ImportWizard fields={fields} onComplete={save} />;
+<ImportWizard fields={fields} adapter={adapter} />;
 ```
 
 - **Matching.** A cell becomes an option's `value` when it is a Normalised Match of that option's `value` or `label`: equal once case, accents and extra spaces are ignored. With the options above, `eur`, `EUR ` and `euro` all become `EUR`, and `on loan` becomes `ON_LOAN`. A value that matches an option's `value` wins over one that matches another option's `label`; a value that matches several options equally is not guessed.
@@ -407,6 +427,61 @@ const fields: FieldConfig<ArtworkField>[] = [
 
 Your app receives the canonical `value` (a `string`), never the label or the Importer's spelling.
 
+### The Host App adapter
+
+Data Weaver owns the import: when the Importer imports, it sends the rows to your `saveBatch` and shows the outcome. Your app only owns persistence. The contract ([ADR-0002](docs/adr/0002-host-apps-must-honour-import-keys.md)):
+
+```typescript
+interface HostAppAdapter<TRecord> {
+  saveBatch: (rows: ImportRow<TRecord>[]) => Promise<RowOutcome[]>;
+}
+
+interface ImportRow<TRecord> {
+  importKey: string; // Data Weaver's unique ID for the row, the same on every attempt to save it
+  rowIndex: number;  // the row's position among the file's data rows, from 0 (the Importer sees rowIndex + 1)
+  record: TRecord;   // the reviewed record
+}
+
+type RowOutcome =
+  | { importKey: string; status: 'created' }
+  | { importKey: string; status: 'rejected'; reason: string; field?: string };
+```
+
+Your `saveBatch` must:
+
+1. **Answer every row exactly once**, matched by `importKey` (in any order): `created`, or `rejected` with a `reason` the Importer can act on, in their language, and the `field` key at fault when you know it. Save every row you can; one bad row must not stop the others.
+2. **Honour Import Keys.** If a row's `importKey` was already saved, don't save it again: answer `created`. This makes sending a row again always safe.
+3. **Only create.** A Commit never updates existing records (reject a row that would duplicate one, with a reason).
+4. **Reject the promise** (throw) only when nothing is known about the batch, e.g. a network error.
+
+What Data Weaver does with the answer:
+
+- Batches are sent one at a time, in file order, `batchSize` rows each (default 100). The next batch is sent when the previous one has its answer.
+- A row counts as imported **only** with exactly one valid `created` outcome for its key. A row with no outcome, several outcomes or an unknown status is an adapter bug: it becomes a Rejected Row (*"No clear answer was received for this row, so it was not counted as imported."*), and the problem is logged with `console.error` for your developers. Outcomes for keys that weren't in the batch are ignored (and logged). A rejection without a reason is shown with `commit.noReason`.
+- A batch whose promise rejects is not retried yet: its rows become Rejected Rows (*"This row could not be sent. Try importing it again later."*) and the next batch is sent.
+
+**Import Keys** are random UUIDs (`crypto.randomUUID`, or built from `crypto.getRandomValues` where that isn't available, e.g. on pages not served over HTTPS). One is made for each data row when the file is parsed, and stays tied to that row of the file for the whole import: editing, undo and redo, excluding and including, and going back to column matching (which validates the file's rows again) all keep it. Uploading a file, even the same one, makes new keys. Store the key with each saved record, or in a table of keys already imported, and check it before saving.
+
+### The Import Report
+
+After Commit, the Importer sees the counts (*"785 imported · 12 rejected · 3 excluded"*), the Rejected Rows (row number, the value of your first field, the field at fault and the reason) and, separately, the Excluded Rows. `onImportFinished` receives the same report:
+
+```typescript
+interface ImportReport<TRecord> {
+  created: ImportRow<TRecord>[];     // saved by your app
+  rejected: RejectedRow<TRecord>[];  // not saved, with the reason
+  excluded: ImportRow<TRecord>[];    // left out by the Importer, never sent
+}
+
+interface RejectedRow<TRecord> extends ImportRow<TRecord> {
+  reason: string;  // your reason as given, or Data Weaver's (from the message catalogue)
+  field?: string;  // the field key you gave
+  cause: 'host' | 'notSent' | 'invalidAnswer'; // rejected by you, batch not sent, or no valid outcome
+}
+```
+
+Every row of the file is in exactly one list, in file order. The report is not kept after the Importer leaves.
+
 ### Events
 
 ```typescript
@@ -416,8 +491,17 @@ type ImportWizardEvent<TRecord> =
   | { type: 'ROW_PARSED'; event: RowParseEvent<TRecord> }
   | { type: 'ROW_COMPLETE'; event: RowCompleteEvent<TRecord> }
   | { type: 'DATA_VALIDATED'; rows: RowValidation<TRecord>[] }
-  | { type: 'IMPORT_COMPLETED'; data: TRecord[]; excludedRows: RowValidation<TRecord>[] }
+  | { type: 'COMMIT_STARTED'; rows: number; batches: number; excluded: number }
+  | { type: 'BATCH_SETTLED'; progress: CommitProgress; created: ImportRow<TRecord>[]; rejected: RejectedRow<TRecord>[] }
+  | { type: 'IMPORT_FINISHED'; report: ImportReport<TRecord> }
   | { type: 'ERROR'; error: string };
+
+interface CommitProgress {
+  done: number;    // rows with an outcome so far, saved or rejected
+  total: number;   // rows being committed
+  batch: number;   // batches with an outcome so far
+  batches: number;
+}
 
 interface RowParseEvent<TRecord> {
   rowIndex: number;
@@ -435,6 +519,10 @@ interface RowCompleteEvent<TRecord> {
 ```
 
 `ERROR` is emitted when a file that passed the upload checks can't be parsed, and when a choice field's options fail to load. Its `error` is written with the wizard's message catalogue.
+
+`BATCH_SETTLED` is emitted once per batch, whether your app answered or the batch could not be sent; `created` and `rejected` are that batch's rows. `IMPORT_FINISHED` carries the report `onImportFinished` receives.
+
+**Breaking change (before 1.0):** `onComplete` and the `IMPORT_COMPLETED` event are gone. The wizard no longer hands the records over for your app to save: pass an `adapter` and read the outcome from `onImportFinished`.
 
 Validation errors and warnings raised by Data Weaver itself also carry a `messageRef` (their catalogue key and parameters); see [Messages and translation](#messages-and-translation).
 
@@ -502,7 +590,7 @@ Use these to build your own flow. Each step component brings its own `WizardRoot
 | `requiredFields` | `TKey[]`                                 | `[]`     | Extra required field keys. |
 | `validateRow`    | `(data, rowIndex) => ValidationResult[]` | -        | Row-level validation, re-applied after every edit. |
 | `aiEdit`         | `AiEditHandler`                          | -        | Enables AI Edit. |
-| `onComplete`     | `() => void`                             | Required | Called on "Complete Import". |
+| `onComplete`     | `() => void`                             | Required | Called on "Complete Import". In `<ImportWizard />` this starts Commit. |
 | `onBack`         | `() => void`                             | Required | Called on "Back". |
 | `onRowsChange`   | `(rows: RowValidation[]) => void`        | -        | Called after each change to the rows (not on mount). |
 | `isLoading`      | `boolean`                                | `false`  | Show a loading skeleton. |
@@ -593,6 +681,27 @@ The rule, in order: Unicode canonical decomposition (NFD), remove combining mark
 " ".join("".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.category(c).startswith("M")).lower().split())
 ```
 
+#### Commit
+
+The Commit loop the wizard runs, for flows built from the individual components:
+
+```typescript
+import { commitRows, createImportKeys } from 'data-weaver';
+
+const keys = createImportKeys(parsed.rows.length); // one per data row, when the file is parsed; keep them
+const rows = validated
+  .filter((row) => !row.excluded)
+  .map((row) => ({ importKey: keys[row.rowIndex], rowIndex: row.rowIndex, record: row.data }));
+
+const { created, rejected } = await commitRows(rows, {
+  saveBatch: adapter.saveBatch,
+  batchSize: 100,
+  onBatchSettled: (batch, progress) => console.log(`${progress.done} of ${progress.total}`),
+});
+```
+
+`settleBatch(rows, answer)` is the check applied to each answer. `DEFAULT_BATCH_SIZE` is 100.
+
 #### Export
 
 ```typescript
@@ -616,7 +725,7 @@ const blob = exportToBlob(rows, fields, { format: 'csv' });
 
 ## Messages and translation
 
-Every piece of text the Importer sees comes from a **message catalogue**: step labels, headings, buttons, tooltips, accessible labels, placeholders, empty states, counts, upload refusals, validation messages Data Weaver raises, the options loader's failure, Find and Replace, the export menu and AI Edit. Data Weaver ships English only. To show the wizard in another language, pass the entries you want to replace as `messages`. Anything you leave out stays in English. Data Weaver has no i18n library dependency: build the catalogue from your own.
+Every piece of text the Importer sees comes from a **message catalogue**: step labels, headings, buttons, tooltips, accessible labels, placeholders, empty states, counts, upload refusals, validation messages Data Weaver raises, the options loader's failure, Find and Replace, the export menu, AI Edit, the import progress and the Import Report. Data Weaver ships English only. To show the wizard in another language, pass the entries you want to replace as `messages`. Anything you leave out stays in English. Data Weaver has no i18n library dependency: build the catalogue from your own.
 
 ```tsx
 import { ImportWizard, type PartialMessageCatalogue } from 'data-weaver';
@@ -636,7 +745,7 @@ const italian: PartialMessageCatalogue = {
   },
 };
 
-<ImportWizard fields={fields} messages={italian} />;
+<ImportWizard fields={fields} adapter={adapter} messages={italian} />;
 ```
 
 **Entries.** An entry is either:
@@ -662,6 +771,8 @@ const italian: PartialMessageCatalogue = {
 
 **Field labels and options** are part of your Output Shape, not of the catalogue: give them in the Importer's language in `fields`.
 
+**Rejection reasons** from your `saveBatch` are your own text and are shown as you give them. Only the reasons Data Weaver gives itself (a batch that could not be sent, an answer with no valid outcome, a rejection without a reason) come from the catalogue.
+
 ### Keys
 
 Keys are grouped by where the text appears. They are part of the public API: renaming or removing one is a breaking change.
@@ -671,6 +782,7 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `steps.upload` | - | `Upload` |
 | `steps.mapping` | - | `Match columns` |
 | `steps.review` | - | `Review and edit` |
+| `steps.import` | - | `Import` |
 | `upload.helpText` | - | `Upload a spreadsheet with column names in the first row and one record per row after it.` |
 | `upload.dropHere` | - | `Drop your file here` |
 | `upload.dragAndDrop` | - | `Drag and drop a file here` |
@@ -721,6 +833,24 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `review.back` | - | `Back to Mapping` |
 | `review.excludedCount` | count | `{count} excluded` |
 | `review.complete` | count | `Complete Import (1 row)`, `Complete Import (2 rows)` |
+| `commit.title` | - | `Importing your rows` |
+| `commit.progress` | done, total | `0 of 1 row processed`, `100 of 250 rows processed` |
+| `commit.progressLabel` | - | `Import progress` |
+| `commit.keepOpen` | - | `Keep this page open until the import finishes.` |
+| `commit.notSent` | - | `This row could not be sent. Try importing it again later.` |
+| `commit.invalidAnswer` | - | `No clear answer was received for this row, so it was not counted as imported.` |
+| `commit.noReason` | - | `Refused without a reason.` |
+| `report.title` | - | `Import finished` |
+| `report.created` | count | `{count} imported` |
+| `report.rejected` | count | `{count} rejected` |
+| `report.excluded` | count | `{count} excluded` |
+| `report.rejectedTitle` | - | `Rejected rows` |
+| `report.rejectedDescription` | - | `These rows were not imported.` |
+| `report.excludedTitle` | - | `Excluded rows` |
+| `report.excludedDescription` | - | `You left these rows out of the import, so they were not sent.` |
+| `report.rowHeader` | - | `Row` |
+| `report.fieldHeader` | - | `Field` |
+| `report.reasonHeader` | - | `Reason` |
 | `cell.empty` | - | `empty` |
 | `cell.clear` | - | `Clear` |
 | `cell.save` | - | `Save` |
@@ -826,11 +956,11 @@ npm run build       # demo site build (GitHub Pages)
 npm run build:lib   # package build into dist-lib/
 ```
 
-The demo app (`src/pages/Index.tsx`) is an artwork importer. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
+The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a simulated, in-memory Host App (`src/pages/demoHostApp.ts`): it honours Import Keys and rejects an artwork whose title and artist are already in the collection, so importing the same file twice shows Rejected Rows. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
 
 ## Planned
 
-From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, Commit in batches with per-row outcomes, an Import Report, Fix & Retry, and a grid that stays fast with 10,000 rows.
+From the [purpose and scope](docs/product/2026-09-23-purpose-and-scope.md): resolving Relationship Fields to existing records before Commit, automatic retries of batches lost in transit, downloading the Rejected Rows, and Fix & Retry.
 
 ## License
 
