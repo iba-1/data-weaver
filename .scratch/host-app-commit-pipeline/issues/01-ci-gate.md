@@ -10,4 +10,4 @@ Spec: `../spec.md`
 
 - [x] The deploy workflow runs lint and tests before building, and a failure in either stops the deploy
 - [x] The three pre-existing lint errors are fixed (no rules disabled to hide them)
-- [ ] Lint and tests pass on CI for this change (checked on the CI run, not only locally)
+- [x] Lint and tests pass on CI for this change (run 35871141504) (checked on the CI run, not only locally)
