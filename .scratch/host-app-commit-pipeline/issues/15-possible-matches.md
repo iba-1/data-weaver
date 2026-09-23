@@ -8,8 +8,8 @@
 
 Spec: `../spec.md`
 
-- [ ] Possible Matches within the file are detected for word order, punctuation and initials (core tests for each)
-- [ ] Candidates the Host App lookup flags as Possible Matches are shown
-- [ ] The default is keep separate; merging requires an explicit choice
-- [ ] A merged value resolves to the chosen Related Record for all its rows
-- [ ] Tests drive merge and keep-separate through the wizard
+- [x] Possible Matches within the file are detected for word order, punctuation and initials (core tests for each)
+- [x] Candidates the Host App lookup flags as Possible Matches are shown
+- [x] The default is keep separate; merging requires an explicit choice
+- [x] A merged value resolves to the chosen Related Record for all its rows
+- [x] Tests drive merge and keep-separate through the wizard

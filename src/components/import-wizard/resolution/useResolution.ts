@@ -16,10 +16,12 @@ import {
   resolutionBlockers,
   resolveValues,
   type LookupResults,
+  type MergeTarget,
   type RelatedDecision,
   type RelatedValue,
   type ResolvedValue,
 } from '@/lib/import-wizard/resolution';
+import { findPossibleMatches } from '@/lib/import-wizard/possible';
 
 /**
  * What the Importer chose for a Homonym, for the whole value or one row: an
@@ -52,7 +54,9 @@ interface UseResolutionOptions<TRecord, TKey extends string> {
  * The Resolution step's state: the distinct values of the file's Relationship
  * Fields, what the Host App's lookup found for them, the names the Importer
  * gave new records, the Importer's choices for Homonyms (per value and per
- * row), and what Commit will do for each value and row.
+ * row), the Possible Matches they merged, and what Commit will do for each
+ * value and row. The Importer's names, choices and merges are kept for the
+ * life of the wizard, so they survive going back to the review.
  *
  * Lookups are kept for the life of the wizard: opening Resolution again
  * (after changes in the review) looks up only values not looked up before,
@@ -69,6 +73,8 @@ export function useResolution<TRecord, TKey extends string>({
   const [lookups, setLookups] = useState<LookupResults>(() => new Map());
   // What the Importer typed as new records' names, by relatedValueKey
   const [names, setNames] = useState<ReadonlyMap<string, string>>(() => new Map());
+  // Values the Importer merged with a Possible Match, by relatedValueKey; kept separate otherwise
+  const [merges, setMerges] = useState<ReadonlyMap<string, MergeTarget>>(() => new Map());
   const [lookup, setLookup] = useState<LookupState>({ status: 'idle' });
   // The values as last resolved, for the review grid's badges
   const [badges, setBadges] = useState<ReadonlyMap<string, ResolvedValue>>(() => new Map());
@@ -83,6 +89,8 @@ export function useResolution<TRecord, TKey extends string>({
   );
 
   const values = useMemo(() => (active ? collectRelatedValues(rows, fields) : []), [active, rows, fields]);
+  // Found once per file state, not on every keystroke in a name
+  const possibleMatches = useMemo(() => findPossibleMatches(values), [values]);
   const resolved = useMemo(() => {
     const decisions = new Map<string, RelatedDecision>();
     const rowDecisions = new Map<string, Map<number, RelatedDecision>>();
@@ -94,8 +102,8 @@ export function useResolution<TRecord, TKey extends string>({
       const forRows = rowChoices.get(key);
       if (forRows) rowDecisions.set(key, new Map([...forRows].map(([rowIndex, c]) => [rowIndex, decide(c)])));
     }
-    return resolveValues(values, lookups, { names, decisions, rowDecisions });
-  }, [values, lookups, names, choices, rowChoices]);
+    return resolveValues(values, lookups, { names, decisions, rowDecisions, merges, possibleMatches });
+  }, [values, lookups, names, choices, rowChoices, merges, possibleMatches]);
   const blockers = useMemo(() => resolutionBlockers(resolved), [resolved]);
   const canCommit =
     lookup.status === 'ready' && blockers.pending === 0 && blockers.undecided === 0 && blockers.unnamed === 0;
@@ -204,6 +212,16 @@ export function useResolution<TRecord, TKey extends string>({
     });
   }, []);
 
+  /** Merge a value with one of its Possible Matches, or keep it separate (null) */
+  const setMerge = useCallback((key: string, target: MergeTarget | null) => {
+    setMerges((previous) => {
+      const next = new Map(previous);
+      if (target) next.set(key, target);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+
   return {
     /** The Output Shape's Relationship Fields by kind; empty when it has none */
     kinds,
@@ -221,6 +239,7 @@ export function useResolution<TRecord, TKey extends string>({
     setName,
     choose,
     chooseForRow,
+    setMerge,
   };
 }
 

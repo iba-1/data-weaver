@@ -32,7 +32,8 @@ Data Weaver is general-purpose: the app that embeds it (the **Host App**) define
 ### Linking related records (Resolution)
 - A field can be a **Relationship Field**: its cells name another record, e.g. an artwork's author or owner (a Registry entry), rather than holding a plain value. See [Relationship Fields and Resolution](#relationship-fields-and-resolution).
 - When your fields include some, a **Link records** step follows the review. Every distinct name in the file is listed once per kind of record, even when it is used in several columns (author, owner, lender), with the spellings folded into it and how many rows use it. Names that differ only in case, extra spaces or accents are the same name.
-- Your app looks the names up once per kind. A name that matches exactly one existing record is linked to it; a name that matches none will be created, with the most frequent spelling (preferring the accented one) as its name, which the Importer can change. A name matching several existing records (Homonyms), or that only might be the same as one (Possible Matches), is never decided automatically and blocks the import until the Importer decides. For Homonyms, the Importer sees each record with your description (e.g. a birth year), picks one or creates a new record, and can assign individual rows to a different one. Choosing for Possible Matches is not available yet.
+- Your app looks the names up once per kind. A name that matches exactly one existing record is linked to it; a name that matches none will be created, with the most frequent spelling (preferring the accented one) as its name, which the Importer can change. A name matching several existing records (**Homonyms**) is never decided automatically and blocks the import until the Importer decides: they see each record with your description (e.g. a birth year), pick one or create a new record, and can assign individual rows to a different one.
+- Names that might be the same record without being the same name (**Possible Matches**: `Fontana, Lucio` or `L. Fontana` and `Lucio Fontana` in the file, or a record your lookup flags as possibly the same) are listed as *Possibly the same*. The Importer can merge each with one of them; until they do, it is kept separate. Nothing is ever merged without their choice.
 - Nothing is created until the Importer imports. The import then creates each new record once, before any row is saved, and the rows reach your app with the records' IDs, never their names.
 - Back in the review, each such cell keeps the file's text with a badge naming the record it resolved to.
 
@@ -465,9 +466,13 @@ A name is not an identity: two people can share one. So Data Weaver never sends 
    - **Matched existing**: exactly one candidate is a Normalised Match. It is linked to that record.
    - **Will be created**: no candidates. A new record will be created. Its name is the most frequent spelling in the file; between spellings that differ only by accents, the accented one wins (`Niccolo Rossi` ×3 and `Niccolò Rossi` ×1 give `Niccolò Rossi`). The Importer can change it; an empty name blocks the import.
    - **Several matches** (Homonyms): several candidates are a Normalised Match, e.g. two `Mario Rossi` born in 1950 and 1987. Never decided for the Importer: each candidate is listed with its `description`, and the Importer picks one, or **Create a new record** (a genuinely new person who shares an existing name). **Choose for each row** lists the value's rows (row number and first field) so individual rows can go to a different candidate, or to the new record. A row's choice wins over the value's; a row without one follows the value's. The import stays blocked until every row of every Homonym has a record. Every row assigned to "create new", whether by the value's choice or its own, points to the **same one** new record, created once with the name shown (editable); rows that are different new people need their names changed in the review. The value stays in this group once decided, and the choices are kept when the Importer goes back to the review and returns (a row's choice stops counting while the row no longer uses the value, e.g. once excluded).
-   - **Needs a decision**: only Possible Match candidates. These are never decided for the Importer. For now the Importer can't choose between them in the wizard: the import stays blocked until those values are changed or their rows excluded in the review.
+   - **Possibly the same**: a value with no Normalised Match that might be the same record as something else (a **Possible Match**):
+     - another value of the file of the same kind, the same words in another order or with other punctuation (`Fontana, Lucio` / `Lucio Fontana`, `Jean-Paul` / `Jean Paul`), or with initials in place of whole words (`L. Fontana` / `Lucio Fontana`), with at least one whole word in common and as many words. Sharing only a surname is not enough: `Anna Rossi` and `Mario Rossi` are never suggested;
+     - an existing record your `findRelated` answered with `match: 'possible'`.
+
+     For each, the Importer chooses **Merge with** one of them or **Keep separate**, the default. Kept separate, the value is created as a new record like any other, so an undecided Possible Match never blocks the import. Merged with an existing record, its rows are linked to that record. Merged with another value of the file, it gets that value's outcome: linked to the same record, or created **once** together with it, named by the most frequent spelling across all the merged values. A pair of values of the file is offered one way only: the value used in fewer rows merges into the one used in more (the first seen when equal), and a value with a Normalised Match is never merged into another. The Importer's merges are kept when going back to the review and returning.
 4. **Nothing is created yet.** Leaving the wizard during Resolution, or going back to the review, creates nothing.
-5. **Commit.** When the Importer imports, `createRelated(kind, name)` is called once for each new record, one at a time, before any row is saved. A value used in several fields (e.g. the same gallery as owner and lender) is created once; so are two values the Importer gave the same name, and all the rows of a Homonym assigned to "create new". Then each Relationship Field value in the rows is replaced by its record's ID (the row's own choice for a Homonym), and the rows go to `saveBatch`.
+5. **Commit.** When the Importer imports, `createRelated(kind, name)` is called once for each new record, one at a time, before any row is saved. A value used in several fields (e.g. the same gallery as owner and lender) is created once; so are values the Importer merged, two values the Importer gave the same name, and all the rows of a Homonym assigned to "create new". Then each Relationship Field value in the rows is replaced by its record's ID (the row's own choice for a Homonym), and the rows go to `saveBatch`.
 
 **How IDs reach `saveBatch`.** A Relationship Field's value in `record` is the Related Record's ID as your `findRelated` or `createRelated` gave it (a `string` or `number`), in place of the name: `{ title: 'Achrome', author: 'reg-17', owner: 42, lender: null }`. Empty cells stay `null`. Names are never sent.
 
@@ -537,7 +542,7 @@ interface RelatedCandidate {
 }
 ```
 
-- **`findRelated(kind, values)`** is called once per kind when Resolution opens, with the distinct values of the file, each already normalised (`normaliseForMatch`: accents stripped, lowercased, spaces collapsed). Match your records' names with the **same rule** ([Normalised Match](#normalised-match)) and answer with an entry for **every** value, keyed by the value as sent: its candidates, or `[]` when nothing matches. Return every Normalised Match (several are Homonyms: don't collapse them to one) and, if you can, Possible Matches. An answer that leaves a value out, or has a malformed candidate, is refused and logged with `console.error`; the Importer sees *"Could not look up Author, Owner: The answer could not be read."* with a "Try again" button. A missing value is never taken to mean "create it", as that could duplicate an existing record. Rejecting shows your Error's message the same way.
+- **`findRelated(kind, values)`** is called once per kind when Resolution opens, with the distinct values of the file, each already normalised (`normaliseForMatch`: accents stripped, lowercased, spaces collapsed). Match your records' names with the **same rule** ([Normalised Match](#normalised-match)) and answer with an entry for **every** value, keyed by the value as sent: its candidates, or `[]` when nothing matches. Return every Normalised Match (several are Homonyms: don't collapse them to one) and, if you can, Possible Matches: they are offered to the Importer to merge with, and never used unless the Importer chooses one. An answer that leaves a value out, or has a malformed candidate, is refused and logged with `console.error`; the Importer sees *"Could not look up Author, Owner: The answer could not be read."* with a "Try again" button. A missing value is never taken to mean "create it", as that could duplicate an existing record. Rejecting shows your Error's message the same way.
 - **`createRelated(kind, name)`** is called at the start of Commit, once per new record, one at a time, before any `saveBatch`. Create the record with exactly that name and resolve with its ID. Reject with an Error when it can't be created; its message is shown in the reason of the rows that pointed to it. Two Importers creating the same new record at the same moment is yours to guard against (e.g. a lock on the normalised name), as [ADR-0001](docs/adr/0001-resolve-related-records-before-commit.md) says.
 
 **Import Keys** are random UUIDs (`crypto.randomUUID`, or built from `crypto.getRandomValues` where that isn't available, e.g. on pages not served over HTTPS). One is made for each data row when the file is parsed, and stays tied to that row of the file for the whole import: editing, undo and redo, excluding and including, and going back to column matching (which validates the file's rows again) all keep it. Uploading a file, even the same one, makes new keys. Store the key with each saved record, or in a table of keys already imported, and check it before saving.
@@ -857,7 +862,10 @@ for (const kind of new Set(values.map((v) => v.kind))) {
 }
 
 // names: the Importer's names for new records, by relatedValueKey(kind, value)
-const resolved = resolveValues(values, lookups, { names });
+// merges: the values the Importer merged with a Possible Match, by relatedValueKey(kind, value):
+//   { source: 'file', value: 'lucio fontana' } or { source: 'host', id: 'reg-17' }
+const resolved = resolveValues(values, lookups, { names, merges });
+// Each value's possibleMatches lists what it may be merged with; merge says which applies (null: kept separate)
 const { pending, undecided, unnamed } = resolutionBlockers(resolved); // Commit only when all are 0
 
 // At Commit: create the new records once each, one at a time, then IDs in place of names
@@ -866,7 +874,7 @@ const { ready, rejected } = substituteRelatedIds(rows, fields, resolved, created
 const outcome = await commitRows(ready, { saveBatch: adapter.saveBatch });
 ```
 
-`preferredSpelling(spellings)` is the stored-name rule on its own. `resolveValues` also takes `decisions` (by `relatedValueKey`) to record the Importer's choice for a value that needs one.
+`preferredSpelling(spellings)` is the stored-name rule on its own. `resolveValues` also takes `decisions` (by `relatedValueKey`) to record the Importer's choice for a value that needs one; a decision wins over a merge of the same value. A merge with something not offered (e.g. a value no longer in the file) is ignored. `findPossibleMatches(values)` finds the Possible Matches within the file (`resolveValues` calls it unless you pass its result as `possibleMatches`), and `isPossibleMatch(a, b)` compares two values by the same rules.
 
 #### Export
 
@@ -1043,7 +1051,7 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `resolution.createTitle` | count | `Will be created ({count})` |
 | `resolution.createDescription` | - | `Not in the system yet: a new record is created for each when you import, with the name shown. You can change it.` |
 | `resolution.undecidedTitle` | count | `Needs a decision ({count})` |
-| `resolution.undecidedDescription` | - | `These names might be the same as an existing record. Choosing between them is coming soon: for now, go back and change these names, or exclude their rows.` |
+| `resolution.undecidedDescription` | - | `These names could not be decided yet. Go back and change these names, or exclude their rows.` |
 | `resolution.homonyms` | count | `{count} records have this name:` |
 | `resolution.homonymsTitle` | count | `Several matches ({count})` |
 | `resolution.homonymsDescription` | - | `More than one existing record has each of these names. Choose which one each name means, or create a new record. You can choose differently for individual rows.` |
@@ -1055,6 +1063,11 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `resolution.rowChoice` | row, value | `Record for {value} in row {row}` (accessible name of one row's choice) |
 | `resolution.rowDefault` | - | `Same as above` |
 | `resolution.possible` | count | `Might be the same as:` |
+| `resolution.possibleTitle` | count | `Possibly the same ({count})` |
+| `resolution.possibleDescription` | - | `These names might be another name in your file written differently, or a record already in the system. They are kept separate unless you merge them.` |
+| `resolution.mergeWithValue` | name | `Merge with {name}, also in your file` |
+| `resolution.mergeWithRecord` | name, description | `Merge with Lucio Fontana (1899–1968), already in the system`; without the description when there is none |
+| `resolution.keepSeparate` | - | `Keep separate` |
 | `resolution.candidate` | name, description | `Lucio Fontana (1899–1968)`; the name alone when there is no description |
 | `resolution.rowCount` | count | `Used in 1 row`, `Used in 2 rows` |
 | `resolution.spellings` | spellings, count | `In your file: {spellings}` |

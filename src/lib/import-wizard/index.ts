@@ -195,7 +195,11 @@ export {
   type RelatedDecision,
   type ResolvedValue,
   type ResolveOptions,
+  type PossibleMatch,
+  type MergeTarget,
 } from './resolution';
+
+export { findPossibleMatches, isPossibleMatch, matchWords, type PossiblePair } from './possible';
 
 export {
   planRelatedCreations,
