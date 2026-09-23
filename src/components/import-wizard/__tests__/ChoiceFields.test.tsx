@@ -331,4 +331,16 @@ describe('choice fields with options from the Host App', () => {
     const validated = onEvent.mock.calls.find(([e]) => e.type === 'DATA_VALIDATED')![0];
     expect(validated.rows.map((r: RowValidation<Rec>) => r.data.currency)).toEqual(['GBP']);
   });
+
+  it('keeps choice cells as compact as text cells, so every grid row has the fixed height', async () => {
+    // jsdom has no layout, so this guards the invariant the virtualised grid relies on:
+    // every cell of a row uses the same compact cell padding (measured at 45px in Chromium)
+    mockFile([{ Titolo: 'Achrome', Valuta: 'eur' }]);
+    render(<ImportWizard<Rec, Key> fields={fakeHostApp().fields} />);
+    await goToReview();
+
+    const cells = within(currencyCell(1).closest('tr') as HTMLElement).getAllByRole('cell');
+    const paddings = new Set(cells.map((cell) => cell.className.split(' ').filter((c) => /^p[xy]?-/.test(c)).join(' ')));
+    expect(paddings.size).toBe(1);
+  });
 });

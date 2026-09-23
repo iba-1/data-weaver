@@ -85,9 +85,10 @@ function ReviewRowView<TRecord, TKey extends string>({
         const error = row.errors.find((e) => e.field === field.key);
         const warning = row.warnings.find((w) => w.field === field.key);
 
-        if (field.type === 'choice') {
-          return (
-            <TableCell key={field.key}>
+        // Every kind of cell sits in the same compact TableCell, so rows stay REVIEW_ROW_HEIGHT tall
+        return (
+          <TableCell key={field.key} className={CELL}>
+            {field.type === 'choice' ? (
               <ChoiceCell
                 value={value}
                 options={choiceOptions(field) ?? []}
@@ -99,20 +100,16 @@ function ReviewRowView<TRecord, TKey extends string>({
                 isHighlighted={matchesSearch(value, searchQuery)}
                 className={cn(row.excluded && 'line-through')}
               />
-            </TableCell>
-          );
-        }
-
-        return (
-          <TableCell key={field.key} className={CELL}>
-            <EditableCell
-              value={value as string | number | null}
-              onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
-              hasError={!!error && !row.excluded}
-              hasWarning={!!warning && !row.excluded}
-              isHighlighted={matchesSearch(value, searchQuery)}
-              className={cn(row.excluded && 'line-through')}
-            />
+            ) : (
+              <EditableCell
+                value={value as string | number | null}
+                onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
+                hasError={!!error && !row.excluded}
+                hasWarning={!!warning && !row.excluded}
+                isHighlighted={matchesSearch(value, searchQuery)}
+                className={cn(row.excluded && 'line-through')}
+              />
+            )}
           </TableCell>
         );
       })}
