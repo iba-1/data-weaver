@@ -77,7 +77,7 @@ afterEach(() => {
 });
 
 describe('Commit through the Host App adapter', () => {
-  it('saves 250 rows in 3 batches of at most 100, one batch at a time, and reports them', { timeout: 20_000 }, async () => {
+  it('saves 250 rows in 3 batches of at most 100, one batch at a time, and reports them', async () => {
     mockArtworks(250);
     const host = createFakeHostApp<Rec>();
     const onImportFinished = vi.fn<(report: ImportReport<Rec>) => void>();
@@ -262,7 +262,7 @@ describe('Commit through the Host App adapter', () => {
     expect(onImportFinished.mock.calls[0][0].rejected.map((row) => row.cause)).toEqual(['notSent', 'notSent']);
   });
 
-  it('shows progress while committing, with the review locked', { timeout: 20_000 }, async () => {
+  it('shows progress while committing, with the review locked', async () => {
     mockArtworks(250);
     const host = createFakeHostApp<Rec>();
     const second = host.hold(2);

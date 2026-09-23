@@ -304,7 +304,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     await screen.findByText('⟦review.title⟧');
   }
 
-  it('in the upload step, including refused and unreadable files', { timeout: 20_000 }, async () => {
+  it('in the upload step, including refused and unreadable files', async () => {
     renderMarked();
     expectAllMarked();
 
@@ -323,7 +323,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('in column matching, with a required field unmatched and a picker open', { timeout: 20_000 }, async () => {
+  it('in column matching, with a required field unmatched and a picker open', async () => {
     mockFile([{ Acquisito: '2024-01-15', Valuta: 'Euro', Note: 'bozza' }]);
     renderMarked();
     await upload();
@@ -337,7 +337,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('while choice options load and when they fail', { timeout: 20_000 }, async () => {
+  it('while choice options load and when they fail', async () => {
     let rejectOptions!: (error: Error) => void;
     mockFile(REVIEW_ROWS);
     renderMarked({ fields: outputShape(() => new Promise((_, reject) => (rejectOptions = reject))) });
@@ -352,7 +352,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('in the review grid: counts, filters, row states, tooltips and cell editors', { timeout: 20_000 }, async () => {
+  it('in the review grid: counts, filters, row states, tooltips and cell editors', async () => {
     await reviewMarked();
     expectAllMarked();
 
@@ -412,7 +412,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expectAllMarked();
   });
 
-  it('in Fill Required, find and replace, export and AI Edit', { timeout: 20_000 }, async () => {
+  it('in Fill Required, find and replace, export and AI Edit', async () => {
     const aiEdit = vi
       .fn<AiEditHandler>()
       .mockResolvedValueOnce(Array.from({ length: 7 }, (_, rowIndex) => ({ rowIndex, changes: { title: 'Achrome' } })))
@@ -467,7 +467,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     }
   });
 
-  it('while committing, and in the Import Report with the Host App’s reasons as written', { timeout: 20_000 }, async () => {
+  it('while committing, and in the Import Report with the Host App’s reasons as written', async () => {
     // One row per batch: Achrome is saved, Concetto spaziale is refused by the
     // Host App (its reason is its own text), Nature morte's batch can't be sent
     const host = createFakeHostApp<Rec>({
