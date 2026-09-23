@@ -1229,7 +1229,7 @@ npm run build       # demo site build (GitHub Pages)
 npm run build:lib   # package build into dist-lib/
 ```
 
-The demo app (`src/pages/Index.tsx`) is an artwork importer that saves into a simulated, in-memory Host App (`src/pages/demoHostApp.ts`): it honours Import Keys and rejects an artwork whose title and artist are already in the collection, so importing the same file twice shows Rejected Rows. The artist is a Relationship Field: the demo's registry starts with Lucio Fontana, Piero Manzoni and Alberto Burri, and other artists are created when the import starts. It is deployed to GitHub Pages by `.github/workflows/deploy.yml`.
+The demo app (`src/pages/Index.tsx`) walks every path of an import against the Archivio Serra, a simulated, in-memory Host App (`src/pages/demo/hostApp.ts`). It honours Import Keys and is create-only (an artwork whose title and artist are already in the collection is rejected). Artist and owner are Relationship Fields pointing to its registry, which holds two Mario Rossi (Homonyms) and flags Possible Matches such as `L. Fontana` for Lucio Fontana; the currency's options are loaded from it. The page's own panel can make it refuse a title or lose the next batch's answer (to see the automatic retry create nothing twice), sets the rows per batch, and shows its store, the latest Import Report and a log of every adapter call and wizard event. A sample spreadsheet exercising every path (`src/pages/demo/outputShape.ts`) is downloadable from the page. There is no AI Edit on the demo. It is deployed to GitHub Pages by `.github/workflows/ci.yml` after the checks pass.
 
 ## License
 
