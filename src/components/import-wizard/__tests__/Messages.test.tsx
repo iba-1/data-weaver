@@ -583,12 +583,12 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expect(screen.getByRole('status')).toHaveTextContent('⟦resolution.loading⟧');
     expectAllMarked();
 
-    // Matched, will be created, needing a decision (Homonyms), and possibly the same (in the file and in the system)
+    // Matched, will be created, several matches (Homonyms), and possibly the same (in the file and in the system)
     await act(async () => answerLookup());
     await screen.findByRole('region', { name: '⟦resolution.kindTitle⟧' });
     expect(screen.getByRole('region', { name: '⟦resolution.matchedTitle⟧' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '⟦resolution.createTitle⟧' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '⟦resolution.undecidedTitle⟧' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '⟦resolution.homonymsTitle⟧' })).toBeInTheDocument();
     expect(screen.getByText('⟦resolution.homonyms⟧')).toBeInTheDocument();
     const possible = screen.getByRole('region', { name: '⟦resolution.possibleTitle⟧' });
     expect(within(possible).getByText('⟦resolution.possibleDescription⟧')).toBeInTheDocument();
