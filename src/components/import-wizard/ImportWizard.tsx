@@ -165,6 +165,9 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     [report, resolutionRows, fieldConfigs]
   );
 
+  // In Fix & Retry, a value new or changed since may be merged with one committed earlier (never the reverse)
+  const committedList = useMemo(() => [...committedValues.values()], [committedValues]);
+
   // With Relationship Fields, Resolution sits between review and Commit
   const resolution = useResolution<TRecord, TKey>({
     fields: fieldConfigs,
@@ -172,6 +175,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     adapter,
     messages: m,
     active: state.step === 'resolution',
+    committed: committedList,
   });
   const withResolution = resolution.kinds.length > 0;
   const { start: startLookup, leave: leaveResolution } = resolution;

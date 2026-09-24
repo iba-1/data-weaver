@@ -249,6 +249,7 @@ export {
   type LookupResults,
   type PossibleMatch,
   type MergeTarget,
+  type CommittedValue,
 } from '@/lib/import-wizard/resolution';
 
 export {

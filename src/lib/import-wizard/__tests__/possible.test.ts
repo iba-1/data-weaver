@@ -350,7 +350,7 @@ describe('Possible Matches in Resolution', () => {
     expect(resolved['lucio fontana'].possibleMatches).toEqual([]);
     expect(resolved['fontana, lucio'].possibleMatches).toEqual([]);
     // The lookup's Possible Matches are only offered for values without a Normalised Match
-    expect(resolved['l. fontana'].possibleMatches.map((p) => (p.source === 'file' ? p.value : p.candidate.id))).toEqual([
+    expect(resolved['l. fontana'].possibleMatches.map((p) => (p.source === 'host' ? p.candidate.id : p.value))).toEqual([
       'reg-3',
       'lucio fontana',
       'fontana, lucio',

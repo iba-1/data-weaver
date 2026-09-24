@@ -15,6 +15,7 @@ import {
   relationshipKinds,
   resolutionBlockers,
   resolveValues,
+  type CommittedValue,
   type LookupResults,
   type MergeTarget,
   type RelatedDecision,
@@ -48,7 +49,14 @@ interface UseResolutionOptions<TRecord, TKey extends string> {
   messages: ResolvedMessages;
   /** Whether the Resolution step is showing; the file's values are only collected then */
   active: boolean;
+  /**
+   * Fix & Retry: the values earlier Commits were made with. A value in
+   * `rows` is offered those it might be, to merge with; they are not decided again.
+   */
+  committed?: ReadonlyArray<CommittedValue>;
 }
+
+const NOTHING_COMMITTED: ReadonlyArray<CommittedValue> = [];
 
 /**
  * The Resolution step's state: the distinct values of the file's Relationship
@@ -68,6 +76,7 @@ export function useResolution<TRecord, TKey extends string>({
   adapter,
   messages: m,
   active,
+  committed = NOTHING_COMMITTED,
 }: UseResolutionOptions<TRecord, TKey>) {
   const kinds = useMemo(() => relationshipKinds(fields), [fields]);
   const [lookups, setLookups] = useState<LookupResults>(() => new Map());
@@ -89,8 +98,11 @@ export function useResolution<TRecord, TKey extends string>({
   );
 
   const values = useMemo(() => (active ? collectRelatedValues(rows, fields) : []), [active, rows, fields]);
-  // Found once per file state, not on every keystroke in a name
-  const possibleMatches = useMemo(() => findPossibleMatches(values), [values]);
+  // Found once per file state, not on every keystroke in a name; the values committed earlier only matter with values
+  const possibleMatches = useMemo(
+    () => (values.length === 0 ? [] : findPossibleMatches([...values, ...committed])),
+    [values, committed]
+  );
   const resolved = useMemo(() => {
     const decisions = new Map<string, RelatedDecision>();
     const rowDecisions = new Map<string, Map<number, RelatedDecision>>();
@@ -102,8 +114,8 @@ export function useResolution<TRecord, TKey extends string>({
       const forRows = rowChoices.get(key);
       if (forRows) rowDecisions.set(key, new Map([...forRows].map(([rowIndex, c]) => [rowIndex, decide(c)])));
     }
-    return resolveValues(values, lookups, { names, decisions, rowDecisions, merges, possibleMatches });
-  }, [values, lookups, names, choices, rowChoices, merges, possibleMatches]);
+    return resolveValues(values, lookups, { names, decisions, rowDecisions, merges, committed, possibleMatches });
+  }, [values, lookups, names, choices, rowChoices, merges, committed, possibleMatches]);
   const blockers = useMemo(() => resolutionBlockers(resolved), [resolved]);
   const canCommit =
     lookup.status === 'ready' && blockers.pending === 0 && blockers.undecided === 0 && blockers.unnamed === 0;

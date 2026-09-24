@@ -587,4 +587,75 @@ describe('Fix & Retry with Relationship Fields', () => {
     expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([[1, 'reg-fontana']]);
     expect(host.creates.map((c) => c.name)).toEqual(['Piero Manzoni', 'Anna Bianchi']);
   });
+
+  describe('a name typed in Fix & Retry that might be a name committed earlier', () => {
+    const MERGE_WITH_ANNA = 'Merge with Anna Bianchi, from the earlier import';
+
+    /** Commit Anna Bianchi (row 1) and Piero Manzoni (row 2, refused), then rename row 2's author to A. Bianchi */
+    async function renameToInitials(host: FakeHostApp<RelRec>, refused: Set<number>, retryName: RegExp) {
+      await resolveRelFile(host, [
+        { Title: 'Achrome', Author: 'Anna Bianchi' },
+        { Title: 'Linea', Author: 'Piero Manzoni' },
+      ]);
+      await importRows();
+      await openFixAndRetry();
+      editCell(2, 'author', 'A. Bianchi', REL_FIELDS);
+      refused.clear();
+      await continueToResolution(/link related records/i, retryName);
+      const [item] = groupItems(screen.getByRole('region', { name: 'Author' }), 'Possibly the same (1)');
+      expect(item).toHaveTextContent('A. Bianchi');
+      return item;
+    }
+
+    it('is offered the committed name; merged, its row gets that record’s ID and nothing is created', async () => {
+      const refused = new Set([1]);
+      const host = refusingHost(refused);
+      const item = await renameToInitials(host, refused, /retry import \(1 row\)/i);
+      const anna = host.related.get('registry')!.find((r) => r.name === 'Anna Bianchi')!.id;
+
+      // Kept separate until the Importer merges it
+      expect(within(item).getByRole('radio', { name: 'Keep separate' })).toBeChecked();
+      fireEvent.click(within(item).getByRole('radio', { name: MERGE_WITH_ANNA }));
+      await importRows(/retry import \(1 row\)/i);
+
+      expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([[1, anna]]);
+      expect(host.creates.map((c) => c.name)).toEqual(['Anna Bianchi', 'Piero Manzoni']);
+      // Only the new name was looked up; Anna Bianchi was not decided again
+      expect(host.lookups.map((lookup) => lookup.values)).toEqual([['anna bianchi', 'piero manzoni'], ['a. bianchi']]);
+      expect(screen.getByText('2 imported')).toBeInTheDocument();
+    });
+
+    it('kept separate, is created as one new record', async () => {
+      const refused = new Set([1]);
+      const host = refusingHost(refused);
+      await renameToInitials(host, refused, /retry import \(1 row\)/i);
+
+      await importRows(/retry import \(1 row\)/i);
+
+      const bianchi = host.related.get('registry')!.find((r) => r.name === 'A. Bianchi')!.id;
+      expect(host.creates.map((c) => c.name)).toEqual(['Anna Bianchi', 'Piero Manzoni', 'A. Bianchi']);
+      expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([[1, bianchi]]);
+    });
+
+    it('merged with a name whose record could not be created, shares its one creation', async () => {
+      let failing = true;
+      const refused = new Set([1]);
+      const host = refusingHost(refused, {
+        failCreate: (_kind, name) => (name === 'Anna Bianchi' && failing ? 'Registry unavailable' : null),
+      });
+      const item = await renameToInitials(host, refused, /retry import \(2 rows\)/i);
+      fireEvent.click(within(item).getByRole('radio', { name: MERGE_WITH_ANNA }));
+      failing = false;
+      await importRows(/retry import \(2 rows\)/i);
+
+      // Anna Bianchi is created once on the retry, for both rows
+      expect(host.creates.map((c) => c.name)).toEqual(['Anna Bianchi', 'Piero Manzoni', 'Anna Bianchi']);
+      const anna = host.related.get('registry')!.find((r) => r.name === 'Anna Bianchi')!.id;
+      expect(host.calls[1].map((row) => [row.rowIndex, row.record.author])).toEqual([
+        [0, anna],
+        [1, anna],
+      ]);
+      expect(screen.getByText('2 imported')).toBeInTheDocument();
+    });
+  });
 });

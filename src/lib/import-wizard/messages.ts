@@ -173,6 +173,11 @@ export interface MessageParams {
     mergeWithValue: { name: string };
     /** Merging a value with an existing record; `description` is the Host App's (may be empty) */
     mergeWithRecord: { name: string; description: string };
+    /**
+     * Fix & Retry: merging a value with a value an earlier Commit of this
+     * import was made with; `name` is that value as spelled in the file
+     */
+    mergeWithCommitted: { name: string };
     /** Not merging a value with any of its Possible Matches (the default) */
     keepSeparate: void;
     /** An existing record; `description` is the Host App's (may be empty) */
@@ -476,6 +481,7 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     mergeWithValue: 'Merge with {name}, also in your file',
     mergeWithRecord: (p) =>
       p.description ? `Merge with ${p.name} (${p.description}), already in the system` : `Merge with ${p.name}, already in the system`,
+    mergeWithCommitted: 'Merge with {name}, from the earlier import',
     keepSeparate: 'Keep separate',
     candidate: (p) => (p.description ? `${p.name} (${p.description})` : p.name),
     rowCount: (p) => `Used in ${plural(p.count, 'row', 'rows')}`,
