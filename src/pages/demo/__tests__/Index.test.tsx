@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import Index from '../../Index';
 import { SAMPLE_FILE_NAME, sampleSpreadsheet } from '../outputShape';
 import { blobBytes } from '@/test/spreadsheet';
@@ -36,7 +37,11 @@ afterEach(() => {
 describe('the demo page', () => {
   it('shows the Host App console, the sample and the wizard, and walks the sample to Resolution without AI Edit', async () => {
     await mockSampleFile();
-    render(<Index />);
+    render(
+      <MemoryRouter>
+        <Index />
+      </MemoryRouter>
+    );
 
     // The Host App's own controls, outside the wizard
     const refuse = screen.getByRole('switch', { name: 'Refuse a title' });

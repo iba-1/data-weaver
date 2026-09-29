@@ -1,0 +1,1508 @@
+/*
+ * The features page, dressed in Data Weaver's own cloth: the favicon's ink,
+ * teal weft and pale warp, with a saffron thread for emphasis. Woven
+ * patterns instead of glows, sheet tabs instead of pills, notes stitched in
+ * a column, and a ledger of figures. Schibsted Grotesk for text, Instrument
+ * Serif italics for the words that matter.
+ *
+ * Page variables are prefixed `--wv-`: the wizard defines its own tokens
+ * (`--accent`, `--border`, `--radius`…) on `.dw-root`, and the specimens sit
+ * inside it.
+ */
+
+.wv {
+  --wv-ink: #0b0f14;
+  --wv-ink-raised: #121820;
+  --wv-ink-high: #1a212b;
+  --wv-fg: #eef3f5;
+  --wv-fg-muted: #9aa6b0;
+  --wv-fg-subtle: #5f6b76;
+  --wv-rule: #eef3f51f;
+  --wv-rule-strong: #eef3f53d;
+  --wv-teal: #15adc1;
+  --wv-teal-bright: #3fd0e2;
+  --wv-saffron: #f2b544;
+  --wv-link: #5fd3e3;
+  --wv-accent-subtle: #15adc11f;
+  --wv-success: #5fcf8a;
+  --wv-neutral-muted: #eef3f51a;
+  --wv-tok-keyword: #f28b6d;
+  --wv-tok-string: #f2c878;
+  --wv-tok-comment: #6f7c88;
+  --wv-tok-fn: #5fd3e3;
+  --wv-tok-type: #c3a6ff;
+  --wv-tok-number: #f2b544;
+  --wv-tok-tag: #8fdcb0;
+  --wv-radius: 3px;
+  --wv-font: 'Schibsted Grotesk', 'IBM Plex Sans', sans-serif;
+  --wv-font-serif: 'Instrument Serif', 'Bodoni Moda', serif;
+  --wv-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --wv-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --wv-max: 1240px;
+  /* A plain weave: weft in a thread colour over a pale warp */
+  --wv-weave-size: 12px;
+
+  min-height: 100vh;
+  overflow-x: clip;
+  background: var(--wv-ink);
+  color: var(--wv-fg);
+  font-family: var(--wv-font);
+  font-size: 16px;
+  line-height: 1.55;
+  color-scheme: dark;
+}
+
+.wv a {
+  color: var(--wv-link);
+  text-decoration: none;
+}
+
+.wv a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.wv code {
+  font-family: var(--wv-font-mono);
+  font-size: 85%;
+  padding: 0.1em 0.35em;
+  border-radius: 2px;
+  background: var(--wv-neutral-muted);
+}
+
+.wv em {
+  font-family: var(--wv-font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.wv :focus-visible {
+  outline: 2px solid var(--wv-saffron);
+  outline-offset: 2px;
+}
+
+.wv-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.wv-skip {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 60;
+  padding: 8px 12px;
+  background: var(--wv-ink-raised);
+}
+
+.wv-skip:focus {
+  top: 8px;
+}
+
+/* ---------- Buttons and small type ---------- */
+
+.wv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--wv-radius);
+  background: none;
+  color: var(--wv-fg) !important;
+  font: 600 14px/1 var(--wv-font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 140ms linear,
+    border-color 140ms linear,
+    transform 200ms var(--wv-ease-out),
+    box-shadow 200ms var(--wv-ease-out);
+}
+
+.wv-btn:hover {
+  text-decoration: none !important;
+}
+
+.wv-btn--ghost:hover {
+  background: var(--wv-neutral-muted);
+}
+
+.wv-btn--outline {
+  border-color: var(--wv-rule-strong);
+}
+
+.wv-btn--outline:hover {
+  border-color: var(--wv-teal);
+}
+
+.wv-btn--primary {
+  background: var(--wv-teal);
+  color: var(--wv-ink) !important;
+  box-shadow: 4px 4px 0 var(--wv-saffron);
+}
+
+.wv-btn--primary:hover {
+  background: var(--wv-teal-bright);
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 var(--wv-saffron);
+}
+
+.wv-btn--primary .wv-icon {
+  transition: transform 200ms var(--wv-ease-out);
+}
+
+.wv-btn--primary:hover .wv-icon {
+  transform: translateX(3px);
+}
+
+.wv-btn--quiet {
+  padding: 0 4px;
+  text-decoration: underline !important;
+  text-decoration-color: var(--wv-rule-strong) !important;
+  text-underline-offset: 6px;
+}
+
+.wv-btn--quiet:hover {
+  text-decoration-color: var(--wv-teal) !important;
+}
+
+.wv-btn--lg {
+  height: 50px;
+  padding: 0 22px;
+  font-size: 16px;
+}
+
+.wv-btn--quiet.wv-btn--lg {
+  padding: 0 4px;
+}
+
+.wv-btn--sm {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.wv-btn--icon {
+  width: 28px;
+  padding: 0;
+}
+
+.wv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.wv-link .wv-icon {
+  transition: transform 200ms var(--wv-ease-out);
+}
+
+.wv-link:hover {
+  text-decoration: none !important;
+}
+
+.wv-link:hover .wv-icon {
+  transform: translateX(3px);
+}
+
+/* A kicker: mono capitals after a tiny woven square */
+.wv-kicker,
+.wv-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  color: var(--thread, var(--wv-teal-bright));
+  font-family: var(--wv-font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.wv-kicker::before,
+.wv-eyebrow::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background:
+    repeating-linear-gradient(0deg, currentColor 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(90deg, var(--wv-fg) 0 2px, transparent 2px 4px);
+}
+
+.wv-h2 {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 48px);
+  font-weight: 700;
+  line-height: 1.06;
+  letter-spacing: -0.035em;
+}
+
+.wv-h2 em {
+  font-size: 1.08em;
+  color: var(--thread, var(--wv-teal-bright));
+}
+
+/* ---------- Navigation ---------- */
+
+.wv-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 14px 32px;
+  background: #0b0f14e6;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--wv-rule);
+}
+
+.wv-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--wv-fg) !important;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.wv-nav__brand:hover {
+  text-decoration: none !important;
+}
+
+.wv-nav nav {
+  display: flex;
+  gap: 2px;
+}
+
+.wv-nav nav a {
+  position: relative;
+  padding: 6px 12px;
+  color: var(--wv-fg-muted) !important;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.wv-nav nav a::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: var(--wv-teal);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms var(--wv-ease-out);
+}
+
+.wv-nav nav a:hover {
+  color: var(--wv-fg) !important;
+  text-decoration: none !important;
+}
+
+.wv-nav nav a:hover::after {
+  transform: scaleX(1);
+}
+
+.wv-nav__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ---------- Hero ---------- */
+
+.wv-hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 32px 48px;
+  max-width: var(--wv-max);
+  margin: 0 auto;
+  padding: clamp(64px, 9vw, 120px) 32px 72px;
+}
+
+/* The cloth the page is cut from: teal weft over pale warp, fading into the ink */
+.wv-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0 -30vw 35% 38%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, #15adc133 0 3px, transparent 3px 18px),
+    repeating-linear-gradient(90deg, #eef3f514 0 3px, transparent 3px 18px);
+  mask-image: radial-gradient(ellipse 70% 80% at 60% 30%, #000 20%, transparent 75%);
+}
+
+.wv-hero__intro {
+  max-width: 46rem;
+}
+
+.wv-hero h1 {
+  margin: 0;
+  font-size: clamp(46px, 7.4vw, 96px);
+  font-weight: 800;
+  line-height: 0.96;
+  letter-spacing: -0.05em;
+}
+
+.wv-hero h1 em {
+  display: inline-block;
+  padding-right: 0.06em;
+  color: var(--wv-teal-bright);
+  font-size: 1.1em;
+  letter-spacing: -0.02em;
+}
+
+.wv-hero__lede {
+  max-width: 34rem;
+  margin: 28px 0 0;
+  color: var(--wv-fg-muted);
+  font-size: clamp(17px, 1.5vw, 20px);
+}
+
+.wv-hero__cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  margin-top: 36px;
+}
+
+/* The sample file, as a spreadsheet tile */
+.wv-file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 340px;
+  padding: 16px 18px;
+  border: 1px solid var(--wv-rule-strong);
+  border-radius: var(--wv-radius);
+  background: var(--wv-ink-raised);
+  color: var(--wv-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transform: rotate(-1.2deg);
+  box-shadow: 6px 6px 0 #15adc133;
+  transition:
+    transform 260ms var(--wv-ease-out),
+    border-color 160ms linear;
+}
+
+.wv-file:hover {
+  transform: rotate(0deg) translateY(-2px);
+  border-color: var(--wv-teal);
+}
+
+.wv-file__icon {
+  width: 32px;
+  height: 32px;
+  color: var(--wv-teal-bright);
+}
+
+.wv-file__name {
+  display: grid;
+  gap: 4px;
+}
+
+.wv-file__name strong {
+  font-family: var(--wv-font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wv-file__name small {
+  color: var(--wv-fg-muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.wv-hero__stage {
+  grid-column: 1 / -1;
+  margin-top: 24px;
+}
+
+.wv-hero__showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The hero's sheet tabs hang from the bottom of the frame, like a workbook's */
+.wv-sheets {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 clamp(16px, 3vw, 40px);
+}
+
+.wv-sheets button {
+  padding: 10px 18px 12px;
+  border: 1px solid var(--wv-rule-strong);
+  border-top: 0;
+  border-left-width: 0;
+  background: var(--wv-ink);
+  color: var(--wv-fg-muted);
+  font: 500 14px/1 var(--wv-font);
+  cursor: pointer;
+  transition:
+    color 140ms linear,
+    background-color 140ms linear;
+}
+
+.wv-sheets button:first-child {
+  border-left-width: 1px;
+}
+
+.wv-sheets button:hover,
+.wv-sheets button[data-shown] {
+  color: var(--wv-fg);
+  background: var(--wv-ink-raised);
+}
+
+.wv-sheets button[aria-pressed='true'] {
+  color: var(--wv-fg);
+  background: var(--wv-ink-high);
+  box-shadow: inset 0 -3px 0 var(--wv-teal);
+}
+
+.wv-sheets__caption {
+  min-height: 3em;
+  max-width: 40rem;
+  margin: 18px clamp(16px, 3vw, 40px) 0;
+  color: var(--wv-fg-muted);
+}
+
+.wv-sheets__caption::before {
+  content: '→ ';
+  color: var(--wv-saffron);
+}
+
+/* ---------- The specimen frame, woven in its piece's colour ---------- */
+
+.wv-frame {
+  --thread: hsl(var(--glow-hue, 187) 72% 58%);
+  position: relative;
+  padding: clamp(14px, 2.6vw, 36px);
+  border: 1px solid color-mix(in srgb, var(--thread) 35%, transparent);
+  border-radius: var(--wv-radius);
+  background:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--thread) 20%, transparent) 0 2px, transparent 2px var(--wv-weave-size)),
+    repeating-linear-gradient(90deg, #eef3f50d 0 2px, transparent 2px var(--wv-weave-size)),
+    var(--wv-ink);
+  box-shadow: 10px 10px 0 color-mix(in srgb, var(--thread) 28%, transparent);
+}
+
+.wv-frame__window {
+  overflow: hidden;
+  border: 1px solid var(--wv-rule-strong);
+  border-radius: var(--wv-radius);
+  background: var(--wv-ink-raised);
+}
+
+.wv-frame__bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--wv-rule);
+  background: var(--wv-ink);
+  font-size: 12px;
+}
+
+/* The component's file, as the open tab */
+.wv-frame__path {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: -1px;
+  padding: 7px 12px;
+  border: 1px solid var(--wv-rule);
+  border-bottom-color: var(--wv-ink-raised);
+  background: var(--wv-ink-raised);
+  box-shadow: inset 0 2px 0 var(--thread);
+  color: var(--wv-fg) !important;
+  font-family: var(--wv-font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wv-frame__live {
+  align-self: center;
+  margin: 0 0 6px auto;
+  color: var(--wv-success);
+  font-family: var(--wv-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.wv-frame__live::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  background: currentColor;
+  vertical-align: 1px;
+  animation: wv-pulse 2s ease-in-out infinite;
+}
+
+@keyframes wv-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.wv-frame__stage {
+  padding: clamp(16px, 2.4vw, 28px);
+}
+
+.wv-frame__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--wv-rule);
+  background: var(--wv-ink);
+  color: var(--wv-fg-muted);
+  font-family: var(--wv-font-mono);
+  font-size: 11.5px;
+}
+
+.wv-frame__status code {
+  padding: 0;
+  background: none;
+  color: var(--wv-saffron);
+}
+
+/* The part a note is about: a saffron outline over the live component (one at a time, so no number) */
+.wv [data-wv-spotlight] {
+  outline: 2px dashed var(--wv-saffron) !important;
+  outline-offset: 4px !important;
+  animation: wv-spot 420ms var(--wv-ease-out);
+  scroll-margin: 160px;
+}
+
+@keyframes wv-spot {
+  from {
+    outline-offset: 14px;
+    outline-color: transparent;
+  }
+}
+
+.wv-resizable {
+  resize: horizontal;
+  overflow: auto;
+  min-width: min(300px, 100%);
+  max-width: 100%;
+  padding-right: 12px;
+  border-right: 2px dotted var(--wv-rule-strong);
+}
+
+.wv-commit {
+  display: grid;
+  gap: 12px;
+}
+
+.wv-commit__narration {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--wv-rule);
+  background: var(--wv-ink);
+  font-size: 14px;
+}
+
+.wv-commit__narration p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--wv-fg-muted);
+}
+
+.wv-commit__narration .wv-btn {
+  border-color: var(--wv-rule-strong);
+}
+
+.wv-counter {
+  display: inline-block;
+  min-width: 30px;
+  padding: 0 6px;
+  background: var(--wv-saffron);
+  color: var(--wv-ink);
+  font: 700 11.5px/20px var(--wv-font-mono);
+  text-align: center;
+}
+
+/* ---------- Built on: the selvedge ---------- */
+
+.wv-built {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px 32px;
+  max-width: var(--wv-max);
+  margin: 0 auto;
+  padding: 28px 32px;
+  border-top: 1px solid var(--wv-rule);
+  border-bottom: 1px solid var(--wv-rule);
+}
+
+.wv-built p {
+  margin: 0;
+  color: var(--wv-fg-subtle);
+  font-family: var(--wv-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.wv-built ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wv-built li {
+  color: var(--wv-fg-muted);
+  font-family: var(--wv-font-serif);
+  font-size: 24px;
+  font-style: italic;
+}
+
+/* ---------- Feature rows ---------- */
+
+.wv-section {
+  max-width: var(--wv-max);
+  margin: 0 auto;
+  padding: 104px 32px 24px;
+}
+
+.wv-section__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 24px 64px;
+  margin-bottom: 40px;
+}
+
+.wv-section__head p {
+  margin: 0;
+  color: var(--wv-fg-muted);
+  font-size: 18px;
+}
+
+.wv-subnav {
+  position: sticky;
+  top: 64px;
+  z-index: 40;
+  display: flex;
+  margin: 0 0 40px;
+  border-bottom: 1px solid var(--wv-rule-strong);
+  background: #0b0f14f0;
+  backdrop-filter: blur(10px);
+  counter-reset: step;
+}
+
+.wv-subnav a {
+  position: relative;
+  padding: 14px 20px 12px;
+  color: var(--wv-fg-muted) !important;
+  font-family: var(--wv-font-mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  counter-increment: step;
+}
+
+.wv-subnav a::before {
+  content: counter(step, decimal-leading-zero) ' ';
+  color: var(--wv-fg-subtle);
+}
+
+.wv-subnav a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--wv-teal);
+  transform: scaleX(0);
+  transition: transform 260ms var(--wv-ease-out);
+}
+
+.wv-subnav a:hover,
+.wv-subnav a[aria-current] {
+  color: var(--wv-fg) !important;
+  text-decoration: none !important;
+}
+
+.wv-subnav a[aria-current]::after {
+  transform: scaleX(1);
+}
+
+.wv-anchor {
+  scroll-margin-top: 130px;
+}
+
+.wv-row {
+  --thread: hsl(var(--glow-hue, 187) 72% 62%);
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+  padding: 64px 0 80px;
+}
+
+.wv-row + .wv-row {
+  border-top: 1px dashed var(--wv-rule-strong);
+}
+
+.wv-row--flip {
+  grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+}
+
+.wv-row--flip .wv-row__text {
+  order: 2;
+}
+
+.wv-row__text {
+  position: sticky;
+  top: 150px;
+}
+
+.wv-row__text h3 {
+  margin: 0;
+  font-size: clamp(30px, 3vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.wv-row__lede {
+  margin: 14px 0 28px;
+  color: var(--wv-fg-muted);
+  font-size: 17px;
+}
+
+/* The notes, stitched down a thread; the one showing is knotted in the piece's colour */
+.wv-accordion {
+  position: relative;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.wv-accordion::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 11px;
+  border-left: 2px dashed var(--wv-rule-strong);
+}
+
+.wv-accordion li {
+  position: relative;
+}
+
+.wv-accordion button {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: var(--wv-fg-muted);
+  font: 600 17px/1.3 var(--wv-font);
+  text-align: left;
+  cursor: pointer;
+  transition: color 140ms linear;
+}
+
+.wv-accordion li[data-open] button,
+.wv-accordion li[data-shown] button,
+.wv-accordion button:hover {
+  color: var(--wv-fg);
+}
+
+.wv-accordion__pin {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid var(--wv-rule-strong);
+  background: var(--wv-ink);
+  color: var(--wv-fg-muted);
+  font: 600 11px/1 var(--wv-font-mono);
+  transition:
+    background-color 180ms linear,
+    color 180ms linear,
+    border-color 180ms linear;
+}
+
+.wv-accordion li[data-shown] .wv-accordion__pin {
+  border-color: var(--thread);
+  background: var(--thread);
+  color: var(--wv-ink);
+}
+
+/* Height animates through grid rows, not height itself */
+.wv-accordion__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms var(--wv-ease-out);
+}
+
+.wv-accordion li[data-open] .wv-accordion__body {
+  grid-template-rows: 1fr;
+}
+
+.wv-accordion__body > div {
+  overflow: hidden;
+}
+
+.wv-accordion__body p {
+  margin: 0;
+  padding: 0 16px 14px 40px;
+  color: var(--wv-fg-muted);
+  font-size: 15.5px;
+}
+
+/* ---------- Every row: the ledger ---------- */
+
+.wv-center {
+  max-width: var(--wv-max);
+  margin: 0 auto;
+  padding: 120px 32px 104px;
+  border-top: 1px solid var(--wv-rule);
+}
+
+.wv-center .wv-h2 {
+  max-width: 18ch;
+  font-size: clamp(36px, 5vw, 64px);
+}
+
+.wv-center__lede {
+  max-width: 36rem;
+  margin: 24px 0 0;
+  color: var(--wv-fg-muted);
+  font-size: 19px;
+}
+
+.wv-promises {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 64px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--wv-rule-strong);
+}
+
+.wv-promises li {
+  padding: 28px 28px 8px 0;
+}
+
+.wv-promises li + li {
+  padding-left: 28px;
+  border-left: 1px solid var(--wv-rule);
+}
+
+.wv-promises .wv-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--wv-saffron);
+}
+
+.wv-promises h3 {
+  margin: 14px 0 8px;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.wv-promises p {
+  margin: 0 0 16px;
+  color: var(--wv-fg-muted);
+}
+
+.wv-promises strong {
+  color: var(--wv-fg);
+  font-weight: 700;
+}
+
+/* The figures as a spreadsheet row: lettered columns, a cell each */
+.wv-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 72px 0 0;
+  border: 1px solid var(--wv-rule-strong);
+  counter-reset: col;
+}
+
+/* The number above its label (dt comes first for screen readers); numbers share a top line however the labels wrap */
+.wv-stats div {
+  position: relative;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 44px 20px 22px;
+  counter-increment: col;
+}
+
+.wv-stats div + div {
+  border-left: 1px solid var(--wv-rule-strong);
+}
+
+/* Each column's letter, in a header strip */
+.wv-stats div::before {
+  content: counter(col, upper-alpha);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--wv-rule-strong);
+  background: var(--wv-ink-raised);
+  color: var(--wv-fg-subtle);
+  font: 500 11px/1.4 var(--wv-font-mono);
+  text-align: center;
+}
+
+.wv-stats dt {
+  color: var(--wv-fg-muted);
+  font-size: 14.5px;
+}
+
+.wv-stats dd {
+  margin: 0;
+  color: var(--wv-fg);
+  font-family: var(--wv-font-serif);
+  font-size: clamp(56px, 7vw, 88px);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+
+.wv-stats div:first-child dd {
+  color: var(--wv-teal-bright);
+}
+
+/* ---------- Adapter and theming ---------- */
+
+.wv-split {
+  --thread: var(--wv-teal-bright);
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: start;
+  max-width: var(--wv-max);
+  margin: 0 auto;
+  padding: 104px 32px;
+  border-top: 1px solid var(--wv-rule);
+}
+
+.wv-split--flip {
+  --thread: var(--wv-saffron);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+}
+
+.wv-split__text {
+  display: grid;
+  gap: 20px;
+  justify-items: start;
+}
+
+.wv-split__text > p:not(.wv-eyebrow) {
+  margin: 0;
+  color: var(--wv-fg-muted);
+  font-size: 17px;
+}
+
+.wv-split__text .wv-eyebrow {
+  margin: 0;
+}
+
+.wv-split__text .wv-code {
+  justify-self: stretch;
+}
+
+.wv-defs {
+  margin: 0;
+}
+
+.wv-defs dt {
+  margin-top: 20px;
+}
+
+.wv-defs dt code {
+  padding: 0;
+  background: none;
+  color: var(--wv-teal-bright);
+  font-size: 15px;
+}
+
+.wv-defs dd {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--wv-rule-strong);
+  color: var(--wv-fg-muted);
+}
+
+/* A panel of cloth behind the code and the theming specimen */
+.wv-glowbox {
+  --thread: hsl(var(--glow-hue, 187) 72% 58%);
+  padding: clamp(14px, 2.6vw, 28px);
+  border: 1px solid color-mix(in srgb, var(--thread) 35%, transparent);
+  border-radius: var(--wv-radius);
+  background:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--thread) 16%, transparent) 0 2px, transparent 2px var(--wv-weave-size)),
+    repeating-linear-gradient(90deg, #eef3f50a 0 2px, transparent 2px var(--wv-weave-size)),
+    var(--wv-ink);
+  box-shadow: 10px 10px 0 color-mix(in srgb, var(--thread) 24%, transparent);
+}
+
+.wv-code {
+  overflow: hidden;
+  border: 1px solid var(--wv-rule-strong);
+  border-radius: var(--wv-radius);
+  background: var(--wv-ink-raised);
+}
+
+.wv-code__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 14px;
+  border-bottom: 1px solid var(--wv-rule);
+  background: var(--wv-ink);
+}
+
+.wv-code__path {
+  font-family: var(--wv-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wv-code__meta {
+  margin-left: auto;
+  color: var(--wv-fg-subtle);
+  font-family: var(--wv-font-mono);
+  font-size: 11.5px;
+}
+
+.wv-code__header .wv-btn {
+  border-color: var(--wv-rule-strong);
+}
+
+.wv-code__body {
+  overflow-x: auto;
+  padding: 12px 0;
+}
+
+.wv-code table {
+  border-collapse: collapse;
+  font-family: var(--wv-font-mono);
+  font-size: 12.5px;
+  line-height: 20px;
+}
+
+.wv-code__num {
+  width: 1%;
+  min-width: 44px;
+  padding: 0 14px 0 10px;
+  color: var(--wv-fg-subtle);
+  text-align: right;
+  user-select: none;
+  vertical-align: top;
+}
+
+.wv-code__num::before {
+  content: attr(data-line);
+}
+
+.wv-code__line {
+  padding: 0 16px 0 8px;
+  white-space: pre;
+  color: var(--wv-fg);
+}
+
+.wv-code tr:hover td {
+  background: var(--wv-accent-subtle);
+}
+
+.wv-tok--comment {
+  color: var(--wv-tok-comment);
+  font-style: italic;
+}
+
+.wv-tok--string {
+  color: var(--wv-tok-string);
+}
+
+.wv-tok--keyword {
+  color: var(--wv-tok-keyword);
+}
+
+.wv-tok--type {
+  color: var(--wv-tok-type);
+}
+
+.wv-tok--fn {
+  color: var(--wv-tok-fn);
+}
+
+.wv-tok--number {
+  color: var(--wv-tok-number);
+}
+
+.wv-tok--tag {
+  color: var(--wv-tok-tag);
+}
+
+.wv-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wv-segmented {
+  display: inline-flex;
+  border: 1px solid var(--wv-rule-strong);
+  border-radius: var(--wv-radius);
+}
+
+.wv-segmented button {
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: var(--wv-fg-muted);
+  font: 500 14px/1 var(--wv-font);
+  cursor: pointer;
+}
+
+.wv-segmented button + button {
+  border-left: 1px solid var(--wv-rule);
+}
+
+.wv-segmented button:hover {
+  color: var(--wv-fg);
+}
+
+.wv-segmented button[aria-checked='true'] {
+  background: var(--wv-fg);
+  color: var(--wv-ink);
+  font-weight: 700;
+}
+
+.wv-themed {
+  padding: 24px;
+  border-radius: var(--wv-radius);
+  background: var(--wv-ink-raised);
+  box-shadow: 0 0 0 1px var(--wv-rule-strong);
+}
+
+.wv-themed--light {
+  background: #fbfaf7;
+  color: #1f2328;
+}
+
+.wv-themed__label {
+  margin: 0 0 16px;
+  color: #8a949e;
+  font: 500 11.5px/1 var(--wv-font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* The theming specimen's Host App themes: the wizard's own tokens, overridden on .dw-root */
+.wv-theme-primer .dw-root {
+  --primary: 212 92% 45%;
+  --ring: 212 92% 45%;
+  --success: 137 66% 30%;
+  --destructive: 356 72% 48%;
+  --border: 210 18% 87%;
+  --radius: 0.375rem;
+}
+
+.wv-theme-primer.dark .dw-root {
+  --primary: 213 93% 62%;
+  --ring: 213 93% 62%;
+  --success: 128 49% 49%;
+  --destructive: 3 93% 63%;
+  --border: 214 11% 27%;
+}
+
+.wv-theme-archivio .dw-root {
+  --primary: 14 62% 42%;
+  --ring: 14 62% 42%;
+  --success: 88 34% 34%;
+  --destructive: 350 58% 40%;
+  --border: 30 22% 84%;
+  --muted-foreground: 25 12% 40%;
+  --radius: 0.125rem;
+  font-family: 'Bodoni Moda', serif;
+}
+
+.wv-theme-archivio.dark .dw-root {
+  --primary: 16 70% 58%;
+  --ring: 16 70% 58%;
+  --success: 88 34% 56%;
+  --destructive: 350 70% 64%;
+  --border: 25 10% 26%;
+  --muted-foreground: 30 10% 66%;
+}
+
+/* ---------- Call to action and footer ---------- */
+
+.wv-cta {
+  position: relative;
+  isolation: isolate;
+  max-width: var(--wv-max);
+  margin: 0 auto;
+  padding: 120px 32px 136px;
+  border-top: 1px solid var(--wv-rule);
+}
+
+/* A band of cloth behind the last word */
+.wv-cta::before {
+  content: '';
+  position: absolute;
+  inset: 40px 0 40px 45%;
+  z-index: -1;
+  background:
+    repeating-linear-gradient(0deg, #f2b5442b 0 3px, transparent 3px 16px),
+    repeating-linear-gradient(90deg, #15adc12b 0 3px, transparent 3px 16px);
+  mask-image: linear-gradient(90deg, transparent, #000 40%);
+}
+
+.wv-cta .wv-h2 {
+  max-width: 16ch;
+  font-size: clamp(38px, 5.4vw, 72px);
+}
+
+.wv-cta .wv-hero__cta {
+  margin-top: 40px;
+}
+
+.wv-footer {
+  padding: 56px 32px 28px;
+  border-top: 1px solid var(--wv-rule);
+  background: #080b0f;
+  color: var(--wv-fg-muted);
+  font-size: 14px;
+}
+
+.wv-footer__cols {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  gap: 32px;
+  max-width: var(--wv-max);
+  margin: 0 auto;
+}
+
+.wv-footer__brand p {
+  max-width: 22rem;
+  margin: 16px 0 0;
+}
+
+.wv-footer nav {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.wv-footer h3 {
+  margin: 0 0 6px;
+  color: var(--wv-fg-subtle);
+  font-family: var(--wv-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.wv-footer nav a,
+.wv-footer nav button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wv-fg-muted) !important;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wv-footer nav a:hover,
+.wv-footer nav button:hover {
+  color: var(--wv-teal-bright) !important;
+  text-decoration: none;
+}
+
+.wv-footer__bar {
+  display: flex;
+  justify-content: space-between;
+  max-width: var(--wv-max);
+  margin: 48px auto 0;
+  padding-top: 20px;
+  border-top: 1px dashed var(--wv-rule-strong);
+  font-family: var(--wv-font-mono);
+  font-size: 12px;
+}
+
+/* ---------- Load ---------- */
+
+.wv-reveal {
+  animation: wv-rise 800ms var(--wv-ease-out) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+
+@keyframes wv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+/* The file tile keeps its tilt through the entrance */
+.wv-file.wv-reveal {
+  animation-name: wv-rise-tilted;
+}
+
+@keyframes wv-rise-tilted {
+  from {
+    opacity: 0;
+    transform: translateY(14px) rotate(-1.2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wv-reveal,
+  .wv [data-wv-spotlight],
+  .wv-frame__live::before {
+    animation: none;
+  }
+
+  .wv-accordion__body {
+    transition: none;
+  }
+}
+
+/* ---------- Narrower screens ---------- */
+
+@media (max-width: 1080px) {
+  .wv-hero,
+  .wv-row,
+  .wv-row--flip,
+  .wv-split,
+  .wv-split--flip,
+  .wv-section__head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wv-row--flip .wv-row__text {
+    order: 0;
+  }
+
+  .wv-row__text {
+    position: static;
+  }
+
+  .wv-promises {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wv-promises li,
+  .wv-promises li + li {
+    padding: 24px 0 8px;
+    border-left: 0;
+    border-bottom: 1px solid var(--wv-rule);
+  }
+
+  .wv-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wv-stats div:nth-child(3) {
+    border-left: 0;
+  }
+
+  .wv-stats div:nth-child(n + 3) {
+    border-top: 1px solid var(--wv-rule-strong);
+  }
+}
+
+@media (max-width: 760px) {
+  .wv-nav {
+    gap: 16px;
+    padding: 12px 16px;
+  }
+
+  .wv-nav nav,
+  .wv-nav .wv-btn--ghost {
+    display: none;
+  }
+
+  .wv-hero,
+  .wv-section,
+  .wv-center,
+  .wv-split,
+  .wv-cta,
+  .wv-footer,
+  .wv-built {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .wv-file {
+    width: 100%;
+  }
+
+  .wv-subnav {
+    top: 58px;
+    overflow-x: auto;
+  }
+
+  .wv-subnav a {
+    padding: 12px 12px 10px;
+  }
+
+  .wv-frame,
+  .wv-glowbox {
+    box-shadow: 6px 6px 0 color-mix(in srgb, var(--thread) 28%, transparent);
+  }
+
+  .wv-stats,
+  .wv-footer__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wv-stats div + div {
+    border-left: 0;
+    border-top: 1px solid var(--wv-rule-strong);
+  }
+}
