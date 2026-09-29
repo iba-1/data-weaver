@@ -1,7 +1,8 @@
 import { useMemo, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
 import { ImportWizard, type ImportReport, type ImportWizardEvent } from '@/components/import-wizard';
 import { createDemoHostApp, type DemoArtwork, type DemoField } from './demo/hostApp';
-import { demoFields, SAMPLE_FILE_NAME, SAMPLE_PATHS, SAMPLE_ROWS, sampleSpreadsheet } from './demo/outputShape';
+import { demoFields, downloadSample, SAMPLE_FILE_NAME, SAMPLE_PATHS, SAMPLE_ROWS } from './demo/outputShape';
 import { describeEvent } from './demo/events';
 import { HostAppConsole } from './demo/HostAppConsole';
 import './demo/demo.css';
@@ -18,17 +19,6 @@ const STEPS: ReadonlyArray<{ title: string; body: string }> = [
 
 /** The delay, in steps, of an element's entrance on page load */
 const reveal = (step: number) => ({ '--i': step }) as CSSProperties;
-
-function downloadSample() {
-  const url = URL.createObjectURL(sampleSpreadsheet());
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = SAMPLE_FILE_NAME;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
 
 const Index = () => {
   // One simulated archive for the page's lifetime: importing the same file twice rejects the repeats
@@ -61,6 +51,7 @@ const Index = () => {
         <span className="demo-wordmark">Data Weaver</span>
         <span className="demo-topbar__tag">Live demo · no AI Edit, no server</span>
         <nav className="demo-topbar__links">
+          <Link to="/features">Features</Link>
           <a href={`${REPO_URL}#readme`}>README</a>
           <a href={REPO_URL}>GitHub</a>
         </nav>

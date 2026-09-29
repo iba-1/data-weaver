@@ -94,3 +94,15 @@ export const SAMPLE_PATHS: ReadonlyArray<{ rows: string; path: string; detail: s
 export function sampleSpreadsheet(): Blob {
   return sheetToBlob([[...SAMPLE_HEADERS], ...SAMPLE_ROWS], { sheetName: 'Opere', format: 'xlsx' });
 }
+
+/** Hand the sample spreadsheet to the browser to download */
+export function downloadSample() {
+  const url = URL.createObjectURL(sampleSpreadsheet());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = SAMPLE_FILE_NAME;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
