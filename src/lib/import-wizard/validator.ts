@@ -9,7 +9,7 @@ import type {
   ValidationWarning,
 } from './types';
 import { TARGET_FIELDS } from './types';
-import { parseNumber } from './values';
+import { numberCellValue, settleNumberColumns } from './numberColumns';
 import { invalidDateError, parseCalendarDate } from './dates';
 import { checkChoice, coerceChoice } from './choices';
 import { validationIssue } from './messages';
@@ -28,15 +28,23 @@ export function validateRows<TRecord = ArtworkRecord, TKey extends string = Targ
   } = {}
 ): RowValidation<TRecord>[] {
   const { fields, requiredFields, customValidator, onRowParse } = options;
-  
-  return rows.map((row, index) => {
-    const result = validateRow<TRecord, TKey>(row, mappings, {
+
+  const validated = rows.map((row, index) =>
+    validateRow<TRecord, TKey>(row, mappings, {
       fields,
       requiredFields,
       customValidator,
       rowIndex: index,
-    });
-    
+    })
+  );
+
+  // Numbers like `1.500` are read with the decimal separator their column shows
+  const settled = settleNumberColumns(validated, fields, (row) =>
+    revalidateRow<TRecord, TKey>(row, { fields, requiredFields, customValidator })
+  );
+
+  return settled.map((result, index) => {
+    const row = rows[index];
     // Allow transformation via onRowParse
     if (onRowParse) {
       const transformed = onRowParse(index, row, result.data);
@@ -180,15 +188,22 @@ function validateRow<TRecord, TKey extends string>(
     data.valueCurrency = null;
   }
   
+  // The text of number cells, read again with their column once every row is read
+  const numberTexts: Record<string, string> = {};
+
   // Map values from source columns
   for (const mapping of mappings) {
     if (mapping.targetField) {
       const rawValue = row[mapping.sourceColumn];
       const field = fields?.find((f) => f.key === mapping.targetField);
       const value = processValue(rawValue, field);
+      if (field?.type === 'number' && typeof rawValue === 'string' && rawValue.trim() !== '') {
+        numberTexts[mapping.targetField] = rawValue.trim();
+      }
       // A cell that couldn't be read keeps its text, untransformed, and is flagged below
       const unreadable =
         (field?.type === 'date' && typeof value === 'string') ||
+        (field?.type === 'number' && typeof value === 'string') ||
         (field?.type === 'choice' && value !== null && checkChoice(value, field) !== null);
       
       // Apply transform if defined
@@ -246,6 +261,7 @@ function validateRow<TRecord, TKey extends string>(
     isValid: errors.length === 0,
     errors,
     warnings,
+    ...(Object.keys(numberTexts).length > 0 ? { numberTexts } : {}),
   };
 }
 
@@ -263,6 +279,9 @@ function checkFieldTypes<TKey extends string>(
   for (const field of fields ?? []) {
     const value = data[field.key];
     if (value === null || value === undefined || value === '') continue;
+    if (field.type === 'number' && typeof value === 'string') {
+      errors.push(validationIssue(field.key, { key: 'invalidNumber', params: { field: field.label } }));
+    }
     if (field.type === 'date' && !parseCalendarDate(value, field.dateOrder)) {
       errors.push(invalidDateError(field.key, field.label, field.dateOrder));
     }
@@ -299,14 +318,17 @@ function processValue(
   if (value === null || value === undefined || value === '') {
     return null;
   }
-  
+  // Excel number cells keep their value, whatever their display format
+  if (field?.type === 'number' && typeof value === 'number') return value;
+
   const stringValue = String(value).trim();
   
   const type = field?.type || 'string';
   
   switch (type) {
     case 'number':
-      return parseNumber(stringValue);
+      // Read without its column here; `settleNumberColumns` reads it again with it
+      return numberCellValue(stringValue, null);
     case 'boolean': {
       const lower = stringValue.toLowerCase();
       if (['true', 'yes', '1', 'on'].includes(lower)) return true;

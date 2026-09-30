@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { FieldConfig, RowEdit, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
 import { resolveRequiredKeys, revalidateRow } from '@/lib/import-wizard/validator';
 import { applyRowEdits } from '@/lib/import-wizard/edits';
+import { settleNumberColumns } from '@/lib/import-wizard/numberColumns';
 import { useHistory } from '@/hooks/useHistory';
 
 export interface ReviewRowsOptions<TRecord, TKey extends string> {
@@ -41,6 +42,12 @@ export function useReviewRows<TRecord, TKey extends string>(
     [fields, requiredFields, validateRow]
   );
 
+  // A change can settle how the other numbers of its column read (`1.500`)
+  const settle = useCallback(
+    (nextRows: RowValidation<TRecord>[]) => settleNumberColumns(nextRows, fields, revalidate),
+    [fields, revalidate]
+  );
+
   // Tell the parent about changes (edits, undo/redo), but not the initial rows it gave us
   const onRowsChangeRef = useRef(onRowsChange);
   useEffect(() => {
@@ -64,13 +71,15 @@ export function useReviewRows<TRecord, TKey extends string>(
       setRows((prevRows) => {
         const changed = applyRowEdits(prevRows, edits, fields);
         if (changed.size === 0) return prevRows;
-        return prevRows.map((row) => {
-          const edited = changed.get(row.rowIndex);
-          return edited ? revalidate(edited) : row;
-        });
+        return settle(
+          prevRows.map((row) => {
+            const edited = changed.get(row.rowIndex);
+            return edited ? revalidate(edited) : row;
+          })
+        );
       });
     },
-    [fields, revalidate, setRows]
+    [fields, revalidate, settle, setRows]
   );
 
   const editCell = useCallback(
@@ -83,12 +92,14 @@ export function useReviewRows<TRecord, TKey extends string>(
   const setExcluded = useCallback(
     (shouldExclude: (row: RowValidation<TRecord>) => boolean, excluded: boolean) => {
       setRows((prevRows) =>
-        prevRows.map((row) =>
-          shouldExclude(row) && !!row.excluded !== excluded ? { ...row, excluded } : row
+        settle(
+          prevRows.map((row) =>
+            shouldExclude(row) && !!row.excluded !== excluded ? { ...row, excluded } : row
+          )
         )
       );
     },
-    [setRows]
+    [settle, setRows]
   );
 
   const toggleExcluded = useCallback(

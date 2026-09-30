@@ -371,10 +371,25 @@ Empty cells become `null`.
 | Type      | Input example                                        | Result                                     |
 | --------- | ---------------------------------------------------- | ------------------------------------------ |
 | `string`  | `"  Hello World  "`                                  | `"Hello World"` (trimmed)                  |
-| `number`  | `"$1,234.56"`                                        | `1234.56` (`, $ € £ ¥` and spaces removed) |
+| `number`  | `"$1,234.56"`, `"1.500,00"`                         | `1234.56`, `1500` (`$ € £ ¥` and spaces removed; separators read as below) |
 | `boolean` | `"yes"`, `"true"`, `"1"`, `"on"` / `"no"`, `"false"`, `"0"`, `"off"` | `true` / `false`       |
 | `date`    | `"15/01/2024"`, `"2024-01-15"`                       | `Date` at midnight UTC of 15 January 2024 (see below) |
 | `choice`  | `"eur"`, `" Euro "` (with an option `{ value: 'EUR', label: 'Euro' }`) | `"EUR"`, the option's `value` (see below) |
+
+#### Numbers
+
+Spreadsheets write thousands and decimals both ways (`1.500,00` in Italy, `1,500.00` in the UK), so separators are read by what the value shows, and when it shows nothing, by its column:
+
+| Cell text | Read as |
+| --- | --- |
+| `1.500,00`, `1,500.00` | Both separators: the last is the decimal, **1500** |
+| `1.500.000`, `1,500,000` | A repeated separator is for thousands, **1500000** |
+| `1,5`, `1500.00`, `12.5`, `0.500` | A single separator not followed by exactly 3 digits (or after a lone `0`) is the decimal |
+| `1.250`, `1,250` | A single separator followed by exactly 3 digits could be either: it follows the **column**. If another value of the same column shows the decimal separator (`1.25`, `1.500,00`, `1,5`, `1.500.000`…), `1.250` is read that way; otherwise it is read as thousands (**1250**) and the cell gets a warning, *"1.250 was read as 1,250; check it"* |
+| Excel number cells | The number the cell holds, whatever its display format |
+| `1.50.0`, `12abc`, `N/A` | Not a number: the cell keeps its text and is flagged, never emptied or cut short |
+
+The column is read again after every edit, exclusion and Find & Replace, so fixing one cell can settle the others; Excluded Rows and empty cells don't count. A column whose values contradict each other (`1,5` and `2.5`) settles nothing.
 
 #### Dates
 
@@ -1174,6 +1189,8 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `aiEdit.dismiss` | - | `Dismiss` |
 | `validation.required` | field | `{field} is required` |
 | `validation.invalidDate` | field, format, dateOrder | `{field} is not a valid date (use {format} or YYYY-MM-DD)` |
+| `validation.invalidNumber` | field | `{field} is not a valid number` |
+| `validation.ambiguousNumber` | field, text, value | `{field}: {text} was read as {value}; check it` |
 | `validation.notAnOption` | field, options | `{field} must be one of: {options}` |
 | `validation.notAnOptionAndMore` | field, options, more | `{field} must be one of: {options} and {more} more` |
 | `validation.optionsNotLoaded` | field | `The options for {field} are not loaded` |

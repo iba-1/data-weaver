@@ -326,6 +326,14 @@ export interface MessageParams {
     required: { field: string };
     /** `format` is `DD/MM/YYYY` or `MM/DD/YYYY`, following the field's `dateOrder` */
     invalidDate: { field: string; format: string; dateOrder: DateOrder };
+    /** A number cell whose text isn't a number (`1.50.0`, `12abc`); it keeps its text */
+    invalidNumber: { field: string };
+    /**
+     * A number written with a single separator and exactly 3 digits after it
+     * (`1.500`) in a column that doesn't show which separator is the decimal:
+     * `text` is the cell as written, `value` how it was read (as thousands)
+     */
+    ambiguousNumber: { field: string; text: string; value: number };
     /** `options` is the first options' labels, comma-separated */
     notAnOption: { field: string; options: string };
     notAnOptionAndMore: { field: string; options: string; more: number };
@@ -596,6 +604,8 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
   validation: {
     required: '{field} is required',
     invalidDate: '{field} is not a valid date (use {format} or YYYY-MM-DD)',
+    invalidNumber: '{field} is not a valid number',
+    ambiguousNumber: '{field}: {text} was read as {value}; check it',
     notAnOption: '{field} must be one of: {options}',
     notAnOptionAndMore: '{field} must be one of: {options} and {more} more',
     optionsNotLoaded: 'The options for {field} are not loaded',

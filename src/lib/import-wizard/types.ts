@@ -204,6 +204,13 @@ export interface RowValidation<TRecord = ArtworkRecord> {
   warnings: ValidationWarning[];
   /** Set when the Importer deliberately left this row out of the import */
   excluded?: boolean;
+  /**
+   * The text each number cell was read from (the file's, or the Importer's
+   * edit), by field key. A number's reading can depend on its column (see
+   * `readNumber`), so the column is read again from these after every change.
+   * Cells the file held as numbers (Excel number cells) have none.
+   */
+  numberTexts?: Record<string, string>;
 }
 
 export interface ValidationError {
