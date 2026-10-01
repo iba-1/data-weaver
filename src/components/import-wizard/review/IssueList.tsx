@@ -122,10 +122,7 @@ function Groups({
           return (
             <li key={`${g.kind}${g.field}${g.message}`} className="flex items-center gap-3 text-sm">
               {strong ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-destructive px-2 py-0.5 text-xs font-semibold text-destructive-foreground">
-                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                  {m.review.issueError()}
-                </span>
+                <Icon className="h-4 w-4 shrink-0 text-destructive" aria-label={m.review.issueError()} />
               ) : (
                 <span className="sr-only">{m.review.issueWarning()}</span>
               )}

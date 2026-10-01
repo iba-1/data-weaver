@@ -211,9 +211,7 @@ function RowStatus<TRecord>({
           aria-label={`${isError ? m.review.issueError() : m.review.issueWarning()}: ${all.join(', ')}`}
         >
           {isError ? (
-            <span className="shrink-0 rounded bg-destructive px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">
-              {m.review.issueError()}
-            </span>
+            <AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
           ) : (
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning/70" aria-hidden="true" />
           )}
