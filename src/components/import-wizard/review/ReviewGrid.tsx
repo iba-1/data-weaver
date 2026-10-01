@@ -64,18 +64,23 @@ export function ReviewGrid<TRecord, TKey extends string>({
     <div
       ref={viewportRef}
       data-review-grid-viewport=""
-      className="rounded-lg border overflow-auto max-h-[520px]"
+      className="min-h-[240px] flex-1 overflow-auto rounded-lg border"
     >
       <table
-        className="w-full table-fixed caption-bottom text-sm"
+        className="table-fixed caption-bottom text-sm"
+        // Field columns share the width left after # and Status, never narrower than 180px:
+        // with more columns than fit, the grid scrolls sideways like a spreadsheet
+        style={{ width: '100%', minWidth: 96 + 260 + fields.length * 180 }}
         aria-rowcount={rows.length + 1}
       >
         <TableHeader className="sticky top-0 bg-background z-10 shadow-[inset_0_-1px_0_hsl(var(--border))]">
           <TableRow aria-rowindex={1} className="hover:bg-transparent">
-            <TableHead className="w-24 px-3">{m.review.rowNumberHeader()}</TableHead>
-            <TableHead className="w-16 px-3">{m.review.statusHeader()}</TableHead>
+            <TableHead className="sticky left-0 z-20 w-24 bg-background px-3">{m.review.rowNumberHeader()}</TableHead>
+            <TableHead className="sticky left-24 z-20 w-[260px] whitespace-nowrap border-r bg-background px-3">
+              {m.review.statusHeader()}
+            </TableHead>
             {fields.map((field) => (
-              <TableHead key={field.key} className="w-[180px] px-3 truncate" title={field.label}>
+              <TableHead key={field.key} className="truncate whitespace-nowrap px-3" title={field.label}>
                 {field.label}
                 {requiredKeys.includes(field.key) && <span className="text-destructive ml-1">*</span>}
               </TableHead>

@@ -70,7 +70,7 @@ function ReviewRowView<TRecord, TKey extends string>({
       style={{ height: REVIEW_ROW_HEIGHT }}
       aria-rowindex={ariaRowIndex}
     >
-      <TableCell className={cn(CELL, 'font-mono text-xs text-muted-foreground')}>
+      <TableCell className={cn(CELL, 'sticky left-0 z-[5] bg-background font-mono text-xs text-muted-foreground')}>
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -91,7 +91,7 @@ function ReviewRowView<TRecord, TKey extends string>({
           {rowNumber}
         </div>
       </TableCell>
-      <TableCell className={CELL}>
+      <TableCell className={cn(CELL, 'sticky left-24 z-[5] border-r bg-background')}>
         <RowStatus row={row} rejection={rejectionText} />
       </TableCell>
       {fields.map((field) => {
@@ -180,35 +180,37 @@ function RowStatus<TRecord>({ row, rejection }: { row: RowValidation<TRecord>; r
   if (row.excluded) {
     return <Ban className="h-4 w-4 text-muted-foreground" aria-label={m.review.excludedStatus()} />;
   }
-  if (rejection) {
-    return (
-      <Tooltip>
-        <TooltipTrigger aria-label={rejection}>
-          <XCircle className="h-4 w-4 text-destructive" aria-hidden="true" />
-        </TooltipTrigger>
-        <TooltipContent>{[rejection, ...row.errors.map((e) => issueText(m, e))].join(', ')}</TooltipContent>
-      </Tooltip>
-    );
-  }
-  if (!row.isValid) {
-    return (
-      <Tooltip>
-        <TooltipTrigger>
-          <AlertCircle className="h-4 w-4 text-destructive" />
-        </TooltipTrigger>
-        <TooltipContent>{row.errors.map((e) => issueText(m, e)).join(', ')}</TooltipContent>
-      </Tooltip>
-    );
-  }
-  if (row.warnings.length > 0) {
-    return (
-      <Tooltip>
-        <TooltipTrigger>
-          <AlertTriangle className="h-4 w-4 text-warning" />
-        </TooltipTrigger>
-        <TooltipContent>{row.warnings.map((w) => issueText(m, w)).join(', ')}</TooltipContent>
-      </Tooltip>
-    );
-  }
-  return <Check className="h-4 w-4 text-success" />;
+  const errors = [...(rejection ? [rejection] : []), ...row.errors.map((e) => issueText(m, e))];
+  const warnings = row.warnings.map((w) => issueText(m, w));
+  if (errors.length === 0 && warnings.length === 0) return <Check className="h-4 w-4 text-success" />;
+  // The first issue in words, errors first; the rest one hover or focus away
+  const isError = errors.length > 0;
+  const all = [...errors, ...warnings];
+  const Icon = rejection ? XCircle : isError ? AlertCircle : AlertTriangle;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className={cn('flex min-w-0 items-center gap-1.5 text-xs font-medium', isError ? 'text-destructive' : 'text-warning')}
+          aria-label={`${isError ? m.review.issueError() : m.review.issueWarning()}: ${all.join(', ')}`}
+        >
+          <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{all[0]}</span>
+          {all.length > 1 && (
+            <span className="shrink-0 rounded-full border border-current px-1.5 text-[10px] leading-4">
+              {m.review.moreIssues({ count: all.length - 1 })}
+            </span>
+          )}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <ul className="space-y-0.5">
+          {all.map((text, i) => (
+            <li key={i}>{text}</li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
 }

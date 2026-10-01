@@ -146,8 +146,10 @@ export function EditableCell({
         'cursor-text rounded px-2 py-1 -mx-1 min-h-[28px] transition-all',
         'hover:bg-muted/60 hover:ring-1 hover:ring-border',
         'focus:outline-none focus:ring-2 focus:ring-primary',
-        hasError && 'text-destructive bg-destructive/5',
-        hasWarning && !hasError && 'text-warning bg-warning/5',
+        // The cell at fault is marked on its own: tint, inset border and a corner mark
+        (hasError || hasWarning) && 'relative ring-1 ring-inset after:absolute after:right-0 after:top-0 after:border-[5px] after:border-transparent after:content-[""]',
+        hasError && 'bg-destructive/10 text-destructive ring-destructive/60 after:border-r-destructive after:border-t-destructive',
+        hasWarning && !hasError && 'bg-warning/15 text-warning ring-warning/60 after:border-r-warning after:border-t-warning',
         isHighlighted && 'bg-primary/20 ring-1 ring-primary/40',
         className
       )}
@@ -164,7 +166,7 @@ export function EditableCell({
       title={message}
     >
       {value !== null && value !== undefined ? (
-        <span className="max-w-[180px] truncate block text-sm">{cellText(value)}</span>
+        <span className="block truncate text-sm">{cellText(value)}</span>
       ) : (
         <span className="text-muted-foreground/60 italic text-sm">{m.cell.empty()}</span>
       )}

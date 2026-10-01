@@ -2,6 +2,7 @@
  * Data Weaver - type definitions
  */
 
+import type { ReactNode } from 'react';
 import type { DateOrder } from './dates';
 import type { PartialMessageCatalogue, ValidationMessageRef } from './messages';
 
@@ -637,7 +638,18 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
    * @default DEFAULT_MESSAGES (English)
    */
   messages?: PartialMessageCatalogue;
-  
+
+  /**
+   * A proposed Column Match scoring below this is an Uncertain Match: highlighted,
+   * and the Importer must confirm or change it before continuing. Scores: 1 a
+   * header equal to a keyword, 0.8 containing one, 0.6 sharing its first three letters.
+   * @default 0.7
+   */
+  uncertainMatchBelow?: number;
+
+  /** The Host App's help, shown on the upload step under the drop area */
+  uploadHelp?: ReactNode;
+
   /**
    * Custom CSS class
    */

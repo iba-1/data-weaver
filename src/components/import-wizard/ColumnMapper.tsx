@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowRight, Check, Sparkles, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { AlertTriangle, ArrowRight, Check, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ColumnMapping, FieldConfig } from '@/lib/import-wizard/types';
 import { getUnmappedTargetFields } from '@/lib/import-wizard/matcher';
@@ -17,7 +17,11 @@ interface ColumnMapperProps<TKey extends string = string> {
   onConfirm: () => void;
   isLoading?: boolean;
   className?: string;
+  /** A proposed Column Match scoring below this is an Uncertain Match (default 0.7) */
+  uncertainMatchBelow?: number;
 }
+
+export const DEFAULT_UNCERTAIN_MATCH_BELOW = 0.7;
 
 /** Mapping step: match the file's columns to the Output Shape's fields */
 export function ColumnMapper<TKey extends string = string>(props: ColumnMapperProps<TKey>) {
@@ -35,8 +39,14 @@ function ColumnMapperContent<TKey extends string = string>({
   onConfirm,
   isLoading = false,
   className,
+  uncertainMatchBelow = DEFAULT_UNCERTAIN_MATCH_BELOW,
 }: ColumnMapperProps<TKey>) {
   const m = useMessages();
+  const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(new Set());
+  const isUncertain = (mapping: ColumnMapping<TKey>) =>
+    mapping.isAutoMatched && !!mapping.targetField && mapping.confidence < uncertainMatchBelow && !confirmed.has(mapping.sourceColumn);
+  const uncertainCount = mappings.filter(isUncertain).length;
+  const confirm = (sourceColumn: string) => setConfirmed((prev) => new Set(prev).add(sourceColumn));
   const unmappedTargetFields = getUnmappedTargetFields(mappings, fields);
   const mappedCount = mappings.filter((m) => m.targetField !== null).length;
   const requiredFields = fields.filter((f) => f.required);
@@ -85,7 +95,12 @@ function ColumnMapperContent<TKey extends string = string>({
             mapping={mapping}
             fields={fields}
             unmappedTargetFields={unmappedTargetFields}
-            onMappingChange={onMappingChange}
+            onMappingChange={(sourceColumn, targetField) => {
+              confirm(sourceColumn);
+              onMappingChange(sourceColumn, targetField);
+            }}
+            uncertain={isUncertain(mapping)}
+            onConfirm={() => confirm(mapping.sourceColumn)}
           />
         ))}
       </div>
@@ -102,12 +117,19 @@ function ColumnMapperContent<TKey extends string = string>({
         </div>
       )}
 
+      {uncertainCount > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <p className="text-sm font-medium text-warning">{m.mapping.uncertainPending({ count: uncertainCount })}</p>
+        </div>
+      )}
+
       {/* Confirm button */}
       <Button
         onClick={onConfirm}
         className="w-full"
         size="lg"
-        disabled={missingRequired.length > 0}
+        disabled={missingRequired.length > 0 || uncertainCount > 0}
       >
         {m.mapping.continue()}
         <ArrowRight className="ml-2 h-4 w-4" />
@@ -121,6 +143,8 @@ interface MappingRowProps<TKey extends string> {
   fields: FieldConfig<TKey>[];
   unmappedTargetFields: FieldConfig<TKey>[];
   onMappingChange: (sourceColumn: string, targetField: TKey | null) => void;
+  uncertain: boolean;
+  onConfirm: () => void;
 }
 
 function MappingRow<TKey extends string>({
@@ -128,6 +152,8 @@ function MappingRow<TKey extends string>({
   fields,
   unmappedTargetFields,
   onMappingChange,
+  uncertain,
+  onConfirm,
 }: MappingRowProps<TKey>) {
   const m = useMessages();
   const currentTarget = mapping.targetField
@@ -144,8 +170,10 @@ function MappingRow<TKey extends string>({
     <div
       className={cn(
         'mapping-card flex items-center gap-[12px]',
-        mapping.targetField && 'mapping-matched'
+        mapping.targetField && !uncertain && 'mapping-matched',
+        uncertain && 'border-warning bg-warning/10'
       )}
+      style={uncertain ? { background: 'hsl(var(--warning) / 0.12)', borderColor: 'hsl(var(--warning))' } : undefined}
     >
       {/* Source column */}
       <div className="flex-1 min-w-0">
@@ -153,7 +181,12 @@ function MappingRow<TKey extends string>({
           <span className="font-medium text-foreground truncate">
             {mapping.sourceColumn}
           </span>
-          {mapping.isAutoMatched && mapping.targetField && (
+          {uncertain ? (
+            <Badge variant="outline" className="shrink-0 border-warning/60 text-xs text-warning">
+              <AlertTriangle className="mr-1 h-3 w-3" />
+              {m.mapping.uncertainBadge()}
+            </Badge>
+          ) : mapping.isAutoMatched && mapping.targetField && (
             <Badge variant="outline" className="shrink-0 text-xs">
               <Sparkles className="mr-1 h-3 w-3" />
               {m.mapping.autoBadge()}
@@ -192,9 +225,14 @@ function MappingRow<TKey extends string>({
         </Select>
       </div>
 
-      {/* Status indicator */}
-      <div className="w-6 shrink-0">
-        {mapping.targetField ? (
+      {/* Status indicator: an Uncertain Match asks to be confirmed instead */}
+      <div className={cn('shrink-0', uncertain ? 'w-auto' : 'w-6')}>
+        {uncertain ? (
+          <Button size="sm" variant="outline" className="h-8 border-warning/60" onClick={onConfirm}>
+            <Check className="mr-1 h-4 w-4" aria-hidden="true" />
+            {m.mapping.confirmMatch()}
+          </Button>
+        ) : mapping.targetField ? (
           <Check className="h-5 w-5 text-success" />
         ) : (
           <X className="h-5 w-5 text-muted-foreground" />

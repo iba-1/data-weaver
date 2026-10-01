@@ -10,6 +10,7 @@ import { useFindReplace } from './review/useFindReplace';
 import { useUndoRedoShortcuts } from './review/useUndoRedoShortcuts';
 import { ReviewSummary } from './review/ReviewSummary';
 import { ReviewToolbar } from './review/ReviewToolbar';
+import { IssueList } from './review/IssueList';
 import { ReviewGrid } from './review/ReviewGrid';
 import { ReviewActions } from './review/ReviewActions';
 import { useMessages } from './messages';
@@ -95,7 +96,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   }
 
   return (
-    <div ref={containerRef} className={cn('space-y-4', className)}>
+    <div ref={containerRef} className={cn('flex min-h-0 flex-1 flex-col gap-4', className)}>
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -104,6 +105,8 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           </div>
           <ReviewSummary summary={summary} filter={view.filter} onFilterChange={view.setFilter} />
         </div>
+
+        <IssueList rows={rows} fields={fields} onFilterChange={view.setFilter} />
 
         <ReviewToolbar
           rows={rows}
@@ -125,7 +128,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
         <p className="text-sm text-muted-foreground" aria-live="polite">
           {view.visibleRows.length === view.totalRows
             ? m.review.rowCount({ count: view.totalRows })

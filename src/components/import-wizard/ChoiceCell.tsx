@@ -58,7 +58,7 @@ export function ChoiceCell({
         )}
       >
         {text ? (
-          <span className="max-w-[180px] truncate">{text}</span>
+          <span className="truncate">{text}</span>
         ) : (
           <span className="text-muted-foreground/60 italic">{m.cell.empty()}</span>
         )}

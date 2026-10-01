@@ -53,6 +53,10 @@ export interface MessageParams {
     doNotImport: void;
     /** `fields` is the missing fields' labels, comma-separated */
     missingRequired: { fields: string; count: number };
+    /** An Uncertain Match: the badge, the button that confirms it, and the line under the list */
+    uncertainBadge: void;
+    confirmMatch: void;
+    uncertainPending: { count: number };
     continue: void;
   };
   /** Loading choice fields' options before the review opens */
@@ -78,6 +82,15 @@ export interface MessageParams {
     noFilterMatches: void;
     rowNumberHeader: void;
     statusHeader: void;
+    /** The issue list above the grid */
+    issuesTitle: void;
+    issueError: void;
+    issueWarning: void;
+    /** `field` is the field's label; `message` the issue's text */
+    issueGroup: { field: string; message: string; count: number };
+    showIssueRows: void;
+    /** More issues on the same row than its status cell shows */
+    moreIssues: { count: number };
     /** `row` is the row's number as the Importer sees it, starting at 1 */
     excludeRow: { row: number };
     includeRow: { row: number };
@@ -400,6 +413,9 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     selectField: 'Select field...',
     doNotImport: "Don't import",
     missingRequired: 'Missing required fields: {fields}',
+    uncertainBadge: 'Check',
+    confirmMatch: 'Confirm',
+    uncertainPending: (p) => `${plural(p.count, 'column', 'columns')} to check: confirm the match or pick another field`,
     continue: 'Continue to Validation',
   },
   options: {
@@ -421,6 +437,12 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     noFilterMatches: 'No rows match the current filter',
     rowNumberHeader: '#',
     statusHeader: 'Status',
+    issuesTitle: 'What to fix',
+    issueError: 'Error',
+    issueWarning: 'Warning',
+    issueGroup: (p) => `${p.field}: ${p.message}`,
+    showIssueRows: 'Show rows',
+    moreIssues: '+{count}',
     excludeRow: 'Exclude row {row}',
     includeRow: 'Include row {row}',
     excludeRowHint: 'Leave this row out of the import',
