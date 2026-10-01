@@ -1,11 +1,12 @@
 import type { FieldConfig, RowEdit, RowValidation } from './types';
-import { parseNumber } from './values';
+import { numberCellValue } from './numberColumns';
 import { parseCalendarDate } from './dates';
 import { coerceChoice } from './choices';
 
 /**
  * Turn a value typed or proposed during review into the field's type:
- * numbers lose currency symbols and separators, dates become UTC calendar
+ * numbers are read by the separator rules (`readNumber`; text that isn't a
+ * number is kept, for validation to flag), dates become UTC calendar
  * dates (text that isn't a date is kept, for validation to flag), choices
  * become the canonical value of the option they are a Normalised Match of
  * (other text is kept, for validation to flag), and empty strings become null.
@@ -19,7 +20,8 @@ export function coerceEditedValue(
     return coerceChoice(value, field);
   }
   if (field?.type === 'number' && typeof value === 'string') {
-    return parseNumber(value);
+    // Read without its column; the review reads the column again after the edit
+    return value.trim() === '' ? null : numberCellValue(value, null);
   }
   if (field?.type === 'date' && typeof value === 'string') {
     const text = value.trim();
@@ -47,14 +49,21 @@ export function applyRowEdits<TRecord>(
     if (!row) continue;
 
     const data = { ...(row.data as Record<string, unknown>) };
+    let numberTexts = row.numberTexts;
     let modified = false;
     for (const [key, value] of Object.entries(edit.changes)) {
       const field = fields.find((f) => f.key === key);
       if (!field) continue;
       data[key] = coerceEditedValue(value, field);
+      if (field.type === 'number') {
+        // The edit's text is what the column reads from now on
+        const { [key]: _previous, ...rest } = numberTexts ?? {};
+        const text = typeof value === 'string' ? value.trim() : '';
+        numberTexts = text ? { ...rest, [key]: text } : rest;
+      }
       modified = true;
     }
-    if (modified) changed.set(edit.rowIndex, { ...row, data: data as TRecord });
+    if (modified) changed.set(edit.rowIndex, { ...row, data: data as TRecord, numberTexts });
   }
 
   return changed;

@@ -20,7 +20,7 @@ async function renderPage() {
   // The review holds the whole sample, row 11 (no title) flagged
   const review = document.getElementById('piece-review')!;
   await within(review).findByText('12 rows', undefined, { timeout: 5000 });
-  expect(within(review).getByText('1 Errors')).toBeInTheDocument();
+  expect(within(review).getByText('Blocked 1')).toBeInTheDocument();
   await screen.findByText(/^Several matches/, undefined, { timeout: 5000 });
   return result;
 }

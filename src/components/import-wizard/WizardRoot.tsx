@@ -48,7 +48,7 @@ export function WizardRoot({ className, messages, children }: WizardRootProps) {
           <PortalContainerContext.Provider value={portalContainer}>
             {/* Scoped styles only match descendants of .dw-root, so layout
                 classes go on an inner element rather than the root itself */}
-            <div className="dw-root">
+            <div className="dw-root" style={{ height: '100%' }}>
               <div className={className}>{children}</div>
               <div ref={setPortalContainer} className="dw-portal" />
             </div>

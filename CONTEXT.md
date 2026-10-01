@@ -48,6 +48,16 @@ _Avoid_: duplicates
 A row the Importer has deliberately left out of the import. The Host App is told which rows were excluded; rows are never dropped silently.
 _Avoid_: skipped row, ignored row, dropped row
 
+### Mapping
+
+**Column Match**:
+A column of the Importer's file paired with a field of the Output Shape. Data Weaver proposes Column Matches from each field's keywords; the Importer can change any of them.
+_Avoid_: mapping (as a noun for one pair), binding
+
+**Uncertain Match**:
+A proposed Column Match whose header resembles the field's keywords only weakly, below the Host App's threshold. It is highlighted and must be confirmed or changed by the Importer before the import can continue.
+_Avoid_: low-confidence match, fuzzy match, suggestion
+
 ### Lifecycle
 
 **Commit**:

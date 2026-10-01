@@ -20,12 +20,11 @@ describe('parseNumber', () => {
     ['£1 000', 1000],
     ['¥500', 500],
     ['-12', -12],
-    ['12abc', 12],
   ])('reads %s as %s', (text, expected) => {
     expect(parseNumber(text)).toBe(expected);
   });
 
-  it.each(['', 'abc', 'N/A', '$'])('reads %j as no number', (text) => {
+  it.each(['', 'abc', 'N/A', '$', '12abc'])('reads %j as no number', (text) => {
     expect(parseNumber(text)).toBeNull();
   });
 });

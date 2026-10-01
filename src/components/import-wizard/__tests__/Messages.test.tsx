@@ -165,7 +165,12 @@ describe('message catalogue', () => {
     expect(screen.getByRole('combobox', { name: 'Valuta, row 3' })).toHaveAccessibleDescription(
       'Valuta: scegli tra Euro, US dollar'
     );
-    expect(await statusTooltip(3)).toHaveTextContent('Valuta: scegli tra Euro, US dollar, Opera già presente');
+    // The row's issues are listed one per line in its status tooltip
+    const tooltip = await statusTooltip(3);
+    expect(within(tooltip).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Valuta: scegli tra Euro, US dollar',
+      'Opera già presente',
+    ]);
 
     // The Host App hears the English text plus the key and parameters, to translate as it likes
     const validated = onEvent.mock.calls.map(([e]) => e).find((e) => e.type === 'DATA_VALIDATED');
@@ -366,6 +371,16 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     await reviewMarked();
     expectAllMarked();
 
+    // Each entry of the summary opens the guide above the grid, all of it from the catalogue
+    const fixButtons = () => screen.getAllByRole('button', { name: /^⟦review\.summaryFix⟧/ });
+    expect(fixButtons().length).toBeGreaterThan(1);
+    for (let i = 0; i < fixButtons().length; i++) {
+      fireEvent.click(fixButtons()[i]);
+      expect(screen.getByRole('button', { name: '⟦review.guideShowAll⟧' })).toBeInTheDocument();
+      expectAllMarked();
+      fireEvent.click(screen.getByRole('button', { name: '⟦review.guideShowAll⟧' }));
+    }
+
     // Tooltips: row status (Data Weaver's validation messages), exclude, toolbar, undo/redo
     for (const n of [2, 4]) {
       await statusTooltip(n);
@@ -409,7 +424,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     fireEvent.click(screen.getByText('⟦review.filterErrors⟧'));
     expect(screen.getByText('⟦review.noFilterMatches⟧')).toBeInTheDocument();
     expectAllMarked();
-    fireEvent.click(screen.getByText('⟦review.filterValid⟧'));
+    fireEvent.click(screen.getByText('⟦review.filterAll⟧'));
 
     // A text cell being edited, and a choice cell's picker
     fireEvent.click(screen.getByText('Achrome'));
@@ -559,7 +574,7 @@ describe('every piece of text the Importer sees comes from the catalogue', () =>
     expect(screen.getByRole('button', { name: '⟦fix.back⟧' })).toBeInTheDocument();
     // Pinned to Concetto spaziale's title cell, and on each row's status
     expect(within(gridRow(1)).getAllByRole('gridcell')[0]).toHaveAttribute('title', '⟦fix.rejected⟧');
-    expect(within(gridRow(2)).getByLabelText('⟦fix.rejected⟧')).toBeInTheDocument();
+    expect(within(gridRow(2)).getByLabelText(/⟦fix.rejected⟧/)).toBeInTheDocument();
     expect(await statusTooltip(2)).toHaveTextContent('⟦fix.rejected⟧');
     expectAllMarked();
 

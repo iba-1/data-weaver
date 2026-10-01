@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Ban, CheckCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Ban, Rows3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { getValidationSummary } from '@/lib/import-wizard/validator';
 import { Badge } from '@/components/ui/badge';
@@ -11,40 +11,42 @@ interface ReviewSummaryProps {
   onFilterChange: (filter: RowFilter) => void;
 }
 
-/** Valid / warning / error / excluded counts; each badge filters the grid to those rows */
+/**
+ * All / blocked / with warnings / excluded rows, each badge filtering the grid
+ * to those rows, and how many rows the import will send. Blocked rows are the
+ * loud one; warnings stay quiet.
+ */
 export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummaryProps) {
   const m = useMessages();
+  const importable = summary.valid + summary.withWarnings;
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Badge
         variant={filter === 'all' ? 'default' : 'outline'}
         className="cursor-pointer"
         onClick={() => onFilterChange('all')}
       >
-        <CheckCircle className="mr-1 h-3 w-3" />
-        {m.review.filterValid({ count: summary.valid })}
-      </Badge>
-      <Badge
-        variant={filter === 'warnings' ? 'default' : 'outline'}
-        className={cn(
-          'cursor-pointer',
-          summary.withWarnings > 0 && filter !== 'warnings' && 'border-warning text-warning'
-        )}
-        onClick={() => onFilterChange('warnings')}
-      >
-        <AlertTriangle className="mr-1 h-3 w-3" />
-        {m.review.filterWarnings({ count: summary.withWarnings })}
+        <Rows3 className="mr-1 h-3 w-3" />
+        {m.review.filterAll({ count: summary.total })}
       </Badge>
       <Badge
         variant={filter === 'errors' ? 'default' : 'outline'}
         className={cn(
           'cursor-pointer',
-          summary.withErrors > 0 && filter !== 'errors' && 'border-destructive text-destructive'
+          summary.withErrors > 0 && filter !== 'errors' && 'border-destructive bg-destructive text-destructive-foreground hover:bg-destructive/90'
         )}
         onClick={() => onFilterChange('errors')}
       >
         <AlertCircle className="mr-1 h-3 w-3" />
         {m.review.filterErrors({ count: summary.withErrors })}
+      </Badge>
+      <Badge
+        variant={filter === 'warnings' ? 'default' : 'outline'}
+        className={cn('cursor-pointer', filter !== 'warnings' && 'text-muted-foreground')}
+        onClick={() => onFilterChange('warnings')}
+      >
+        <AlertTriangle className="mr-1 h-3 w-3" />
+        {m.review.filterWarnings({ count: summary.withWarnings })}
       </Badge>
       <Badge
         variant={filter === 'excluded' ? 'default' : 'outline'}
@@ -54,6 +56,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
         <Ban className="mr-1 h-3 w-3" />
         {m.review.filterExcluded({ count: summary.excluded })}
       </Badge>
+      <span className="text-sm font-medium text-foreground">{m.review.importableCount({ count: importable })}</span>
     </div>
   );
 }

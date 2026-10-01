@@ -103,7 +103,7 @@ describe('review step', () => {
   it('the error badge filters the grid to rows with errors', () => {
     renderReview([row(0, { name: 'Ada', price: 5 }), row(1, { name: null, price: 7 }, false)]);
 
-    fireEvent.click(screen.getByText(/1 errors/i));
+    fireEvent.click(screen.getByText('Blocked 1'));
 
     expect(screen.queryByText('Ada')).not.toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
@@ -146,7 +146,7 @@ describe('review step', () => {
     renderReview([row(0, { name: 'Ada', price: null }), row(1, { name: 'Grace', price: null })]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Exclude row 2' }));
-    fireEvent.click(screen.getByText('1 Excluded'));
+    fireEvent.click(screen.getByText('Excluded 1'));
 
     expect(screen.queryByText('Ada')).not.toBeInTheDocument();
     expect(screen.getByText('Grace')).toBeInTheDocument();
@@ -239,7 +239,7 @@ describe('review step with 10,000 rows', () => {
   it('the error badge finds errors anywhere in the file', () => {
     renderReview(bigFile([4_200, 9_876]));
 
-    fireEvent.click(screen.getByText(/2 errors/i));
+    fireEvent.click(screen.getByText('Blocked 2'));
 
     expect(screen.getByText(`2 of ${TOTAL} rows`)).toBeInTheDocument();
     expect(renderedRows()).toHaveLength(2);

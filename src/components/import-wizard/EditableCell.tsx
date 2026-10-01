@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,10 @@ interface EditableCellProps {
   hasError?: boolean;
   hasWarning?: boolean;
   isHighlighted?: boolean;
-  /** The error or warning to show on the cell (as its tooltip) */
+  /** The error or warning to show on the cell (as its tooltip, and as the editor's description) */
   message?: string;
+  /** Accessible name of the cell and its editor, e.g. "Titolo, riga 3" */
+  label?: string;
   className?: string;
 }
 
@@ -24,9 +26,11 @@ export function EditableCell({
   hasWarning = false,
   isHighlighted = false,
   message,
+  label,
   className,
 }: EditableCellProps) {
   const m = useMessages();
+  const messageId = useId();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -111,8 +115,16 @@ export function EditableCell({
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
+          aria-label={label}
+          aria-invalid={hasError || undefined}
+          aria-describedby={message ? messageId : undefined}
           className="h-7 text-sm py-0 px-2 flex-1"
         />
+        {message && (
+          <span id={messageId} className="sr-only">
+            {message}
+          </span>
+        )}
         <div className="editable-cell-actions flex items-center">
           <Button
             variant="ghost"
@@ -146,8 +158,11 @@ export function EditableCell({
         'cursor-text rounded px-2 py-1 -mx-1 min-h-[28px] transition-all',
         'hover:bg-muted/60 hover:ring-1 hover:ring-border',
         'focus:outline-none focus:ring-2 focus:ring-primary',
-        hasError && 'text-destructive bg-destructive/5',
-        hasWarning && !hasError && 'text-warning bg-warning/5',
+        // The cell at fault is marked on its own: tint, inset border and a corner mark
+        // An error cell is filled and outlined; a warning cell only gets a small corner mark
+        (hasError || hasWarning) && 'relative after:absolute after:right-0 after:top-0 after:border-transparent after:content-[""]',
+        hasError && 'bg-destructive/15 font-medium text-destructive ring-2 ring-inset ring-destructive after:border-[6px] after:border-r-destructive after:border-t-destructive',
+        hasWarning && !hasError && 'after:border-[4px] after:border-r-warning/70 after:border-t-warning/70',
         isHighlighted && 'bg-primary/20 ring-1 ring-primary/40',
         className
       )}
@@ -161,10 +176,16 @@ export function EditableCell({
       tabIndex={0}
       role="gridcell"
       aria-invalid={hasError || undefined}
+      aria-describedby={message ? messageId : undefined}
       title={message}
     >
+      {message && (
+        <span id={messageId} className="sr-only">
+          {message}
+        </span>
+      )}
       {value !== null && value !== undefined ? (
-        <span className="max-w-[180px] truncate block text-sm">{cellText(value)}</span>
+        <span className="block truncate text-sm">{cellText(value)}</span>
       ) : (
         <span className="text-muted-foreground/60 italic text-sm">{m.cell.empty()}</span>
       )}

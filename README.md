@@ -371,10 +371,25 @@ Empty cells become `null`.
 | Type      | Input example                                        | Result                                     |
 | --------- | ---------------------------------------------------- | ------------------------------------------ |
 | `string`  | `"  Hello World  "`                                  | `"Hello World"` (trimmed)                  |
-| `number`  | `"$1,234.56"`                                        | `1234.56` (`, $ € £ ¥` and spaces removed) |
+| `number`  | `"$1,234.56"`, `"1.500,00"`                         | `1234.56`, `1500` (`$ € £ ¥` and spaces removed; separators read as below) |
 | `boolean` | `"yes"`, `"true"`, `"1"`, `"on"` / `"no"`, `"false"`, `"0"`, `"off"` | `true` / `false`       |
 | `date`    | `"15/01/2024"`, `"2024-01-15"`                       | `Date` at midnight UTC of 15 January 2024 (see below) |
 | `choice`  | `"eur"`, `" Euro "` (with an option `{ value: 'EUR', label: 'Euro' }`) | `"EUR"`, the option's `value` (see below) |
+
+#### Numbers
+
+Spreadsheets write thousands and decimals both ways (`1.500,00` in Italy, `1,500.00` in the UK), so separators are read by what the value shows, and when it shows nothing, by its column:
+
+| Cell text | Read as |
+| --- | --- |
+| `1.500,00`, `1,500.00` | Both separators: the last is the decimal, **1500** |
+| `1.500.000`, `1,500,000` | A repeated separator is for thousands, **1500000** |
+| `1,5`, `1500.00`, `12.5`, `0.500` | A single separator not followed by exactly 3 digits (or after a lone `0`) is the decimal |
+| `1.250`, `1,250` | A single separator followed by exactly 3 digits could be either: it follows the **column**. If another value of the same column shows the decimal separator (`1.25`, `1.500,00`, `1,5`, `1.500.000`…), `1.250` is read that way; otherwise it is read as thousands (**1250**) and the cell gets a warning, *"1.250 was read as 1,250; check it"* |
+| Excel number cells | The number the cell holds, whatever its display format |
+| `1.50.0`, `12abc`, `N/A` | Not a number: the cell keeps its text and is flagged, never emptied or cut short |
+
+The column is read again after every edit, exclusion and Find & Replace, so fixing one cell can settle the others; Excluded Rows and empty cells don't count. A column whose values contradict each other (`1,5` and `2.5`) settles nothing.
 
 #### Dates
 
@@ -1013,6 +1028,9 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `mapping.selectField` | - | `Select field...` |
 | `mapping.doNotImport` | - | `Don't import` |
 | `mapping.missingRequired` | fields, count | `Missing required fields: {fields}` |
+| `mapping.uncertainBadge` | - | `Check` |
+| `mapping.confirmMatch` | - | `Confirm` |
+| `mapping.uncertainPending` | count | `1 column to check: confirm the match or pick another field` |
 | `mapping.continue` | - | `Continue to Validation` |
 | `options.loading` | fields, count | `Loading the options for {fields}…` |
 | `options.loadFailed` | field, reason | `Could not load the options for {field}: {reason}` |
@@ -1022,14 +1040,61 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `review.description` | - | `Review, search, and fix data before importing` |
 | `review.rowCount` | count | `1 row`, `10,000 rows` |
 | `review.rowCountFiltered` | visible, total | `12 of 10,000 rows` |
-| `review.filterValid` | count | `{count} Valid` |
-| `review.filterWarnings` | count | `{count} Warnings` |
-| `review.filterErrors` | count | `{count} Errors` |
-| `review.filterExcluded` | count | `{count} Excluded` |
+| `review.filterAll` | count | `All 14` |
+| `review.filterWarnings` | count | `With warnings 4` |
+| `review.filterErrors` | count | `Blocked 5` |
+| `review.filterExcluded` | count | `Excluded 0` |
+| `review.importableCount` | count | `9 rows will be imported` |
 | `review.noSearchMatches` | - | `No rows match your search` |
 | `review.noFilterMatches` | - | `No rows match the current filter` |
 | `review.rowNumberHeader` | - | `#` |
 | `review.statusHeader` | - | `Status` |
+| `review.summaryBlocked` | count | `5 rows to fix before importing` |
+| `review.summaryClear` | - | `Nothing blocks the import` |
+| `review.summaryRows` | count | `1 row`, `8 rows` |
+| `review.summaryFix` | - | `Fix` |
+| `review.summaryReview` | - | `Review` |
+| `review.summaryMore` | count | `Show 2 more` |
+| `review.summaryLess` | - | `Show fewer` |
+| `review.warningsTitle` | count | `5 warnings · they don't block the import` |
+| `review.acceptNotes` | - | `Mark all as seen` |
+| `review.notesAccepted` | count | `5 warnings marked as seen` |
+| `review.undoAcceptNotes` | - | `Undo` |
+| `review.groupRequired` | field | `{field} missing` |
+| `review.groupNotAnOption` | field | `{field}: value not recognised` |
+| `review.groupInvalidNumber` | field | `{field}: not a number` |
+| `review.groupInvalidDate` | field | `{field}: date not recognised` |
+| `review.groupAmbiguousNumber` | field | `{field}: number to check` |
+| `review.groupOther` | field, message | `{field}: {message}` |
+| `review.guideLabel` | - | `Fixing` |
+| `review.guideRows` | count | `1 row`, `8 rows` |
+| `review.guideShowAll` | - | `Show all rows` |
+| `review.guideRequired` | field | `{field} is empty. Fill it in, in each highlighted cell.` |
+| `review.guideNotAnOption` | field, value | `"{value}" is not one of the accepted values for {field}. Choose one from the list.` |
+| `review.guideInvalidNumber` | field, value, example | `"{value}" contains text. Enter a number, for example {example}, checking the value to record.` |
+| `review.guideInvalidNumberNoExample` | field, value | `"{value}" is not a number. Enter it in digits.` |
+| `review.guideInvalidDate` | field, value, format | `"{value}" is not a date. Enter it as {format} or YYYY-MM-DD.` |
+| `review.guideAmbiguousNumber` | field, text, value | `{text} was read as {value}. If you meant another number, correct the cell.` |
+| `review.guideOther` | field, message | `{message}` |
+| `review.guideNotBlocking` | - | `This doesn't block the import.` |
+| `review.guideValueRows` | value, count | `"metri" · 3 rows` |
+| `review.guideChoose` | value | `Value to use instead of "{value}"` |
+| `review.guideChoosePlaceholder` | - | `Choose a value` |
+| `review.guideApply` | value, replacement, count | `Replace "metri" with "M" in 3 rows` |
+| `review.guideApplyPending` | count | `Apply to 3 rows` |
+| `review.guideEachCell` | - | `You can also edit the highlighted cells one by one.` |
+| `review.guideFirst` | - | `Go to the first cell to fix` |
+| `review.guideNext` | - | `Next cell to fix` |
+| `review.guideGoToRow` | row | `Go to row {row}` |
+| `review.guideExclude` | count | `Exclude this row`, `Exclude these 4 rows` |
+| `review.guideExcludeHint` | - | `Excluded rows aren't imported; you can include them again at any time.` |
+| `review.guideResolved` | - | `Problem solved` |
+| `review.guideNextProblem` | - | `Next problem` |
+| `review.guideUndo` | - | `Undo` |
+| `review.blockedHint` | count | `Fix or exclude 5 rows first` |
+| `review.statusErrors` | count | `1 error`, `2 errors` |
+| `review.statusWarnings` | count | `1 warning`, `2 warnings` |
+| `review.statusOk` | - | `No problems` |
 | `review.excludeRow` | row | `Exclude row {row}` |
 | `review.includeRow` | row | `Include row {row}` |
 | `review.excludeRowHint` | - | `Leave this row out of the import` |
@@ -1174,6 +1239,8 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `aiEdit.dismiss` | - | `Dismiss` |
 | `validation.required` | field | `{field} is required` |
 | `validation.invalidDate` | field, format, dateOrder | `{field} is not a valid date (use {format} or YYYY-MM-DD)` |
+| `validation.invalidNumber` | field | `{field} is not a valid number` |
+| `validation.ambiguousNumber` | field, text, value | `{field}: {text} was read as {value}; check it` |
 | `validation.notAnOption` | field, options | `{field} must be one of: {options}` |
 | `validation.notAnOptionAndMore` | field, options, more | `{field} must be one of: {options} and {more} more` |
 | `validation.optionsNotLoaded` | field | `The options for {field} are not loaded` |

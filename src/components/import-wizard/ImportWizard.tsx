@@ -104,6 +104,8 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
   messages,
   className,
+  uncertainMatchBelow,
+  uploadHelp,
 }: ImportWizardProps<TRecord, TKey>) {
   // The same catalogue WizardRoot provides below, for text built here (errors and ERROR events)
   const enclosingMessages = useContext(MessagesContext);
@@ -558,7 +560,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
   }, [report, state.validatedRows]);
 
   return (
-    <WizardRoot className={cn('w-full max-w-4xl mx-auto', className)} messages={messages}>
+    <WizardRoot className={cn('flex h-full w-full flex-col', className)} messages={messages}>
       {/* Optional heading; omitted so the wizard can sit under a Host App's own */}
       {(title || description) && (
         <div className="mb-8 space-y-1 text-center">
@@ -568,19 +570,24 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
       )}
 
       {/* Step indicator */}
-      <StepIndicator currentStep={state.step} withResolution={withResolution} />
+      <div className="mx-auto w-full max-w-4xl">
+        <StepIndicator currentStep={state.step} withResolution={withResolution} />
+      </div>
 
-      {/* Content */}
-      <div className="mt-8">
+      {/* Content: the review grid takes the full width and height; the other steps keep a reading width */}
+      <div className={cn('mt-8 flex min-h-0 flex-1 flex-col', !GRID_STEPS.includes(state.step) && 'mx-auto w-full max-w-4xl overflow-y-auto')}>
         {state.step === 'upload' && (
-          <FileUploader
-            onFileSelected={handleFileSelected}
-            fields={fieldConfigs}
-            acceptedFileTypes={acceptedFileTypes}
-            maxFileSize={maxFileSize}
-            isLoading={state.isLoading}
-            error={state.error}
-          />
+          <div className="space-y-8">
+            <FileUploader
+              onFileSelected={handleFileSelected}
+              fields={fieldConfigs}
+              acceptedFileTypes={acceptedFileTypes}
+              maxFileSize={maxFileSize}
+              isLoading={state.isLoading}
+              error={state.error}
+            />
+            {uploadHelp && <div data-upload-help="">{uploadHelp}</div>}
+          </div>
         )}
 
         {state.step === 'mapping' && (
@@ -590,6 +597,7 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
             onMappingChange={handleMappingChange}
             onConfirm={startReview}
             isLoading={state.isLoading}
+            uncertainMatchBelow={uncertainMatchBelow}
           />
         )}
 
@@ -691,6 +699,9 @@ export function ImportWizard<TRecord = ArtworkRecord, TKey extends string = Targ
     </WizardRoot>
   );
 }
+
+/** The steps that show the review grid, which fills the wizard */
+const GRID_STEPS: ReadonlyArray<string> = ['validation', 'fix'];
 
 /** Labels of the choice fields whose options are loaded when the review starts */
 function loaderFieldLabels(fields: FieldConfig[]): string[] {

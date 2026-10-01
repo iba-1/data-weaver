@@ -2,6 +2,7 @@
  * Data Weaver - type definitions
  */
 
+import type { ReactNode } from 'react';
 import type { DateOrder } from './dates';
 import type { PartialMessageCatalogue, ValidationMessageRef } from './messages';
 
@@ -66,6 +67,11 @@ export interface FieldConfig<TKey extends string = string> {
   transform?: (value: unknown) => unknown;
   /** Placeholder shown when value is empty */
   placeholder?: string;
+  /**
+   * The Host App's advice shown while the Importer fixes this field, for what
+   * only the Host App knows (e.g. "changing the currency doesn't convert the amount")
+   */
+  fixHint?: string;
 }
 
 /** How a field's cell text is converted and checked */
@@ -204,6 +210,13 @@ export interface RowValidation<TRecord = ArtworkRecord> {
   warnings: ValidationWarning[];
   /** Set when the Importer deliberately left this row out of the import */
   excluded?: boolean;
+  /**
+   * The text each number cell was read from (the file's, or the Importer's
+   * edit), by field key. A number's reading can depend on its column (see
+   * `readNumber`), so the column is read again from these after every change.
+   * Cells the file held as numbers (Excel number cells) have none.
+   */
+  numberTexts?: Record<string, string>;
 }
 
 export interface ValidationError {
@@ -630,7 +643,18 @@ export interface ImportWizardProps<TRecord = ArtworkRecord, TKey extends string 
    * @default DEFAULT_MESSAGES (English)
    */
   messages?: PartialMessageCatalogue;
-  
+
+  /**
+   * A proposed Column Match scoring below this is an Uncertain Match: highlighted,
+   * and the Importer must confirm or change it before continuing. Scores: 1 a
+   * header equal to a keyword, 0.8 containing one, 0.6 sharing its first three letters.
+   * @default 0.7
+   */
+  uncertainMatchBelow?: number;
+
+  /** The Host App's help, shown on the upload step under the drop area */
+  uploadHelp?: ReactNode;
+
   /**
    * Custom CSS class
    */
