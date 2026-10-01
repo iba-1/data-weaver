@@ -92,6 +92,10 @@ export interface MessageParams {
     notesTitle: { count: number };
     /** Next to the disabled import button */
     blockedHint: { count: number };
+    /** Marks every note as seen, so they stop drawing attention */
+    acceptNotes: void;
+    notesAccepted: { count: number };
+    undoAcceptNotes: void;
     /** `field` is the field's label; `message` the issue's text */
     issueGroup: { field: string; message: string; count: number };
     showIssueRows: void;
@@ -449,6 +453,9 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     needsActionTitle: (p) => `Needs action · ${plural(p.count, 'row', 'rows')} can't be imported until fixed or excluded`,
     notesTitle: (p) => `${plural(p.count, 'note', 'notes')} · nothing blocking`,
     blockedHint: (p) => `Fix or exclude ${plural(p.count, 'row', 'rows')} first`,
+    acceptNotes: 'Mark all as OK',
+    notesAccepted: (p) => `${plural(p.count, 'note', 'notes')} marked as OK`,
+    undoAcceptNotes: 'Undo',
     issueGroup: (p) => `${p.field}: ${p.message}`,
     showIssueRows: 'Show rows',
     moreIssues: '+{count}',

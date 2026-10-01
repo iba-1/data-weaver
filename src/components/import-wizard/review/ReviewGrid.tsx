@@ -10,6 +10,8 @@ import type { ResolvedValue } from '@/lib/import-wizard/resolution';
 const OVERSCAN = 10;
 
 interface ReviewGridProps<TRecord, TKey extends string> {
+  /** The Importer marked every note as OK: they stop drawing attention */
+  notesAccepted?: boolean;
   /** The rows to show (already filtered and searched) */
   rows: RowValidation<TRecord>[];
   fields: FieldConfig<TKey>[];
@@ -40,6 +42,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
   onToggleExcluded,
   relatedValues,
   rejections,
+  notesAccepted = false,
 }: ReviewGridProps<TRecord, TKey>) {
   const m = useMessages();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -110,6 +113,7 @@ export function ReviewGrid<TRecord, TKey extends string>({
                     searchQuery={searchQuery}
                     relatedValues={relatedValues}
                     rejection={rejections?.get(row.rowIndex)}
+                    notesAccepted={notesAccepted}
                   />
                 );
               })}

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { AiEditHandler, FieldConfig, RowRejection, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
 import { getValidationSummary } from '@/lib/import-wizard/validator';
@@ -90,6 +90,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   const view = useVisibleRows(rows, fields);
   const findReplace = useFindReplace(rows, fields, review.applyEdits);
   const summary = useMemo(() => getValidationSummary(rows), [rows]);
+  const [notesAccepted, setNotesAccepted] = useState(false);
 
   if (isLoading) {
     return <ReviewSkeleton className={className} />;
@@ -106,7 +107,13 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           <ReviewSummary summary={summary} filter={view.filter} onFilterChange={view.setFilter} />
         </div>
 
-        <IssueList rows={rows} fields={fields} onFilterChange={view.setFilter} />
+        <IssueList
+          rows={rows}
+          fields={fields}
+          onFilterChange={view.setFilter}
+          notesAccepted={notesAccepted}
+          onNotesAcceptedChange={setNotesAccepted}
+        />
 
         <ReviewToolbar
           rows={rows}
@@ -144,6 +151,7 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           onToggleExcluded={review.toggleExcluded}
           relatedValues={relatedValues}
           rejections={rejections}
+          notesAccepted={notesAccepted}
         />
       </div>
 

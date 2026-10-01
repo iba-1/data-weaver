@@ -25,6 +25,7 @@ interface ReviewRowProps<TRecord, TKey extends string> {
   relatedValues?: ReadonlyMap<string, ResolvedValue>;
   /** Fix & Retry: why the Host App refused this row, pinned to its field's cell (or the whole row) */
   rejection?: RowRejection;
+  notesAccepted?: boolean;
 }
 
 /** Every grid row is this tall (px); the virtualised grid positions rows with it */
@@ -56,6 +57,7 @@ function ReviewRowView<TRecord, TKey extends string>({
   searchQuery,
   relatedValues,
   rejection,
+  notesAccepted = false,
 }: ReviewRowProps<TRecord, TKey>) {
   const m = useMessages();
   const data = row.data as Record<string, unknown>;
@@ -98,12 +100,12 @@ function ReviewRowView<TRecord, TKey extends string>({
         </div>
       </TableCell>
       <TableCell className={cn(CELL, 'sticky left-24 z-[5] border-r bg-background')}>
-        <RowStatus row={row} rejection={rejectionText} />
+        <RowStatus row={row} rejection={rejectionText} notesAccepted={notesAccepted} />
       </TableCell>
       {fields.map((field) => {
         const value = data[field.key];
         const error = row.errors.find((e) => e.field === field.key);
-        const warning = row.warnings.find((w) => w.field === field.key);
+        const warning = notesAccepted ? undefined : row.warnings.find((w) => w.field === field.key);
         const issue = error ?? warning;
         const rejected = rejectedField === field.key;
         const message = issue ? issueText(m, issue) : rejected ? rejectionText : undefined;
@@ -181,13 +183,21 @@ function RelatedBadge({ resolved, rowIndex }: { resolved: ResolvedValue | undefi
 }
 
 /** `rejection` is why the Host App refused the row (Fix & Retry), as shown to the Importer */
-function RowStatus<TRecord>({ row, rejection }: { row: RowValidation<TRecord>; rejection?: string }) {
+function RowStatus<TRecord>({
+  row,
+  rejection,
+  notesAccepted,
+}: {
+  row: RowValidation<TRecord>;
+  rejection?: string;
+  notesAccepted?: boolean;
+}) {
   const m = useMessages();
   if (row.excluded) {
     return <Ban className="h-4 w-4 text-muted-foreground" aria-label={m.review.excludedStatus()} />;
   }
   const errors = [...(rejection ? [rejection] : []), ...row.errors.map((e) => issueText(m, e))];
-  const warnings = row.warnings.map((w) => issueText(m, w));
+  const warnings = notesAccepted ? [] : row.warnings.map((w) => issueText(m, w));
   if (errors.length === 0 && warnings.length === 0) return <Check className="h-4 w-4 text-success" />;
   // The first issue in words, errors first; the rest one hover or focus away
   const isError = errors.length > 0;

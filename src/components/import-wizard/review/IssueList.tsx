@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertCircle, AlertTriangle, Filter } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FieldConfig, RowValidation } from '@/lib/import-wizard/types';
 import { issueText } from '@/lib/import-wizard/messages';
@@ -21,10 +21,14 @@ export function IssueList<TRecord, TKey extends string>({
   rows,
   fields,
   onFilterChange,
+  notesAccepted,
+  onNotesAcceptedChange,
 }: {
   rows: RowValidation<TRecord>[];
   fields: FieldConfig<TKey>[];
   onFilterChange: (filter: RowFilter) => void;
+  notesAccepted: boolean;
+  onNotesAcceptedChange: (accepted: boolean) => void;
 }) {
   const m = useMessages();
   const groups = useMemo(() => {
@@ -64,13 +68,33 @@ export function IssueList<TRecord, TKey extends string>({
           <Groups groups={errors} onFilterChange={onFilterChange} strong />
         </section>
       )}
-      {notes.length > 0 && (
+      {notes.length > 0 && notesAccepted && (
+        <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+          {m.review.notesAccepted({ count: noteRows })}
+          <button type="button" className="ml-auto text-primary hover:underline" onClick={() => onNotesAcceptedChange(false)}>
+            {m.review.undoAcceptNotes()}
+          </button>
+        </div>
+      )}
+      {notes.length > 0 && !notesAccepted && (
         <details className="group rounded-lg border border-dashed px-3 py-2 text-muted-foreground">
           <summary className="flex cursor-pointer list-none items-center gap-2 text-xs">
             <AlertTriangle className="h-3.5 w-3.5 text-warning/80" aria-hidden="true" />
             {m.review.notesTitle({ count: noteRows })}
-            <span className="ml-auto text-[10px] group-open:hidden">▸</span>
-            <span className="ml-auto hidden text-[10px] group-open:inline">▾</span>
+            <button
+              type="button"
+              className="ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-foreground hover:bg-muted"
+              onClick={(e) => {
+                e.preventDefault();
+                onNotesAcceptedChange(true);
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+              {m.review.acceptNotes()}
+            </button>
+            <span className="text-[10px] group-open:hidden">▸</span>
+            <span className="hidden text-[10px] group-open:inline">▾</span>
           </summary>
           <div className="mt-2">
             <Groups groups={notes} onFilterChange={onFilterChange} />
