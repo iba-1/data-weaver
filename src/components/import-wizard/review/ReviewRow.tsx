@@ -36,7 +36,7 @@ const CELL = 'px-3 py-2';
 function rowClassName<TRecord>(row: RowValidation<TRecord>, rejected: boolean): string {
   if (row.excluded) return 'opacity-50';
   if (!row.isValid || rejected) return 'validation-row-error';
-  if (row.warnings.length > 0) return 'validation-row-warning';
+  // Warnings don't block: no row tint, only a quiet note in the status cell
   return '';
 }
 
@@ -70,7 +70,13 @@ function ReviewRowView<TRecord, TKey extends string>({
       style={{ height: REVIEW_ROW_HEIGHT }}
       aria-rowindex={ariaRowIndex}
     >
-      <TableCell className={cn(CELL, 'sticky left-0 z-[5] bg-background font-mono text-xs text-muted-foreground')}>
+      <TableCell
+        className={cn(
+          CELL,
+          'sticky left-0 z-[5] bg-background font-mono text-xs text-muted-foreground',
+          (!row.isValid || !!rejection) && !row.excluded && 'shadow-[inset_4px_0_0_hsl(var(--destructive))]'
+        )}
+      >
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -186,16 +192,21 @@ function RowStatus<TRecord>({ row, rejection }: { row: RowValidation<TRecord>; r
   // The first issue in words, errors first; the rest one hover or focus away
   const isError = errors.length > 0;
   const all = [...errors, ...warnings];
-  const Icon = rejection ? XCircle : isError ? AlertCircle : AlertTriangle;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span
           tabIndex={0}
-          className={cn('flex min-w-0 items-center gap-1.5 text-xs font-medium', isError ? 'text-destructive' : 'text-warning')}
+          className={cn('flex min-w-0 items-center gap-1.5 text-xs', isError ? 'font-medium text-destructive' : 'text-muted-foreground')}
           aria-label={`${isError ? m.review.issueError() : m.review.issueWarning()}: ${all.join(', ')}`}
         >
-          <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {isError ? (
+            <span className="shrink-0 rounded bg-destructive px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">
+              {m.review.issueError()}
+            </span>
+          ) : (
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning/70" aria-hidden="true" />
+          )}
           <span className="truncate">{all[0]}</span>
           {all.length > 1 && (
             <span className="shrink-0 rounded-full border border-current px-1.5 text-[10px] leading-4">

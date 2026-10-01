@@ -45,25 +45,67 @@ export function IssueList<TRecord, TKey extends string>({
   }, [rows, fields, m]);
 
   if (groups.length === 0) return null;
+  const errors = groups.filter((g) => g.kind === 'error');
+  const notes = groups.filter((g) => g.kind === 'warning');
+  const errorRows = new Set(errors.flatMap((g) => g.rows)).size;
+  const noteRows = new Set(notes.flatMap((g) => g.rows)).size;
 
   return (
-    <section aria-label={m.review.issuesTitle()} className="rounded-lg border bg-muted/30 p-3">
-      <h4 className="mb-2 text-sm font-semibold text-foreground">{m.review.issuesTitle()}</h4>
+    <div className="space-y-2">
+      {errors.length > 0 && (
+        <section
+          aria-label={m.review.needsActionTitle({ count: errorRows })}
+          className="rounded-lg border-2 border-destructive bg-destructive/5 p-3"
+        >
+          <h4 className="mb-2 flex items-center gap-2 text-sm font-bold text-destructive">
+            <AlertCircle className="h-5 w-5" aria-hidden="true" />
+            {m.review.needsActionTitle({ count: errorRows })}
+          </h4>
+          <Groups groups={errors} onFilterChange={onFilterChange} strong />
+        </section>
+      )}
+      {notes.length > 0 && (
+        <details className="group rounded-lg border border-dashed px-3 py-2 text-muted-foreground">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-xs">
+            <AlertTriangle className="h-3.5 w-3.5 text-warning/80" aria-hidden="true" />
+            {m.review.notesTitle({ count: noteRows })}
+            <span className="ml-auto text-[10px] group-open:hidden">▸</span>
+            <span className="ml-auto hidden text-[10px] group-open:inline">▾</span>
+          </summary>
+          <div className="mt-2">
+            <Groups groups={notes} onFilterChange={onFilterChange} />
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function Groups({
+  groups,
+  onFilterChange,
+  strong = false,
+}: {
+  groups: IssueGroup[];
+  onFilterChange: (filter: RowFilter) => void;
+  strong?: boolean;
+}) {
+  const m = useMessages();
+  return (
       <ul className="max-h-36 space-y-1 overflow-y-auto">
         {groups.map((g) => {
           const Icon = g.kind === 'error' ? AlertCircle : AlertTriangle;
           return (
             <li key={`${g.kind}${g.field}${g.message}`} className="flex items-center gap-3 text-sm">
-              <span
-                className={cn(
-                  'inline-flex w-24 shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold',
-                  g.kind === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-warning/15 text-warning'
-                )}
-              >
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                {g.kind === 'error' ? m.review.issueError() : m.review.issueWarning()}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-foreground">
+              {strong ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-destructive px-2 py-0.5 text-xs font-semibold text-destructive-foreground">
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  {m.review.issueError()}
+                </span>
+              ) : (
+                <span className="sr-only">{m.review.issueWarning()}</span>
+              )}
+              <span className={cn('min-w-0 flex-1 truncate', strong ? 'font-medium text-foreground' : 'text-xs')}>
                 {m.review.issueGroup({ field: g.field, message: g.message, count: g.rows.length })}
               </span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -82,6 +124,5 @@ export function IssueList<TRecord, TKey extends string>({
           );
         })}
       </ul>
-    </section>
   );
 }

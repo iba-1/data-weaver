@@ -37,6 +37,9 @@ export function ReviewActions({
           {summary.excluded > 0 && (
             <span className="text-sm text-muted-foreground">{m.review.excludedCount({ count: summary.excluded })}</span>
           )}
+          {summary.withErrors > 0 && (
+            <span className="text-sm font-semibold text-destructive">{m.review.blockedHint({ count: summary.withErrors })}</span>
+          )}
           <Button onClick={onComplete} disabled={summary.withErrors > 0} size="lg">
             <Download className="mr-2 h-4 w-4" />
             {continuesToResolution

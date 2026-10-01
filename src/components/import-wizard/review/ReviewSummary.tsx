@@ -26,10 +26,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
       </Badge>
       <Badge
         variant={filter === 'warnings' ? 'default' : 'outline'}
-        className={cn(
-          'cursor-pointer',
-          summary.withWarnings > 0 && filter !== 'warnings' && 'border-warning text-warning'
-        )}
+        className="cursor-pointer text-muted-foreground"
         onClick={() => onFilterChange('warnings')}
       >
         <AlertTriangle className="mr-1 h-3 w-3" />
@@ -39,7 +36,7 @@ export function ReviewSummary({ summary, filter, onFilterChange }: ReviewSummary
         variant={filter === 'errors' ? 'default' : 'outline'}
         className={cn(
           'cursor-pointer',
-          summary.withErrors > 0 && filter !== 'errors' && 'border-destructive text-destructive'
+          summary.withErrors > 0 && filter !== 'errors' && 'border-destructive bg-destructive text-destructive-foreground hover:bg-destructive/90'
         )}
         onClick={() => onFilterChange('errors')}
       >

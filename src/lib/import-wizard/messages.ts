@@ -86,6 +86,12 @@ export interface MessageParams {
     issuesTitle: void;
     issueError: void;
     issueWarning: void;
+    /** Rows with an error: they block the import until fixed or excluded */
+    needsActionTitle: { count: number };
+    /** Warnings: nothing blocks, shown quietly */
+    notesTitle: { count: number };
+    /** Next to the disabled import button */
+    blockedHint: { count: number };
     /** `field` is the field's label; `message` the issue's text */
     issueGroup: { field: string; message: string; count: number };
     showIssueRows: void;
@@ -430,16 +436,19 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     rowCount: (p) => plural(p.count, 'row', 'rows'),
     rowCountFiltered: (p) => `${count(p.visible)} of ${plural(p.total, 'row', 'rows')}`,
     filterValid: '{count} Valid',
-    filterWarnings: '{count} Warnings',
-    filterErrors: '{count} Errors',
+    filterWarnings: '{count} Notes',
+    filterErrors: '{count} Need action',
     filterExcluded: '{count} Excluded',
     noSearchMatches: 'No rows match your search',
     noFilterMatches: 'No rows match the current filter',
     rowNumberHeader: '#',
     statusHeader: 'Status',
     issuesTitle: 'What to fix',
-    issueError: 'Error',
-    issueWarning: 'Warning',
+    issueError: 'Needs action',
+    issueWarning: 'Note',
+    needsActionTitle: (p) => `Needs action · ${plural(p.count, 'row', 'rows')} can't be imported until fixed or excluded`,
+    notesTitle: (p) => `${plural(p.count, 'note', 'notes')} · nothing blocking`,
+    blockedHint: (p) => `Fix or exclude ${plural(p.count, 'row', 'rows')} first`,
     issueGroup: (p) => `${p.field}: ${p.message}`,
     showIssueRows: 'Show rows',
     moreIssues: '+{count}',

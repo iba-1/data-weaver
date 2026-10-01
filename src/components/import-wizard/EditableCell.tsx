@@ -147,9 +147,10 @@ export function EditableCell({
         'hover:bg-muted/60 hover:ring-1 hover:ring-border',
         'focus:outline-none focus:ring-2 focus:ring-primary',
         // The cell at fault is marked on its own: tint, inset border and a corner mark
-        (hasError || hasWarning) && 'relative ring-1 ring-inset after:absolute after:right-0 after:top-0 after:border-[5px] after:border-transparent after:content-[""]',
-        hasError && 'bg-destructive/10 text-destructive ring-destructive/60 after:border-r-destructive after:border-t-destructive',
-        hasWarning && !hasError && 'bg-warning/15 text-warning ring-warning/60 after:border-r-warning after:border-t-warning',
+        // An error cell is filled and outlined; a warning cell only gets a small corner mark
+        (hasError || hasWarning) && 'relative after:absolute after:right-0 after:top-0 after:border-transparent after:content-[""]',
+        hasError && 'bg-destructive/15 font-medium text-destructive ring-2 ring-inset ring-destructive after:border-[6px] after:border-r-destructive after:border-t-destructive',
+        hasWarning && !hasError && 'after:border-[4px] after:border-r-warning/70 after:border-t-warning/70',
         isHighlighted && 'bg-primary/20 ring-1 ring-primary/40',
         className
       )}

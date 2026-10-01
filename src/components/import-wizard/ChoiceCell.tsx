@@ -51,8 +51,8 @@ export function ChoiceCell({
         className={cn(
           'h-7 min-h-[28px] -mx-1 gap-1 rounded border-transparent bg-transparent px-2 py-1 text-left text-sm ring-offset-0 transition-all',
           'hover:bg-muted/60 hover:ring-1 hover:ring-border focus:ring-2 focus:ring-primary focus:ring-offset-0',
-          hasError && 'text-destructive bg-destructive/5',
-          hasWarning && !hasError && 'text-warning bg-warning/5',
+          hasError && 'bg-destructive/15 font-medium text-destructive ring-2 ring-inset ring-destructive',
+          hasWarning && !hasError && 'relative after:absolute after:right-0 after:top-0 after:border-[4px] after:border-transparent after:border-r-warning/70 after:border-t-warning/70 after:content-[""]',
           isHighlighted && 'bg-primary/20 ring-1 ring-primary/40',
           className
         )}
