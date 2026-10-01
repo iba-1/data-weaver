@@ -1,7 +1,7 @@
 {
   "name": "data-weaver",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "React spreadsheet import wizard: upload, map columns, validate and fix rows.",
   "type": "module",
   "main": "./dist-lib/index.cjs",
