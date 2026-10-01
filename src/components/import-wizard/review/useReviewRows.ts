@@ -109,6 +109,12 @@ export function useReviewRows<TRecord, TKey extends string>(
 
   const excludeInvalid = useCallback(() => setExcluded((row) => !row.isValid, true), [setExcluded]);
 
+  /** Exclude a set of rows in one undo step (e.g. the rows of one problem) */
+  const excludeRows = useCallback(
+    (rowIndexes: ReadonlySet<number>) => setExcluded((row) => rowIndexes.has(row.rowIndex), true),
+    [setExcluded]
+  );
+
   // Fill empty required fields of invalid rows with placeholder values
   const fillEmptyRequired = useCallback(() => {
     setRows((prevRows) =>
@@ -147,6 +153,7 @@ export function useReviewRows<TRecord, TKey extends string>(
     editCell,
     toggleExcluded,
     excludeInvalid,
+    excludeRows,
     fillEmptyRequired,
   };
 }

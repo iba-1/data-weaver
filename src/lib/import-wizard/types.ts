@@ -67,6 +67,11 @@ export interface FieldConfig<TKey extends string = string> {
   transform?: (value: unknown) => unknown;
   /** Placeholder shown when value is empty */
   placeholder?: string;
+  /**
+   * The Host App's advice shown while the Importer fixes this field, for what
+   * only the Host App knows (e.g. "changing the currency doesn't convert the amount")
+   */
+  fixHint?: string;
 }
 
 /** How a field's cell text is converted and checked */

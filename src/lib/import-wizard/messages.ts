@@ -74,33 +74,75 @@ export interface MessageParams {
     description: void;
     rowCount: { count: number };
     rowCountFiltered: { visible: number; total: number };
-    filterValid: { count: number };
+    /** The counts above the grid; each narrows the grid to its rows */
+    filterAll: { count: number };
     filterWarnings: { count: number };
     filterErrors: { count: number };
     filterExcluded: { count: number };
+    /** Included rows without errors: what the import will send */
+    importableCount: { count: number };
     noSearchMatches: void;
     noFilterMatches: void;
     rowNumberHeader: void;
     statusHeader: void;
-    /** The issue list above the grid */
-    issuesTitle: void;
-    issueError: void;
-    issueWarning: void;
-    /** Rows with an error: they block the import until fixed or excluded */
-    needsActionTitle: { count: number };
-    /** Warnings: nothing blocks, shown quietly */
-    notesTitle: { count: number };
-    /** Next to the disabled import button */
-    blockedHint: { count: number };
-    /** Marks every note as seen, so they stop drawing attention */
+    /** The summary of what blocks the import, one entry per kind of problem */
+    summaryBlocked: { count: number };
+    summaryClear: void;
+    /** An entry's row count, e.g. "8 rows" */
+    summaryRows: { count: number };
+    summaryFix: void;
+    summaryReview: void;
+    summaryMore: { count: number };
+    summaryLess: void;
+    /** Warnings: listed apart, and never block the import */
+    warningsTitle: { count: number };
+    /** Marks every warning as seen, so they stop drawing attention */
     acceptNotes: void;
     notesAccepted: { count: number };
     undoAcceptNotes: void;
-    /** `field` is the field's label; `message` the issue's text */
-    issueGroup: { field: string; message: string; count: number };
-    showIssueRows: void;
-    /** More issues on the same row than its status cell shows */
-    moreIssues: { count: number };
+    /** A kind of problem in one field, short (the summary, the guide's heading). `field` is its label */
+    groupRequired: { field: string };
+    groupNotAnOption: { field: string };
+    groupInvalidNumber: { field: string };
+    groupInvalidDate: { field: string };
+    groupAmbiguousNumber: { field: string };
+    /** Any other cause; `message` is the issue's own text */
+    groupOther: { field: string; message: string };
+    /** The guide above the grid while one kind of problem is being fixed */
+    guideLabel: void;
+    guideRows: { count: number };
+    guideShowAll: void;
+    /** Problem + what to do. `value` is the cell as written */
+    guideRequired: { field: string };
+    guideNotAnOption: { field: string; value: string };
+    guideInvalidNumber: { field: string; value: string; example: string };
+    guideInvalidNumberNoExample: { field: string; value: string };
+    guideInvalidDate: { field: string; value: string; format: string };
+    guideAmbiguousNumber: { field: string; text: string; value: number };
+    guideOther: { field: string; message: string };
+    guideNotBlocking: void;
+    /** One value repeated on several rows, replaced at once */
+    guideValueRows: { value: string; count: number };
+    guideChoose: { value: string };
+    guideChoosePlaceholder: void;
+    guideApply: { value: string; replacement: string; count: number };
+    guideApplyPending: { count: number };
+    guideEachCell: void;
+    /** Going from cell to cell */
+    guideFirst: void;
+    guideNext: void;
+    guideGoToRow: { row: number };
+    guideExclude: { count: number };
+    guideExcludeHint: void;
+    guideResolved: void;
+    guideNextProblem: void;
+    guideUndo: void;
+    /** Next to the disabled import button */
+    blockedHint: { count: number };
+    /** The status column: how many issues a row has */
+    statusErrors: { count: number };
+    statusWarnings: { count: number };
+    statusOk: void;
     /** `row` is the row's number as the Importer sees it, starting at 1 */
     excludeRow: { row: number };
     includeRow: { row: number };
@@ -439,26 +481,61 @@ export const DEFAULT_MESSAGES: MessageCatalogue = {
     description: 'Review, search, and fix data before importing',
     rowCount: (p) => plural(p.count, 'row', 'rows'),
     rowCountFiltered: (p) => `${count(p.visible)} of ${plural(p.total, 'row', 'rows')}`,
-    filterValid: '{count} Valid',
-    filterWarnings: '{count} Notes',
-    filterErrors: '{count} Need action',
-    filterExcluded: '{count} Excluded',
+    filterAll: (p) => `All ${count(p.count)}`,
+    filterWarnings: (p) => `With warnings ${count(p.count)}`,
+    filterErrors: (p) => `Blocked ${count(p.count)}`,
+    filterExcluded: (p) => `Excluded ${count(p.count)}`,
+    importableCount: (p) => `${plural(p.count, 'row', 'rows')} will be imported`,
     noSearchMatches: 'No rows match your search',
     noFilterMatches: 'No rows match the current filter',
     rowNumberHeader: '#',
     statusHeader: 'Status',
-    issuesTitle: 'What to fix',
-    issueError: 'Needs action',
-    issueWarning: 'Note',
-    needsActionTitle: (p) => `Needs action · ${plural(p.count, 'row', 'rows')} can't be imported until fixed or excluded`,
-    notesTitle: (p) => `${plural(p.count, 'note', 'notes')} · nothing blocking`,
-    blockedHint: (p) => `Fix or exclude ${plural(p.count, 'row', 'rows')} first`,
-    acceptNotes: 'Mark all as OK',
-    notesAccepted: (p) => `${plural(p.count, 'note', 'notes')} marked as OK`,
+    summaryBlocked: (p) => `${plural(p.count, 'row', 'rows')} to fix before importing`,
+    summaryClear: 'Nothing blocks the import',
+    summaryRows: (p) => plural(p.count, 'row', 'rows'),
+    summaryFix: 'Fix',
+    summaryReview: 'Review',
+    summaryMore: (p) => `Show ${count(p.count)} more`,
+    summaryLess: 'Show fewer',
+    warningsTitle: (p) => `${plural(p.count, 'warning', 'warnings')} · they don't block the import`,
+    acceptNotes: 'Mark all as seen',
+    notesAccepted: (p) => `${plural(p.count, 'warning', 'warnings')} marked as seen`,
     undoAcceptNotes: 'Undo',
-    issueGroup: (p) => `${p.field}: ${p.message}`,
-    showIssueRows: 'Show rows',
-    moreIssues: '+{count}',
+    groupRequired: '{field} missing',
+    groupNotAnOption: '{field}: value not recognised',
+    groupInvalidNumber: '{field}: not a number',
+    groupInvalidDate: '{field}: date not recognised',
+    groupAmbiguousNumber: '{field}: number to check',
+    groupOther: '{field}: {message}',
+    guideLabel: 'Fixing',
+    guideRows: (p) => plural(p.count, 'row', 'rows'),
+    guideShowAll: 'Show all rows',
+    guideRequired: '{field} is empty. Fill it in, in each highlighted cell.',
+    guideNotAnOption: '"{value}" is not one of the accepted values for {field}. Choose one from the list.',
+    guideInvalidNumber: '"{value}" contains text. Enter a number, for example {example}, checking the value to record.',
+    guideInvalidNumberNoExample: '"{value}" is not a number. Enter it in digits.',
+    guideInvalidDate: '"{value}" is not a date. Enter it as {format} or YYYY-MM-DD.',
+    guideAmbiguousNumber: '{text} was read as {value}. If you meant another number, correct the cell.',
+    guideOther: '{message}',
+    guideNotBlocking: "This doesn't block the import.",
+    guideValueRows: (p) => `"${p.value}" · ${plural(p.count, 'row', 'rows')}`,
+    guideChoose: 'Value to use instead of "{value}"',
+    guideChoosePlaceholder: 'Choose a value',
+    guideApply: (p) => `Replace "${p.value}" with "${p.replacement}" in ${plural(p.count, 'row', 'rows')}`,
+    guideApplyPending: (p) => `Apply to ${plural(p.count, 'row', 'rows')}`,
+    guideEachCell: 'You can also edit the highlighted cells one by one.',
+    guideFirst: 'Go to the first cell to fix',
+    guideNext: 'Next cell to fix',
+    guideGoToRow: 'Go to row {row}',
+    guideExclude: (p) => `Exclude ${p.count === 1 ? 'this row' : `these ${count(p.count)} rows`}`,
+    guideExcludeHint: "Excluded rows aren't imported; you can include them again at any time.",
+    guideResolved: 'Problem solved',
+    guideNextProblem: 'Next problem',
+    guideUndo: 'Undo',
+    blockedHint: (p) => `Fix or exclude ${plural(p.count, 'row', 'rows')} first`,
+    statusErrors: (p) => plural(p.count, 'error', 'errors'),
+    statusWarnings: (p) => plural(p.count, 'warning', 'warnings'),
+    statusOk: 'No problems',
     excludeRow: 'Exclude row {row}',
     includeRow: 'Include row {row}',
     excludeRowHint: 'Leave this row out of the import',

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { AiEditHandler, FieldConfig, RowRejection, RowValidation, ValidationResult } from '@/lib/import-wizard/types';
 import { getValidationSummary } from '@/lib/import-wizard/validator';
@@ -10,7 +10,9 @@ import { useFindReplace } from './review/useFindReplace';
 import { useUndoRedoShortcuts } from './review/useUndoRedoShortcuts';
 import { ReviewSummary } from './review/ReviewSummary';
 import { ReviewToolbar } from './review/ReviewToolbar';
-import { IssueList } from './review/IssueList';
+import { IssueSummary } from './review/IssueSummary';
+import { FixGuide } from './review/FixGuide';
+import { groupIssues, replacementEdits, type IssueGroup } from '@/lib/import-wizard/issueGroups';
 import { ReviewGrid } from './review/ReviewGrid';
 import { ReviewActions } from './review/ReviewActions';
 import { useMessages } from './messages';
@@ -87,10 +89,86 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
   const containerRef = useRef<HTMLDivElement>(null);
   useUndoRedoShortcuts(review.undo, review.redo, containerRef);
 
-  const view = useVisibleRows(rows, fields);
-  const findReplace = useFindReplace(rows, fields, review.applyEdits);
   const summary = useMemo(() => getValidationSummary(rows), [rows]);
   const [notesAccepted, setNotesAccepted] = useState(false);
+
+  // What blocks the import, grouped by field and cause; warnings apart
+  const errorGroups = useMemo(() => groupIssues(rows, 'error'), [rows]);
+  const warningGroups = useMemo(() => groupIssues(rows, 'warning'), [rows]);
+
+  // The guided fix: one problem, and the rows it had when the Importer chose it.
+  // The grid keeps showing those rows as they get fixed, so none vanishes mid-edit.
+  const [active, setActive] = useState<{ group: IssueGroup; scope: ReadonlySet<number> } | null>(null);
+  const live = useMemo(() => {
+    if (!active) return undefined;
+    const current = [...errorGroups, ...warningGroups].find((g) => g.id === active.group.id);
+    if (!current) return undefined;
+    const inScope = (rowIndex: number) => active.scope.has(rowIndex);
+    const rowIndexes = current.rowIndexes.filter(inScope);
+    if (rowIndexes.length === 0) return undefined;
+    return {
+      ...current,
+      rowIndexes,
+      values: current.values
+        .map((v) => ({ ...v, rowIndexes: v.rowIndexes.filter(inScope) }))
+        .filter((v) => v.rowIndexes.length > 0),
+    };
+  }, [active, errorGroups, warningGroups]);
+
+  const view = useVisibleRows(rows, fields, active?.scope);
+  const findReplace = useFindReplace(rows, fields, review.applyEdits);
+
+  // Which cell to bring into view (and focus), and which column to scroll to
+  const [focusRequest, setFocusRequest] = useState<{ rowIndex: number; field: string; nonce: number } | null>(null);
+  const [revealRequest, setRevealRequest] = useState<{ field: string; nonce: number } | null>(null);
+  const cursorRef = useRef<number | null>(null);
+  const guideHeadingRef = useRef<HTMLHeadingElement>(null);
+  const [focusGuide, setFocusGuide] = useState(0);
+  useEffect(() => {
+    if (focusGuide) guideHeadingRef.current?.focus();
+  }, [focusGuide]);
+
+  const startFix = useCallback(
+    (group: IssueGroup) => {
+      setActive({ group, scope: new Set(group.rowIndexes) });
+      view.setFilter('all');
+      view.setSearchQuery('');
+      cursorRef.current = null;
+      setRevealRequest({ field: group.field, nonce: Date.now() });
+      setFocusGuide((n) => n + 1);
+    },
+    [view]
+  );
+
+  const goTo = useCallback(
+    (rowIndex: number) => {
+      if (!active) return;
+      cursorRef.current = rowIndex;
+      setFocusRequest({ rowIndex, field: active.group.field, nonce: Date.now() });
+    },
+    [active]
+  );
+
+  const nextCell = useCallback(() => {
+    const remaining = live?.rowIndexes ?? [];
+    if (remaining.length === 0) return;
+    const cursor = cursorRef.current;
+    goTo(remaining.find((r) => cursor === null || r > cursor) ?? remaining[0]);
+  }, [live, goTo]);
+
+  const replace = useCallback(
+    (text: string, replacement: string) => {
+      if (!active) return;
+      const edits = replacementEdits(rows, active.group, text, replacement).filter((e) => active.scope.has(e.rowIndex));
+      review.applyEdits(edits);
+      // The control the Importer used may be gone: keep focus in the guide
+      setFocusGuide((n) => n + 1);
+    },
+    [active, rows, review]
+  );
+
+  const otherGroups = [...errorGroups, ...warningGroups].filter((g) => g.id !== active?.group.id);
+  const nextProblem = otherGroups[0];
 
   if (isLoading) {
     return <ReviewSkeleton className={className} />;
@@ -107,10 +185,14 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           <ReviewSummary summary={summary} filter={view.filter} onFilterChange={view.setFilter} />
         </div>
 
-        <IssueList
-          rows={rows}
+        <IssueSummary
+          errorGroups={errorGroups}
+          warningGroups={warningGroups}
+          blockedRows={summary.withErrors}
           fields={fields}
-          onFilterChange={view.setFilter}
+          activeGroupId={active?.group.id}
+          compact={!!active}
+          onFix={startFix}
           notesAccepted={notesAccepted}
           onNotesAcceptedChange={setNotesAccepted}
         />
@@ -136,6 +218,22 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2">
+        {active && (
+          <FixGuide
+            ref={guideHeadingRef}
+            group={active.group}
+            live={live}
+            field={(fields.find((f) => f.key === active.group.field) ?? { key: active.group.field, label: active.group.field, type: 'string' }) as FieldConfig<string>}
+            onReplace={replace}
+            onGoTo={goTo}
+            onNextCell={nextCell}
+            onShowAll={() => setActive(null)}
+            onNextProblem={nextProblem ? () => startFix(nextProblem) : undefined}
+            onUndo={review.undo}
+            canUndo={review.canUndo}
+            onExclude={() => live && review.excludeRows(new Set(live.rowIndexes))}
+          />
+        )}
         <p className="text-sm text-muted-foreground" aria-live="polite">
           {view.visibleRows.length === view.totalRows
             ? m.review.rowCount({ count: view.totalRows })
@@ -152,6 +250,9 @@ function DataValidatorContent<TRecord = Record<string, unknown>, TKey extends st
           relatedValues={relatedValues}
           rejections={rejections}
           notesAccepted={notesAccepted}
+          activeField={active?.group.field}
+          revealRequest={revealRequest}
+          focusRequest={focusRequest}
         />
       </div>
 

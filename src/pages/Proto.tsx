@@ -2,6 +2,7 @@
 // "drawer", with a SpeakArt-like Output Shape and the old importer's help.
 import { ImportWizard, type FieldConfig } from '@/components/import-wizard';
 import { createDemoHostApp } from './demo/hostApp';
+import { PROTO_ITALIAN } from './protoItalian';
 
 const isFilled = (v: unknown) => v !== null && v !== undefined && v !== '';
 const UNITS = ['M', 'CM', 'MM', 'FT', 'IN'].map((v) => ({ value: v, label: v }));
@@ -26,17 +27,27 @@ const FIELDS: FieldConfig<Key>[] = [
   { key: 'inventoryNumber', label: 'Numero di inventario', type: 'string', matchKeywords: ['Numero di inventario'] },
   {
     key: 'amount', label: 'Valore', type: 'number', matchKeywords: ['Valore'],
+    fixHint: 'Se il valore è approssimativo («circa»), annotalo nelle note: nella cella va solo il numero.',
     validate: (value, row) =>
       isFilled(value) && isFilled(row.amountLow) && isFilled(row.amountHigh)
-        ? { type: 'warning', message: 'valore e intervallo insieme: si tiene il valore, l’intervallo va nelle note' }
+        ? {
+            type: 'warning',
+            message: 'Hai indicato sia il valore sia l’intervallo: verrà tenuto il valore e l’intervallo andrà nelle note.',
+          }
         : null,
   },
   { key: 'amountLow', label: 'Valore minimo', type: 'number', matchKeywords: ['Valore minimo'] },
   { key: 'amountHigh', label: 'Valore massimo', type: 'number', matchKeywords: ['Valore massimo'] },
   {
     key: 'currency', label: 'Valuta', type: 'choice', options: CURRENCIES, matchKeywords: ['Valuta'],
+    fixHint: 'Cambiare la valuta non converte l’importo: verifica anche il valore.',
     validate: (value, row) =>
-      !isFilled(value) && isFilled(row.amount) ? { type: 'warning', message: 'mancante, verrà usato EUR' } : null,
+      !isFilled(value) && isFilled(row.amount)
+        ? {
+            type: 'warning',
+            message: 'Valuta non indicata: verrà usato EUR. Se il valore è espresso in un’altra valuta, selezionala.',
+          }
+        : null,
   },
   { key: 'owner', label: 'Proprietario', type: 'string', matchKeywords: ['Proprietario'] },
 ];
@@ -100,6 +111,7 @@ export default function Proto() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           adapter={host.adapter as any}
           uploadHelp={<UploadHelp />}
+          messages={PROTO_ITALIAN}
         />
       </main>
     </div>

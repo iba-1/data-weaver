@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,10 @@ interface EditableCellProps {
   hasError?: boolean;
   hasWarning?: boolean;
   isHighlighted?: boolean;
-  /** The error or warning to show on the cell (as its tooltip) */
+  /** The error or warning to show on the cell (as its tooltip, and as the editor's description) */
   message?: string;
+  /** Accessible name of the cell and its editor, e.g. "Titolo, riga 3" */
+  label?: string;
   className?: string;
 }
 
@@ -24,9 +26,11 @@ export function EditableCell({
   hasWarning = false,
   isHighlighted = false,
   message,
+  label,
   className,
 }: EditableCellProps) {
   const m = useMessages();
+  const messageId = useId();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -111,8 +115,16 @@ export function EditableCell({
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
+          aria-label={label}
+          aria-invalid={hasError || undefined}
+          aria-describedby={message ? messageId : undefined}
           className="h-7 text-sm py-0 px-2 flex-1"
         />
+        {message && (
+          <span id={messageId} className="sr-only">
+            {message}
+          </span>
+        )}
         <div className="editable-cell-actions flex items-center">
           <Button
             variant="ghost"
@@ -164,8 +176,14 @@ export function EditableCell({
       tabIndex={0}
       role="gridcell"
       aria-invalid={hasError || undefined}
+      aria-describedby={message ? messageId : undefined}
       title={message}
     >
+      {message && (
+        <span id={messageId} className="sr-only">
+          {message}
+        </span>
+      )}
       {value !== null && value !== undefined ? (
         <span className="block truncate text-sm">{cellText(value)}</span>
       ) : (

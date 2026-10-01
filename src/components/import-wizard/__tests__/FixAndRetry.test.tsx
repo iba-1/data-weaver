@@ -172,9 +172,9 @@ describe('Fix & Retry', () => {
     expect(cellOf(2, 'title')).toHaveAttribute('aria-invalid', 'true');
     expect(cellOf(2, 'title')).toHaveAttribute('title', 'Not imported: Title already used');
     expect(cellOf(2, 'year')).not.toHaveAttribute('aria-invalid');
-    expect(within(rowOfFile(2)).getByLabelText('Not imported: Title already used')).toBeInTheDocument();
+    expect(within(rowOfFile(2)).getByLabelText(/Not imported: Title already used/)).toBeInTheDocument();
     // Row 3 was refused as a whole
-    expect(within(rowOfFile(3)).getByLabelText('Not imported: The collection is full')).toBeInTheDocument();
+    expect(within(rowOfFile(3)).getByLabelText(/Not imported: The collection is full/)).toBeInTheDocument();
     expect(cellOf(3, 'title')).not.toHaveAttribute('aria-invalid');
     expect(cellOf(3, 'year')).not.toHaveAttribute('aria-invalid');
     // A retry needs no edit (the Host App decides again), so it is not blocked by these

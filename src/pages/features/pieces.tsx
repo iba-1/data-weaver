@@ -127,8 +127,8 @@ export const PIECES: Piece[] = [
     notes: [
       {
         title: 'Filter by state',
-        body: 'Valid, warnings, errors, excluded: each badge narrows the grid. Row 11 of the sample has no title.',
-        target: byText(/^\d+ Valid$/, { up: '.flex-wrap' }),
+        body: 'All, blocked, with warnings, excluded: each badge narrows the grid. Row 11 of the sample has no title.',
+        target: byText(/^All \d+$/, { up: '.flex-wrap' }),
       },
       {
         title: 'Search and replace',

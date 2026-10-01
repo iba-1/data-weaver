@@ -1,17 +1,39 @@
-import { memo } from 'react';
-import { AlertCircle, AlertTriangle, Ban, Check, Link2, Plus, RotateCcw, XCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { FieldConfig, RowRejection, RowValidation } from '@/lib/import-wizard/types';
-import { matchesSearch } from '@/lib/import-wizard/search';
-import { TableCell, TableRow } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { choiceOptions } from '@/lib/import-wizard/choices';
-import { EditableCell } from '../EditableCell';
-import { issueText } from '@/lib/import-wizard/messages';
-import { ChoiceCell } from '../ChoiceCell';
-import { useMessages } from '../messages';
-import { decisionForRow, relatedValueKey, relatedValueOf, type ResolvedValue } from '@/lib/import-wizard/resolution';
+import { memo } from "react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Ban,
+  Check,
+  Link2,
+  Plus,
+  RotateCcw,
+  XCircle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type {
+  FieldConfig,
+  RowRejection,
+  RowValidation,
+} from "@/lib/import-wizard/types";
+import { matchesSearch } from "@/lib/import-wizard/search";
+import { TableCell, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { choiceOptions } from "@/lib/import-wizard/choices";
+import { EditableCell } from "../EditableCell";
+import { issueText } from "@/lib/import-wizard/messages";
+import { ChoiceCell } from "../ChoiceCell";
+import { useMessages } from "../messages";
+import {
+  decisionForRow,
+  relatedValueKey,
+  relatedValueOf,
+  type ResolvedValue,
+} from "@/lib/import-wizard/resolution";
 
 interface ReviewRowProps<TRecord, TKey extends string> {
   row: RowValidation<TRecord>;
@@ -26,19 +48,24 @@ interface ReviewRowProps<TRecord, TKey extends string> {
   /** Fix & Retry: why the Host App refused this row, pinned to its field's cell (or the whole row) */
   rejection?: RowRejection;
   notesAccepted?: boolean;
+  /** The field being fixed: its cells are marked */
+  activeField?: string;
 }
 
 /** Every grid row is this tall (px); the virtualised grid positions rows with it */
 export const REVIEW_ROW_HEIGHT = 45;
 
 /** Compact cells keep every row exactly REVIEW_ROW_HEIGHT tall */
-const CELL = 'px-3 py-2';
+const CELL = "px-3 py-2";
 
-function rowClassName<TRecord>(row: RowValidation<TRecord>, rejected: boolean): string {
-  if (row.excluded) return 'opacity-50';
-  if (!row.isValid || rejected) return 'validation-row-error';
+function rowClassName<TRecord>(
+  row: RowValidation<TRecord>,
+  rejected: boolean,
+): string {
+  if (row.excluded) return "opacity-50";
+  if (!row.isValid || rejected) return "validation-row-error";
   // Warnings don't block: no row tint, only a quiet note in the status cell
-  return '';
+  return "";
 }
 
 /**
@@ -58,13 +85,17 @@ function ReviewRowView<TRecord, TKey extends string>({
   relatedValues,
   rejection,
   notesAccepted = false,
+  activeField,
 }: ReviewRowProps<TRecord, TKey>) {
   const m = useMessages();
   const data = row.data as Record<string, unknown>;
   const rowNumber = row.rowIndex + 1;
-  const rejectionText = rejection && m.fix.rejected({ reason: rejection.reason });
+  const rejectionText =
+    rejection && m.fix.rejected({ reason: rejection.reason });
   // A field the grid doesn't show can't hold the error: it goes to the whole row
-  const rejectedField = fields.some((f) => f.key === rejection?.field) ? rejection?.field : undefined;
+  const rejectedField = fields.some((f) => f.key === rejection?.field)
+    ? rejection?.field
+    : undefined;
 
   return (
     <TableRow
@@ -75,8 +106,10 @@ function ReviewRowView<TRecord, TKey extends string>({
       <TableCell
         className={cn(
           CELL,
-          'sticky left-0 z-[5] bg-background font-mono text-xs text-muted-foreground',
-          (!row.isValid || !!rejection) && !row.excluded && 'shadow-[inset_4px_0_0_hsl(var(--destructive))]'
+          "sticky left-0 z-[5] bg-background font-mono text-xs text-muted-foreground",
+          (!row.isValid || !!rejection) &&
+            !row.excluded &&
+            "shadow-[inset_4px_0_0_hsl(var(--destructive))]",
         )}
       >
         <div className="flex items-center gap-1">
@@ -86,59 +119,107 @@ function ReviewRowView<TRecord, TKey extends string>({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                aria-label={row.excluded ? m.review.includeRow({ row: rowNumber }) : m.review.excludeRow({ row: rowNumber })}
+                aria-label={
+                  row.excluded
+                    ? m.review.includeRow({ row: rowNumber })
+                    : m.review.excludeRow({ row: rowNumber })
+                }
                 onClick={() => onToggleExcluded(row.rowIndex, !row.excluded)}
               >
-                {row.excluded ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                {row.excluded ? (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                ) : (
+                  <Ban className="h-3.5 w-3.5" />
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {row.excluded ? m.review.includeRowHint() : m.review.excludeRowHint()}
+              {row.excluded
+                ? m.review.includeRowHint()
+                : m.review.excludeRowHint()}
             </TooltipContent>
           </Tooltip>
           {rowNumber}
         </div>
       </TableCell>
-      <TableCell className={cn(CELL, 'sticky left-24 z-[5] border-r bg-background')}>
-        <RowStatus row={row} rejection={rejectionText} notesAccepted={notesAccepted} />
+      <TableCell
+        className={cn(CELL, "sticky left-24 z-[5] border-r bg-background")}
+      >
+        <RowStatus
+          row={row}
+          rejection={rejectionText}
+          notesAccepted={notesAccepted}
+        />
       </TableCell>
       {fields.map((field) => {
         const value = data[field.key];
         const error = row.errors.find((e) => e.field === field.key);
-        const warning = notesAccepted ? undefined : row.warnings.find((w) => w.field === field.key);
+        const warning = notesAccepted
+          ? undefined
+          : row.warnings.find((w) => w.field === field.key);
         const issue = error ?? warning;
         const rejected = rejectedField === field.key;
-        const message = issue ? issueText(m, issue) : rejected ? rejectionText : undefined;
+        const message = issue
+          ? issueText(m, issue)
+          : rejected
+            ? rejectionText
+            : undefined;
 
         // Every kind of cell sits in the same compact TableCell, so rows stay REVIEW_ROW_HEIGHT tall
         return (
-          <TableCell key={field.key} className={CELL}>
-            {field.type === 'choice' ? (
+          <TableCell
+            key={field.key}
+            data-cell={`${row.rowIndex}:${field.key}`}
+            className={cn(
+              CELL,
+              field.key === activeField && "bg-primary/[0.04]",
+            )}
+          >
+            {field.type === "choice" ? (
               <ChoiceCell
                 value={value}
                 options={choiceOptions(field) ?? []}
-                onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
-                aria-label={m.review.cellLabel({ field: field.label, row: rowNumber })}
+                onSave={(newValue) =>
+                  onCellEdit(row.rowIndex, field.key, newValue)
+                }
+                aria-label={m.review.cellLabel({
+                  field: field.label,
+                  row: rowNumber,
+                })}
                 hasError={(!!error || rejected) && !row.excluded}
                 hasWarning={!!warning && !row.excluded}
                 message={message}
                 isHighlighted={matchesSearch(value, searchQuery)}
-                className={cn(row.excluded && 'line-through')}
+                className={cn(row.excluded && "line-through")}
               />
             ) : (
               <div className="flex min-w-0 items-center gap-1">
                 <EditableCell
                   value={value as string | number | null}
-                  onSave={(newValue) => onCellEdit(row.rowIndex, field.key, newValue)}
+                  onSave={(newValue) =>
+                    onCellEdit(row.rowIndex, field.key, newValue)
+                  }
                   hasError={(!!error || rejected) && !row.excluded}
                   hasWarning={!!warning && !row.excluded}
                   message={message}
+                  label={m.review.cellLabel({
+                    field: field.label,
+                    row: rowNumber,
+                  })}
                   isHighlighted={matchesSearch(value, searchQuery)}
-                  className={cn('min-w-0 flex-1', row.excluded && 'line-through')}
+                  className={cn(
+                    "min-w-0 flex-1",
+                    row.excluded && "line-through",
+                  )}
                 />
                 {field.relationship && relatedValues && !row.excluded && (
                   <RelatedBadge
-                    resolved={relatedValues.get(relatedValueKey(field.relationship.kind, relatedValueOf(value)))}
+                    resolved={relatedValues.get(
+                      relatedValueKey(
+                        field.relationship.kind,
+                        relatedValueOf(value),
+                      ),
+                    )}
                     rowIndex={row.rowIndex}
                   />
                 )}
@@ -158,22 +239,44 @@ function ReviewRowView<TRecord, TKey extends string>({
  * that the value still needs a decision. A row's own choice (Homonyms) wins
  * over the value's. The cell itself keeps the file's text.
  */
-function RelatedBadge({ resolved, rowIndex }: { resolved: ResolvedValue | undefined; rowIndex: number }) {
+function RelatedBadge({
+  resolved,
+  rowIndex,
+}: {
+  resolved: ResolvedValue | undefined;
+  rowIndex: number;
+}) {
   const m = useMessages();
   if (!resolved) return null;
   const decision = decisionForRow(resolved, rowIndex);
   const description =
-    decision?.action === 'link' && resolved.group === 'homonyms'
-      ? (resolved.candidates.find((c) => c.id === decision.id)?.description ?? '')
-      : '';
+    decision?.action === "link" && resolved.group === "homonyms"
+      ? (resolved.candidates.find((c) => c.id === decision.id)?.description ??
+        "")
+      : "";
   const [text, Icon, tone] = !decision
-    ? [m.resolution.badgeUndecided(), AlertTriangle, 'border-warning/40 text-warning']
-    : decision.action === 'link'
-      ? [m.resolution.badgeLinked({ name: decision.name, description }), Link2, 'border-success/40 text-success']
-      : [m.resolution.badgeNew({ name: decision.name }), Plus, 'border-primary/40 text-primary'];
+    ? [
+        m.resolution.badgeUndecided(),
+        AlertTriangle,
+        "border-warning/40 text-warning",
+      ]
+    : decision.action === "link"
+      ? [
+          m.resolution.badgeLinked({ name: decision.name, description }),
+          Link2,
+          "border-success/40 text-success",
+        ]
+      : [
+          m.resolution.badgeNew({ name: decision.name }),
+          Plus,
+          "border-primary/40 text-primary",
+        ];
   return (
     <span
-      className={cn('inline-flex max-w-[50%] shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px]', tone)}
+      className={cn(
+        "inline-flex max-w-[50%] shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px]",
+        tone,
+      )}
       title={text}
     >
       <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -182,7 +285,12 @@ function RelatedBadge({ resolved, rowIndex }: { resolved: ResolvedValue | undefi
   );
 }
 
-/** `rejection` is why the Host App refused the row (Fix & Retry), as shown to the Importer */
+/**
+ * How many issues a row has, in words ("2 errors", "1 warning"): compact, with
+ * the messages in its accessible name and tooltip. The explanation itself is
+ * in the guide above the grid, and on the cell at fault.
+ * `rejection` is why the Host App refused the row (Fix & Retry), as shown to the Importer.
+ */
 function RowStatus<TRecord>({
   row,
   rejection,
@@ -194,34 +302,56 @@ function RowStatus<TRecord>({
 }) {
   const m = useMessages();
   if (row.excluded) {
-    return <Ban className="h-4 w-4 text-muted-foreground" aria-label={m.review.excludedStatus()} />;
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Ban className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        {m.review.excludedStatus()}
+      </span>
+    );
   }
-  const errors = [...(rejection ? [rejection] : []), ...row.errors.map((e) => issueText(m, e))];
-  const warnings = notesAccepted ? [] : row.warnings.map((w) => issueText(m, w));
-  if (errors.length === 0 && warnings.length === 0) return <Check className="h-4 w-4 text-success" />;
-  // The first issue in words, errors first; the rest one hover or focus away
+  const errors = [
+    ...(rejection ? [rejection] : []),
+    ...row.errors.map((e) => issueText(m, e)),
+  ];
+  const warnings = notesAccepted
+    ? []
+    : row.warnings.map((w) => issueText(m, w));
+  if (errors.length === 0 && warnings.length === 0) {
+    return (
+      <Check
+        className="h-4 w-4 text-success"
+        aria-label={m.review.statusOk()}
+      />
+    );
+  }
   const isError = errors.length > 0;
+  const label = isError
+    ? m.review.statusErrors({ count: errors.length })
+    : m.review.statusWarnings({ count: warnings.length });
   const all = [...errors, ...warnings];
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          className={cn('flex min-w-0 items-center gap-1.5 text-xs', isError ? 'font-medium text-destructive' : 'text-muted-foreground')}
-          aria-label={`${isError ? m.review.issueError() : m.review.issueWarning()}: ${all.join(', ')}`}
-        >
-          {isError ? (
-            <AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
-          ) : (
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning/70" aria-hidden="true" />
-          )}
-          <span className="truncate">{all[0]}</span>
-          {all.length > 1 && (
-            <span className="shrink-0 rounded-full border border-current px-1.5 text-[10px] leading-4">
-              {m.review.moreIssues({ count: all.length - 1 })}
-            </span>
-          )}
-        </span>
+      <TooltipTrigger
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 text-xs",
+          isError ? "font-semibold text-destructive" : "text-muted-foreground",
+        )}
+        aria-label={`${label}: ${all.join("; ")}`}
+      >
+        {isError ? (
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+        ) : (
+          <AlertTriangle
+            className="h-3.5 w-3.5 shrink-0 text-warning/70"
+            aria-hidden="true"
+          />
+        )}
+        <span className="truncate">{label}</span>
+        {isError && warnings.length > 0 && (
+          <span className="truncate font-normal text-muted-foreground">
+            {m.review.statusWarnings({ count: warnings.length })}
+          </span>
+        )}
       </TooltipTrigger>
       <TooltipContent>
         <ul className="space-y-0.5">

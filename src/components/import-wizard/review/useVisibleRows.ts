@@ -19,7 +19,9 @@ function passesFilter<TRecord>(row: RowValidation<TRecord>, filter: RowFilter): 
  */
 export function useVisibleRows<TRecord, TKey extends string>(
   rows: RowValidation<TRecord>[],
-  fields: FieldConfig<TKey>[]
+  fields: FieldConfig<TKey>[],
+  /** While a problem is being fixed: only these rows, whatever the filter, so a row doesn't vanish once fixed */
+  scope?: ReadonlySet<number>
 ) {
   const [filter, setFilter] = useState<RowFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,13 +31,12 @@ export function useVisibleRows<TRecord, TKey extends string>(
     [rows, fields, searchQuery]
   );
 
-  const visibleRows = useMemo(
-    () =>
-      filter === 'all' && !searchQuery
-        ? rows
-        : rows.filter((row) => passesFilter(row, filter) && rowMatchesSearch(row, fields, searchQuery)),
-    [rows, fields, filter, searchQuery]
-  );
+  const visibleRows = useMemo(() => {
+    if (scope) return rows.filter((row) => scope.has(row.rowIndex) && rowMatchesSearch(row, fields, searchQuery));
+    return filter === 'all' && !searchQuery
+      ? rows
+      : rows.filter((row) => passesFilter(row, filter) && rowMatchesSearch(row, fields, searchQuery));
+  }, [rows, fields, filter, searchQuery, scope]);
 
   return {
     filter,

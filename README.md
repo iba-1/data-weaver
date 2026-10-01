@@ -1028,6 +1028,9 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `mapping.selectField` | - | `Select field...` |
 | `mapping.doNotImport` | - | `Don't import` |
 | `mapping.missingRequired` | fields, count | `Missing required fields: {fields}` |
+| `mapping.uncertainBadge` | - | `Check` |
+| `mapping.confirmMatch` | - | `Confirm` |
+| `mapping.uncertainPending` | count | `1 column to check: confirm the match or pick another field` |
 | `mapping.continue` | - | `Continue to Validation` |
 | `options.loading` | fields, count | `Loading the options for {fields}…` |
 | `options.loadFailed` | field, reason | `Could not load the options for {field}: {reason}` |
@@ -1037,14 +1040,61 @@ Keys are grouped by where the text appears. They are part of the public API: ren
 | `review.description` | - | `Review, search, and fix data before importing` |
 | `review.rowCount` | count | `1 row`, `10,000 rows` |
 | `review.rowCountFiltered` | visible, total | `12 of 10,000 rows` |
-| `review.filterValid` | count | `{count} Valid` |
-| `review.filterWarnings` | count | `{count} Warnings` |
-| `review.filterErrors` | count | `{count} Errors` |
-| `review.filterExcluded` | count | `{count} Excluded` |
+| `review.filterAll` | count | `All 14` |
+| `review.filterWarnings` | count | `With warnings 4` |
+| `review.filterErrors` | count | `Blocked 5` |
+| `review.filterExcluded` | count | `Excluded 0` |
+| `review.importableCount` | count | `9 rows will be imported` |
 | `review.noSearchMatches` | - | `No rows match your search` |
 | `review.noFilterMatches` | - | `No rows match the current filter` |
 | `review.rowNumberHeader` | - | `#` |
 | `review.statusHeader` | - | `Status` |
+| `review.summaryBlocked` | count | `5 rows to fix before importing` |
+| `review.summaryClear` | - | `Nothing blocks the import` |
+| `review.summaryRows` | count | `1 row`, `8 rows` |
+| `review.summaryFix` | - | `Fix` |
+| `review.summaryReview` | - | `Review` |
+| `review.summaryMore` | count | `Show 2 more` |
+| `review.summaryLess` | - | `Show fewer` |
+| `review.warningsTitle` | count | `5 warnings · they don't block the import` |
+| `review.acceptNotes` | - | `Mark all as seen` |
+| `review.notesAccepted` | count | `5 warnings marked as seen` |
+| `review.undoAcceptNotes` | - | `Undo` |
+| `review.groupRequired` | field | `{field} missing` |
+| `review.groupNotAnOption` | field | `{field}: value not recognised` |
+| `review.groupInvalidNumber` | field | `{field}: not a number` |
+| `review.groupInvalidDate` | field | `{field}: date not recognised` |
+| `review.groupAmbiguousNumber` | field | `{field}: number to check` |
+| `review.groupOther` | field, message | `{field}: {message}` |
+| `review.guideLabel` | - | `Fixing` |
+| `review.guideRows` | count | `1 row`, `8 rows` |
+| `review.guideShowAll` | - | `Show all rows` |
+| `review.guideRequired` | field | `{field} is empty. Fill it in, in each highlighted cell.` |
+| `review.guideNotAnOption` | field, value | `"{value}" is not one of the accepted values for {field}. Choose one from the list.` |
+| `review.guideInvalidNumber` | field, value, example | `"{value}" contains text. Enter a number, for example {example}, checking the value to record.` |
+| `review.guideInvalidNumberNoExample` | field, value | `"{value}" is not a number. Enter it in digits.` |
+| `review.guideInvalidDate` | field, value, format | `"{value}" is not a date. Enter it as {format} or YYYY-MM-DD.` |
+| `review.guideAmbiguousNumber` | field, text, value | `{text} was read as {value}. If you meant another number, correct the cell.` |
+| `review.guideOther` | field, message | `{message}` |
+| `review.guideNotBlocking` | - | `This doesn't block the import.` |
+| `review.guideValueRows` | value, count | `"metri" · 3 rows` |
+| `review.guideChoose` | value | `Value to use instead of "{value}"` |
+| `review.guideChoosePlaceholder` | - | `Choose a value` |
+| `review.guideApply` | value, replacement, count | `Replace "metri" with "M" in 3 rows` |
+| `review.guideApplyPending` | count | `Apply to 3 rows` |
+| `review.guideEachCell` | - | `You can also edit the highlighted cells one by one.` |
+| `review.guideFirst` | - | `Go to the first cell to fix` |
+| `review.guideNext` | - | `Next cell to fix` |
+| `review.guideGoToRow` | row | `Go to row {row}` |
+| `review.guideExclude` | count | `Exclude this row`, `Exclude these 4 rows` |
+| `review.guideExcludeHint` | - | `Excluded rows aren't imported; you can include them again at any time.` |
+| `review.guideResolved` | - | `Problem solved` |
+| `review.guideNextProblem` | - | `Next problem` |
+| `review.guideUndo` | - | `Undo` |
+| `review.blockedHint` | count | `Fix or exclude 5 rows first` |
+| `review.statusErrors` | count | `1 error`, `2 errors` |
+| `review.statusWarnings` | count | `1 warning`, `2 warnings` |
+| `review.statusOk` | - | `No problems` |
 | `review.excludeRow` | row | `Exclude row {row}` |
 | `review.includeRow` | row | `Include row {row}` |
 | `review.excludeRowHint` | - | `Leave this row out of the import` |
